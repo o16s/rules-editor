@@ -1,0 +1,40 @@
+{
+  "name": "@octanis/rules-editor",
+  "version": "0.1.0",
+  "description": "Framework-free rules.xml editor for octaview Edge Hub, plus the parse/serialize/validate core. Zero runtime dependencies.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "private": false,
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/o16s/rules-editor.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "jsdom": "^27.0.1",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.7"
+  }
+}

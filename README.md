@@ -1,0 +1,78 @@
+# @octanis/rules-editor
+
+A framework-free editor for the octaview Edge Hub **`rules.xml`** format, plus the
+underlying parse / serialize / validate core. Vanilla TypeScript, **zero runtime
+dependencies**, self-injecting scoped styles.
+
+## Install
+
+```bash
+# git tag dependency (prebuilt dist is committed — no build step needed)
+npm install github:o16s/rules-editor#v0.1.0
+```
+
+The package ships built ESM (`dist/*.js`) + type declarations (`dist/*.d.ts`).
+
+## Use the editor
+
+Mount it into any element. It injects its own scoped styles (`.re-*`) and reads
+the host's design tokens (`--accent`, `--ink`, `--font-body`, …) with fallbacks,
+so it looks native inside octaview and works standalone.
+
+```ts
+import { initRulesEditor } from '@octanis/rules-editor';
+
+const editor = initRulesEditor(document.getElementById('app')!, {
+  // start from a file on disk — parse errors are reported, not thrown:
+  initialXml: await (await fetch('/rules.xml')).text(),
+  onChange: ({ xml, errors }) => {
+    if (errors.length === 0) save(xml);
+  },
+});
+
+editor.getXml();     // current rules.xml
+editor.getModel();   // deep copy of the model
+editor.getErrors();  // validation messages ([] = valid)
+editor.setModel(m);  // replace + re-render
+editor.destroy();    // tear down
+```
+
+### Options (`RulesEditorOptions`)
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `initialXml` | `string` | Parsed internally. A **malformed** file does not throw — the editor opens empty and the parse error is surfaced through `onChange`'s `errors` (and the status line). Takes precedence over `initialModel`. |
+| `initialModel` | `RulesModel` | Start from a model instead of XML. Cloned; your object is not mutated. |
+| `onChange` | `(s: { model, xml, errors }) => void` | Fires on mount and after every edit. |
+
+### Handle (`RulesEditorHandle`)
+
+`getModel()` · `getXml()` · `getErrors()` · `setModel(model)` · `destroy()`
+
+## Use the core without the UI
+
+The same entry exports the pure functions:
+
+```ts
+import { parse, serialize, validate, RulesParseError } from '@octanis/rules-editor';
+import type { RulesModel } from '@octanis/rules-editor';
+
+const model: RulesModel = parse(xml);   // throws RulesParseError on malformed input
+const errors = validate(model);         // string[]; [] means valid
+const xml = serialize(model);           // back to rules.xml
+```
+
+> `parse()` uses the browser `DOMParser` global, so it runs in a browser (or a
+> jsdom test environment), not bare Node. `serialize` / `validate` / the model
+> types have no such requirement.
+
+## Develop
+
+```bash
+npm install
+npm run build      # -> dist/*.js + *.d.ts (commit the result)
+npm test           # vitest (jsdom)
+npm run typecheck
+```
+
+See the schema reference at [octaview.ai/en/docs/edge-hub/rules](https://octaview.ai/en/docs/edge-hub/rules/).
