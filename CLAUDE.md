@@ -34,4 +34,7 @@ self-injecting scoped styles. Consumed by the octaview website and edge-hub.
 1. Bump `version` in `package.json`.
 2. `npm run build` (updates `dist/`).
 3. Commit, `git tag -a vX.Y.Z -m vX.Y.Z`, `git push --follow-tags`.
-4. Consumers: `npm install github:o16s/rules-editor#vX.Y.Z`.
+4. Consumers install the release tarball (CI-safe, HTTPS, no SSH):
+   `npm install "https://github.com/o16s/rules-editor/archive/refs/tags/vX.Y.Z.tar.gz"`
+   (The `github:o16s/rules-editor#vX.Y.Z` shorthand also works, but resolves to
+   git+ssh and fails in CI without an SSH key.)

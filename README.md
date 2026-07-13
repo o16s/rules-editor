@@ -7,9 +7,24 @@ dependencies**, self-injecting scoped styles.
 ## Install
 
 ```bash
-# git tag dependency (prebuilt dist is committed — no build step needed)
+# HTTPS release tarball — works everywhere, including CI (no SSH key required)
+npm install "https://github.com/o16s/rules-editor/archive/refs/tags/v0.1.0.tar.gz"
+```
+
+Prefer the tarball: prebuilt `dist/` is committed, so there's **no build step on
+install** and **zero runtime dependencies** are pulled in.
+
+<details>
+<summary>git shorthand (needs SSH configured)</summary>
+
+```bash
 npm install github:o16s/rules-editor#v0.1.0
 ```
+
+Convenient for local dev, but npm resolves `github:` to a `git+ssh://` URL, so it
+requires an SSH key — it **fails in CI** (e.g. Cloudflare Pages) where none is
+configured. Use the tarball URL there.
+</details>
 
 The package ships built ESM (`dist/*.js`) + type declarations (`dist/*.d.ts`).
 
