@@ -177,6 +177,8 @@ const NARROW = `
   .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; padding:0; }
   .re-root .re-btn-primary { min-height:44px; }
   .re-root .re-toggle input { width:24px; height:24px; }
+  .re-root .re-info { min-width:32px; min-height:32px; font-size:15px; }
+  .re-root .re-help, .re-root .re-msg { font-size:13px; }
   .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:1fr 1fr; }
   .re-root .re-row .re-remove { grid-column:auto; justify-self:end; }
 `;
@@ -264,8 +266,12 @@ const STYLES = `
 .re-f-match { flex:0 0 auto; }
 .re-f-match > span { display:none; }
 .re-f-match select { min-width:158px; width:auto; }
-.re-info { margin-left:5px; color:var(--re-g300); font-size:11px; cursor:help; }
+.re-info { margin-left:4px; padding:0 4px; background:none; border:none; color:var(--re-g300); font-size:12px; line-height:1; cursor:help; font-family:var(--re-font); }
 .re-info:hover { color:var(--re-accent); }
+.re-info[aria-expanded="true"] { color:var(--re-accent); }
+.re-help { margin:4px 0 0; font-size:12px; line-height:1.45; color:var(--re-g500); }
+.re-msg { margin:4px 0 0; font-size:12px; line-height:1.45; color:var(--re-danger); }
+.re-rule > .re-msg, .re-group > .re-msg { margin-top:8px; }
 .re-rule-head { display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px; }
 .re-rule-head .re-link.re-danger { margin-left:auto; align-self:flex-end; margin-bottom:8px; }
 .re-part { margin-top:22px; }
@@ -378,16 +384,46 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     for (const node of Array.from(form.querySelectorAll<HTMLElement>('[data-loc]'))) {
       const messages = byLoc.get(node.dataset.loc ?? '');
       node.classList.toggle('is-invalid', messages !== undefined);
-      if (messages) node.title = messages.join(' ');
-      else node.removeAttribute('title');
+      // The message is text on the page, not a tooltip: touch has no hover.
+      const shown = node.querySelector(':scope > .re-msg');
+      if (messages) {
+        node.title = messages.join(' ');
+        const p = shown ?? node.appendChild(el('p', { class: 're-msg' }));
+        p.textContent = messages.join(' ');
+      } else {
+        node.removeAttribute('title');
+        shown?.remove();
+      }
     }
   }
 
   // ---- controls ----
-  function labelSpan(label: string, help?: string): HTMLElement {
+  /**
+   * Label plus, when there is help, a button that reveals it. Touch has no
+   * hover, so a title attribute is unreadable on a phone; the text has to be
+   * something the user can put on screen. Returns the help element for the
+   * caller to place under the control.
+   */
+  function labelSpan(label: string, help?: string): { head: HTMLElement; help: HTMLElement | null } {
     const span = el('span', {}, [label]);
-    if (help) span.append(el('span', { class: 're-info', title: help, 'aria-label': help, role: 'note' }, ['ⓘ']));
-    return span;
+    if (!help) return { head: span, help: null };
+    const text = el('p', { class: 're-help', hidden: true }, [help]);
+    const info = el('button', {
+      class: 're-info',
+      type: 'button',
+      'aria-expanded': 'false',
+      'aria-label': `Help: ${label}`,
+      title: help,
+      onclick: (e: Event) => {
+        // Inside a <label>, so keep the click from focusing the control.
+        e.preventDefault();
+        e.stopPropagation();
+        text.hidden = !text.hidden;
+        info.setAttribute('aria-expanded', String(!text.hidden));
+      },
+    }, ['ⓘ']);
+    span.append(info);
+    return { head: span, help: text };
   }
 
   function textField(
@@ -412,7 +448,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       input.setAttribute('spellcheck', 'false');
     }
     if (o.help) input.title = o.help;
-    const field = el('label', { class: `re-field ${o.cls ?? ''}` }, [labelSpan(label, o.help), input]);
+    const { head, help } = labelSpan(label, o.help);
+    const field = el('label', { class: `re-field ${o.cls ?? ''}` }, [head, input]);
+    if (help) field.append(help);
     if (o.loc) field.dataset.loc = locKey(o.loc);
     return field;
   }
@@ -439,7 +477,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       sel.append(o);
     }
     if (help) sel.title = help;
-    return el('label', { class: `re-field ${cls}` }, [labelSpan(label, help), sel]);
+    const { head, help: helpEl } = labelSpan(label, help);
+    const field = el('label', { class: `re-field ${cls}` }, [head, sel]);
+    if (helpEl) field.append(helpEl);
+    return field;
   }
 
   const linkBtn = (label: string, fn: () => void, cls = '') =>

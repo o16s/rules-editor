@@ -234,13 +234,22 @@ describe('rules editor component (jsdom)', () => {
     expect(css).toMatch(/@media\s*\(max-width/);
   });
 
-  it('lifts every control to 16px when narrow, so iOS does not zoom on focus', () => {
+  it('lifts every text control to 16px when narrow, so iOS does not zoom on focus', () => {
+    // The zoom happens when a focused text field is under 16px. Static help
+    // text and buttons do not trigger it, so only controls are checked.
     const blocks = narrowBlocks(sheet());
     expect(blocks.length).toBeGreaterThan(0);
-    const sized = blocks.flatMap((b) => [...b.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => Number(m[1])));
-    expect(sized.length).toBeGreaterThan(0);
-    expect(sized.every((n) => n >= 16)).toBe(true);
-    // The controls themselves, not just some heading.
+    const rules = [...blocks.join('').matchAll(/([^{}]+)\{([^}]*)\}/g)];
+    const controls = rules.filter(([, sel]) => /\b(input|select|textarea)\b/.test(sel));
+    expect(controls.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const [, sel, body] of controls) {
+      for (const m of body.matchAll(/font-size:\s*([\d.]+)px/g)) {
+        checked++;
+        expect(Number(m[1]), sel.trim()).toBeGreaterThanOrEqual(16);
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
     expect(blocks.join('')).toMatch(/\.re-field input[^{]*\{[^}]*font-size:\s*16px/);
   });
 
@@ -267,6 +276,48 @@ describe('rules editor component (jsdom)', () => {
     expect(block).toMatch(/\.re-remove[^{]*\{[^}]*grid-row:\s*1\s*\/\s*-1/);
     // The trigger select clipped to "on rising edg" while sharing a row.
     expect(block).toMatch(/\.re-rule-head\s*>\s*\.re-field[^{]*\{[^}]*flex:\s*1 1 100%/);
+  });
+
+  it('shows the error as text, not only as a hover tooltip', () => {
+    const { root } = setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any) });
+    const field = root.querySelector('.re-f-tag') as HTMLElement;
+    const msg = field.querySelector('.re-msg') as HTMLElement;
+    expect(msg, 'no visible message under the field').toBeTruthy();
+    expect(msg.textContent).toMatch(/missing a tag/);
+    expect(msg.hidden).toBe(false);
+    // and it goes away again when fixed, without a re-render
+    const input = field.querySelector('input') as HTMLInputElement;
+    input.value = 'AlarmActive';
+    input.dispatchEvent(new Event('input'));
+    expect(field.querySelector('.re-msg')).toBeNull();
+  });
+
+  it('makes the help marker a button that reveals its text on tap', () => {
+    const { root } = setup();
+    const field = root.querySelector('.re-f-tag') as HTMLElement;
+    const info = field.querySelector('.re-info') as HTMLButtonElement;
+    expect(info.tagName).toBe('BUTTON');
+    expect(info.type).toBe('button');
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    const help = field.querySelector('.re-help') as HTMLElement;
+    expect(help).toBeTruthy();
+    expect(help.hidden).toBe(true);
+    info.click();
+    expect(help.hidden).toBe(false);
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+    expect(help.textContent).toMatch(/Field to test/);
+    info.click();
+    expect(help.hidden).toBe(true);
+  });
+
+  it('does not focus the field when the help marker is tapped', () => {
+    const { root } = setup();
+    const field = root.querySelector('.re-f-tag') as HTMLElement;
+    const info = field.querySelector('.re-info') as HTMLButtonElement;
+    let labelActivated = false;
+    (field.querySelector('input') as HTMLInputElement).addEventListener('click', () => (labelActivated = true));
+    info.click();
+    expect(labelActivated).toBe(false);
   });
 
   it('injects its scoped stylesheet once', () => {
