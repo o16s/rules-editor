@@ -8,11 +8,12 @@
   https://octaview.ai/en/docs/edge-hub/rules/ and the constraints in
   src/model.ts (LIMITS) and validate() in src/parse.ts.
 
-  XSD 1.0 only. Two rules stay application-level checks in validate()
-  because XSD 1.0 cannot express them:
-    - <cond value="..."> is required for every op except "changed"
-      (an attribute cannot depend on another attribute).
-  Everything else in validate() is enforced here.
+  XSD 1.0 only. One rule stays an application-level check in validate()
+  because XSD 1.0 cannot express it: <cond value="..."> is required, and
+  must not be empty, for every op except "changed" (an attribute cannot
+  depend on another attribute). Everything else in validate() is enforced
+  here. The README lists the places where the XSD is stricter than the
+  editor.
 
   Nesting depth (LIMITS.maxDepth = 4). XSD cannot count depth, so the
   condition content model is unrolled into four named groups,
@@ -146,7 +147,11 @@
   <!-- Level 1: the rule's single top-level condition. -->
   <xs:group name="conditionLevel1">
     <xs:choice>
-      <xs:element name="cond" type="cond"/>
+      <xs:element name="cond" type="cond">
+        <xs:annotation>
+          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
       <xs:element name="and" type="groupLevel1">
         <xs:annotation>
           <xs:documentation>Logic group: true when every child is true; evaluation stops at the first false child.</xs:documentation>
@@ -170,7 +175,11 @@
   <!-- Level 2: children of a level-1 group. -->
   <xs:group name="conditionLevel2">
     <xs:choice>
-      <xs:element name="cond" type="cond"/>
+      <xs:element name="cond" type="cond">
+        <xs:annotation>
+          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
       <xs:element name="and" type="groupLevel2">
         <xs:annotation>
           <xs:documentation>Logic group: true when every child is true; evaluation stops at the first false child.</xs:documentation>
@@ -194,7 +203,11 @@
   <!-- Level 3: children of a level-2 group. -->
   <xs:group name="conditionLevel3">
     <xs:choice>
-      <xs:element name="cond" type="cond"/>
+      <xs:element name="cond" type="cond">
+        <xs:annotation>
+          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
       <xs:element name="and" type="groupLevel3">
         <xs:annotation>
           <xs:documentation>Logic group: true when every child is true; evaluation stops at the first false child.</xs:documentation>
@@ -219,7 +232,11 @@
        exists for a fifth level, so deeper nesting is rejected. -->
   <xs:group name="conditionLevel4">
     <xs:choice>
-      <xs:element name="cond" type="cond"/>
+      <xs:element name="cond" type="cond">
+        <xs:annotation>
+          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
     </xs:choice>
   </xs:group>
 
@@ -246,7 +263,11 @@
       <xs:documentation>Ordered publish actions that fire sequentially when the rule fires.</xs:documentation>
     </xs:annotation>
     <xs:sequence>
-      <xs:element name="publish" type="publish" minOccurs="1" maxOccurs="unbounded"/>
+      <xs:element name="publish" type="publish" minOccurs="1" maxOccurs="unbounded">
+        <xs:annotation>
+          <xs:documentation>One MQTT publish action; actions fire in document order.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
     </xs:sequence>
   </xs:complexType>
 
@@ -282,10 +303,22 @@
       <!-- "at least one of actions, incident", in this order. -->
       <xs:choice>
         <xs:sequence>
-          <xs:element name="actions" type="actions"/>
-          <xs:element name="incident" type="incident" minOccurs="0"/>
+          <xs:element name="actions" type="actions">
+            <xs:annotation>
+              <xs:documentation>Ordered publish actions that fire when the rule fires.</xs:documentation>
+            </xs:annotation>
+          </xs:element>
+          <xs:element name="incident" type="incident" minOccurs="0">
+            <xs:annotation>
+              <xs:documentation>Optional incident raised and resolved with the condition.</xs:documentation>
+            </xs:annotation>
+          </xs:element>
         </xs:sequence>
-        <xs:element name="incident" type="incident"/>
+        <xs:element name="incident" type="incident">
+          <xs:annotation>
+            <xs:documentation>Incident raised and resolved with the condition, for a rule without actions.</xs:documentation>
+          </xs:annotation>
+        </xs:element>
       </xs:choice>
     </xs:sequence>
     <xs:attribute name="name" type="nonEmptyString" use="required">

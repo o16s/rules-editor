@@ -195,6 +195,10 @@ const APP_LEVEL: Record<string, { xml: string; reason: string }> = {
     xml: rules(rule('r', '<cond tag="a" op="eq" value=""/>' + ACTIONS)),
     reason: 'same as above: the value constraint depends on op',
   },
+  'summary of 120 astral characters': {
+    xml: rules(rule('r', COND + `<incident source="s" severity="info" summary="${'\u{1F600}'.repeat(LIMITS.maxSummary)}"/>`)),
+    reason: 'validate() counts UTF-16 code units (240 here); XSD maxLength counts code points (120)',
+  },
 };
 
 /**
@@ -213,6 +217,22 @@ const XSD_STRICTER: Record<string, { xml: string; reason: string }> = {
   'children out of documented order': {
     xml: rules(rule('r', INCIDENT + ACTIONS + COND)),
     reason: 'the XSD fixes the order condition, actions, incident; parse() accepts any order and serialize() always emits this order',
+  },
+  'unknown attribute': {
+    xml: rules(rule('r', '<cond tag="a" op="eq" value="1" x="y"/>' + ACTIONS, ' foo="bar"')),
+    reason: 'the XSD allows only the documented attributes; parse() ignores attributes it does not know',
+  },
+  'empty optional attributes': {
+    xml: rules(rule('r', '<cond device="" tag="a" op="eq" value="1"/>' + ACTIONS, ' cooldown="" edge=""')),
+    reason: 'the XSD rejects "" for edge, cooldown, and device; parse() treats an empty attribute as absent',
+  },
+  'stray content the parser ignores': {
+    xml: rules(rule('r', '<and>text<cond tag="a" op="eq" value="1"><foo/></cond></and>' + ACTIONS)),
+    reason: 'the XSD allows no text in groups and no children in <cond>; parse() skips text nodes and never looks inside <cond>',
+  },
+  'operator with surrounding whitespace': {
+    xml: rules(rule('r', '<cond tag="a" op=" eq " value="1"/>' + ACTIONS)),
+    reason: 'the XSD enumeration is exact; canonicalOp() trims the token',
   },
 };
 

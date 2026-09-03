@@ -107,6 +107,9 @@ must check them too:
 
 - `<cond value="…">` is required, and must not be empty, for every operator
   except `changed`. An attribute cannot depend on another attribute in XSD.
+- The 120-character limit on `summary` is counted differently. The XSD counts
+  Unicode code points. `validate()` counts UTF-16 code units, so a summary of
+  120 emoji passes the XSD and fails the editor. Plain text is not affected.
 
 ### Where the XSD is stricter than the editor
 
@@ -119,6 +122,14 @@ serializer never produces them.
   `<actions/>` to no actions.
 - The children of `<rule>` come in the documented order: the condition, then
   `<actions>`, then `<incident>`. The parser accepts any order.
+- Only the documented attributes are allowed. The parser ignores attributes it
+  does not know.
+- `edge`, `cooldown`, and `device` must not be empty strings. The parser treats
+  an empty attribute as absent.
+- No text inside `<rules>`, `<rule>`, `<and>`, `<or>`, or `<actions>`, and no
+  child elements inside `<cond>`. The parser skips text and never looks inside
+  `<cond>`.
+- `op` must match exactly. The parser trims surrounding whitespace.
 
 ### Nesting depth
 
