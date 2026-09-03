@@ -1,6 +1,6 @@
 {
   "name": "@octanis/rules-editor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-free rules.xml editor for octaview Edge Hub, plus the parse/serialize/validate core. Zero runtime dependencies.",
   "type": "module",
   "license": "UNLICENSED",
