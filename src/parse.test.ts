@@ -134,6 +134,27 @@ describe('validate', () => {
     expect(validate(base({ incident: { source: 's', severity: 'info', summary: long } })).join('\n')).toMatch(/120/);
   });
 
+  it('flags a cooldown that is not a Go duration', () => {
+    expect(validate(base({ cooldown: '5d' })).join('\n')).toMatch(/cooldown/i);
+    expect(validate(base({ cooldown: 'soon' })).join('\n')).toMatch(/cooldown/i);
+    expect(validate(base({ cooldown: '1m 30s' })).join('\n')).toMatch(/cooldown/i);
+    expect(validate(base({ cooldown: '-30s' })).join('\n')).toMatch(/cooldown/i);
+  });
+
+  it('accepts every Go duration form the reference shows', () => {
+    for (const cd of ['30s', '1m', '1m30s', '500ms', '0', '1.5s', '2h', '1h0m0s', '.5s', '1us', '1\u00b5s', '1ns']) {
+      expect(validate(base({ cooldown: cd })), cd).toEqual([]);
+    }
+  });
+
+  it('counts the summary limit in code points, not UTF-16 units', () => {
+    // 120 astral characters are 240 UTF-16 units but 120 characters.
+    const emoji = '\u{1F600}'.repeat(120);
+    expect(validate(base({ incident: { source: 's', severity: 'info', summary: emoji } }))).toEqual([]);
+    const tooMany = '\u{1F600}'.repeat(121);
+    expect(validate(base({ incident: { source: 's', severity: 'info', summary: tooMany } })).join('\n')).toMatch(/120/);
+  });
+
   it('flags nesting deeper than 4 levels', () => {
     const deep: any = { kind: 'cond', tag: 'a', op: 'eq', value: '1' };
     let node: any = deep;

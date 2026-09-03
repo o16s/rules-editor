@@ -1,4 +1,4 @@
-import { canonicalOp, isGroup, LIMITS, SEVERITIES, EDGES, VALUELESS_OPS, } from './model.js';
+import { canonicalOp, COOLDOWN_RE, isGroup, LIMITS, SEVERITIES, EDGES, VALUELESS_OPS, } from './model.js';
 export class RulesParseError extends Error {
 }
 // ---- parsing -------------------------------------------------------------
@@ -134,6 +134,9 @@ export function validate(model) {
             errors.push(`Duplicate rule name "${rule.name}".`);
         else
             seen.add(rule.name);
+        if (rule.cooldown !== undefined && !COOLDOWN_RE.test(rule.cooldown)) {
+            errors.push(`${where}: cooldown "${rule.cooldown}" is not a Go duration (e.g. 30s, 1m30s, 500ms).`);
+        }
         if (!rule.condition)
             errors.push(`${where}: needs exactly one condition.`);
         else
@@ -150,7 +153,8 @@ export function validate(model) {
                 errors.push(`${where}: incident is missing a source.`);
             if (!rule.incident.summary)
                 errors.push(`${where}: incident is missing a summary.`);
-            if (rule.incident.summary.length > LIMITS.maxSummary) {
+            // Count characters, not UTF-16 units, to match the XSD's maxLength.
+            if ([...rule.incident.summary].length > LIMITS.maxSummary) {
                 errors.push(`${where}: incident summary exceeds ${LIMITS.maxSummary} characters.`);
             }
         }

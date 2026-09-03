@@ -107,17 +107,23 @@ must check them too:
 
 - `<cond value="…">` is required, and must not be empty, for every operator
   except `changed`. An attribute cannot depend on another attribute in XSD.
-- The 120-character limit on `summary` is counted differently. The XSD counts
-  Unicode code points. `validate()` counts UTF-16 code units, so a summary of
-  120 emoji passes the XSD and fails the editor. Plain text is not affected.
+
+### What the Go validator must support
+
+The schema uses two features that lightweight validators sometimes leave out.
+Check them before choosing a library on the hub side:
+
+- `xs:unique`, which enforces unique rule names. Without it, duplicate names
+  must stay an application-level check.
+- `maxOccurs="1000"` on `<rule>`, which enforces the rule limit.
+
+A libxml2-backed validator supports both.
 
 ### Where the XSD is stricter than the editor
 
 The XSD rejects these, but `parse()` and `validate()` accept them. The
 serializer never produces them.
 
-- `cooldown` must match the Go duration pattern (for example `30s`, `1m30s`,
-  `500ms`). The editor does not inspect the value.
 - `<actions>` needs at least one `<publish>`. The parser maps an empty
   `<actions/>` to no actions.
 - The children of `<rule>` come in the documented order: the condition, then

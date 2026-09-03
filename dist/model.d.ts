@@ -4,6 +4,17 @@ export type Op = (typeof OPERATORS)[number];
 export declare const OP_ALIASES: Record<string, Op>;
 /** Operators that take no `value`. */
 export declare const VALUELESS_OPS: readonly Op[];
+/**
+ * A non-negative Go duration, as accepted by time.ParseDuration: either a
+ * bare `0`, or one or more number+unit pairs (`30s`, `1m30s`, `500ms`).
+ * A sign is rejected on purpose: a negative cooldown is meaningless.
+ *
+ * This must stay identical to the `goDuration` pattern in schema/rules.xsd;
+ * src/xsd.test.ts fails when the two drift apart.
+ */
+export declare const COOLDOWN_PATTERN = "0|(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|\u00B5s|\u03BCs|ms|s|m|h))+";
+/** `COOLDOWN_PATTERN` anchored, for use in JS. */
+export declare const COOLDOWN_RE: RegExp;
 export declare const SEVERITIES: readonly ["critical", "error", "warning", "info"];
 export type Severity = (typeof SEVERITIES)[number];
 export declare const EDGES: readonly ["none", "rising"];

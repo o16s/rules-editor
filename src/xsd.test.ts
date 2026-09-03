@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { validateXML } from 'xmllint-wasm';
 import { parse, validate } from './parse.js';
 import { serialize } from './serialize.js';
-import { LIMITS } from './model.js';
+import { COOLDOWN_PATTERN, LIMITS } from './model.js';
 import { RULES_XSD_PATH } from './index.js';
 import type { RulesModel } from './model.js';
 
@@ -86,6 +86,9 @@ const VALID: Record<string, string> = {
   'edge none explicitly': rules(rule('r', COND + ACTIONS, ' edge="none"')),
   'cooldown forms from the reference': rules(
     ...['30s', '1m', '1m30s', '500ms', '0', '1.5s', '2h'].map((cd, i) => rule(`r${i}`, COND + ACTIONS, ` cooldown="${cd}"`))
+  ),
+  'summary of 120 astral characters': rules(
+    rule('r', COND + `<incident source="s" severity="info" summary="${'\u{1F600}'.repeat(LIMITS.maxSummary)}"/>`)
   ),
   'summary of exactly 120 characters': rules(
     rule('r', COND + `<incident source="s" severity="warning" summary="${'x'.repeat(LIMITS.maxSummary)}"/>`)
@@ -179,6 +182,8 @@ const INVALID: Record<string, string> = {
   'summary over 120 characters': rules(
     rule('r', COND + `<incident source="s" severity="info" summary="${'x'.repeat(LIMITS.maxSummary + 1)}"/>`)
   ),
+  'cooldown that is not a Go duration': rules(rule('r', COND + ACTIONS, ' cooldown="5d"')),
+  'cooldown with a sign': rules(rule('r', COND + ACTIONS, ' cooldown="-30s"')),
   '1001 rules': rules(...Array.from({ length: LIMITS.maxRules + 1 }, (_, i) => rule(`r${i}`, COND + ACTIONS))),
 };
 
@@ -195,10 +200,6 @@ const APP_LEVEL: Record<string, { xml: string; reason: string }> = {
     xml: rules(rule('r', '<cond tag="a" op="eq" value=""/>' + ACTIONS)),
     reason: 'same as above: the value constraint depends on op',
   },
-  'summary of 120 astral characters': {
-    xml: rules(rule('r', COND + `<incident source="s" severity="info" summary="${'\u{1F600}'.repeat(LIMITS.maxSummary)}"/>`)),
-    reason: 'validate() counts UTF-16 code units (240 here); XSD maxLength counts code points (120)',
-  },
 };
 
 /**
@@ -206,10 +207,6 @@ const APP_LEVEL: Record<string, { xml: string; reason: string }> = {
  * difference is explicit. The XSD must REJECT them; the editor accepts them.
  */
 const XSD_STRICTER: Record<string, { xml: string; reason: string }> = {
-  'cooldown that is not a Go duration': {
-    xml: rules(rule('r', COND + ACTIONS, ' cooldown="soon"')),
-    reason: 'the XSD enforces the Go duration pattern; validate() does not inspect cooldown',
-  },
   'empty <actions/> next to an incident': {
     xml: rules(rule('r', COND + '<actions/>' + INCIDENT)),
     reason: '<actions> holds one or more <publish>; parse() maps an empty <actions/> to no actions',
@@ -243,6 +240,12 @@ describe('schema/rules.xsd', () => {
     const m = XSD.match(/<xs:schema\b[^>]*\bversion="([^"]+)"/);
     expect(m, 'xs:schema has no version attribute').not.toBeNull();
     expect(m![1]).toBe(PKG.version);
+  });
+
+  it('keeps the cooldown pattern identical to model.ts', () => {
+    const m = XSD.match(/<xs:pattern value="([^"]+)"\/>/);
+    expect(m, 'no xs:pattern in the schema').not.toBeNull();
+    expect(m![1]).toBe(COOLDOWN_PATTERN);
   });
 
   it('is well-formed and is itself a valid schema', async () => {
