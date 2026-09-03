@@ -216,6 +216,44 @@ describe('rules editor component (jsdom)', () => {
     expect(summary.getAttribute('spellcheck')).toBe(null);
   });
 
+  // ---- narrow-screen guards (no browser: assertions over the injected CSS) ----
+  const sheet = (): string => {
+    setup();
+    return document.getElementById('octaview-rules-editor-styles')!.textContent ?? '';
+  };
+  /** The declarations that apply only when the editor is narrow. */
+  const narrowBlocks = (css: string): string[] =>
+    [...css.matchAll(/@(?:media|container)[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+
+  it('adapts to its container, not only to the viewport', () => {
+    const css = sheet();
+    // The editor is embedded, so it can be narrow inside a wide window.
+    expect(css).toMatch(/container-type:\s*inline-size/);
+    expect(css).toMatch(/@container\s/);
+    // Kept alongside a viewport query so it still adapts without container support.
+    expect(css).toMatch(/@media\s*\(max-width/);
+  });
+
+  it('lifts every control to 16px when narrow, so iOS does not zoom on focus', () => {
+    const blocks = narrowBlocks(sheet());
+    expect(blocks.length).toBeGreaterThan(0);
+    const sized = blocks.flatMap((b) => [...b.matchAll(/font-size:\s*([\d.]+)px/g)].map((m) => Number(m[1])));
+    expect(sized.length).toBeGreaterThan(0);
+    expect(sized.every((n) => n >= 16)).toBe(true);
+    // The controls themselves, not just some heading.
+    expect(blocks.join('')).toMatch(/\.re-field input[^{]*\{[^}]*font-size:\s*16px/);
+  });
+
+  it('gives the small controls a touch-sized target when narrow', () => {
+    const block = narrowBlocks(sheet()).join('');
+    for (const sel of ['.re-remove', '.re-link', '.re-btn-primary']) {
+      const rule = new RegExp(`\\${sel}[^{]*\\{[^}]*min-height:\\s*(\\d+)px`).exec(block);
+      expect(rule, `${sel} has no min-height when narrow`).not.toBeNull();
+      expect(Number(rule![1]), sel).toBeGreaterThanOrEqual(44);
+    }
+    expect(block).toMatch(/\.re-toggle input[^{]*\{[^}]*(width|height):\s*2[2-9]px/);
+  });
+
   it('injects its scoped stylesheet once', () => {
     setup();
     setup();

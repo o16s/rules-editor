@@ -160,6 +160,30 @@ function exampleModel(): RulesModel {
 // ---- scoped styles -------------------------------------------------------
 
 const STYLE_ID = 'octaview-rules-editor-styles';
+
+/**
+ * Declarations that apply when the editor is narrow. Emitted twice, once for a
+ * narrow window and once for a narrow container: the editor is embedded, so it
+ * can sit in a small column on a wide screen, which a viewport query misses.
+ * Controls go to 16px because iOS Safari zooms the page when a focused field is
+ * smaller, and the small controls get a 44px target (WCAG 2.5.8 asks 24px).
+ */
+const NARROW = `
+  .re-root .re-field input, .re-root .re-field select { font-size:16px; }
+  .re-root .re-field input.re-mono { font-size:16px; }
+  .re-root .re-f-name input { font-size:17px; }
+  .re-root .re-import textarea { font-size:16px; }
+  .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; margin-bottom:0; }
+  .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; padding:0; }
+  .re-root .re-btn-primary { min-height:44px; }
+  .re-root .re-toggle input { width:22px; height:22px; }
+  .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:1fr 1fr; }
+  .re-root .re-row .re-remove { grid-column:auto; justify-self:end; }
+`;
+const NARROW_BLOCKS = `
+@media (max-width:560px) {${NARROW}}
+@container re (max-width:560px) {${NARROW}}
+`;
 const STYLES = `
 .re-root {
   --re-accent: var(--accent, #FF5C00);
@@ -179,6 +203,8 @@ const STYLES = `
   --re-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   --re-head: var(--font-heading, var(--re-font));
   font-family: var(--re-font); color: var(--re-ink); font-size: 14px; line-height: 1.5;
+  /* The editor is embedded, so it can be narrow inside a wide window. */
+  container-type: inline-size; container-name: re;
 }
 .re-root *, .re-root *::before, .re-root *::after { box-sizing: border-box; }
 .re-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:22px; margin-bottom:18px; }
@@ -249,11 +275,7 @@ const STYLES = `
 .re-import-msg { font-size:13px; margin-top:10px; }
 .re-import-msg.is-ok { color:var(--re-ok); }
 .re-import-msg.is-error { color:var(--re-danger); }
-@media (max-width:560px) {
-  .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:1fr 1fr; }
-  .re-root .re-row .re-remove { grid-column:auto; justify-self:end; }
-}
-`;
+${NARROW_BLOCKS}`;
 
 function injectStyles(): void {
   if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
