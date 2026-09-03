@@ -11,7 +11,8 @@
     "url": "git+https://github.com/o16s/rules-editor.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "schema"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",

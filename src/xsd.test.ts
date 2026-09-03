@@ -15,6 +15,7 @@ import { validateXML } from 'xmllint-wasm';
 import { parse, validate } from './parse.js';
 import { serialize } from './serialize.js';
 import { LIMITS } from './model.js';
+import { RULES_XSD_PATH } from './index.js';
 import type { RulesModel } from './model.js';
 
 // Resolve through the file path, not `new URL(x, import.meta.url)`: Vite
@@ -230,6 +231,11 @@ describe('schema/rules.xsd', () => {
     expect(await xsdErrors('<rules/>')).toEqual([]);
   });
 
+  it('is reachable through RULES_XSD_PATH', () => {
+    expect(RULES_XSD_PATH.startsWith('file:')).toBe(true);
+    expect(fileURLToPath(RULES_XSD_PATH)).toBe(XSD_FILE);
+    expect(readFileSync(fileURLToPath(RULES_XSD_PATH), 'utf8')).toBe(XSD);
+  });
 
   describe('accepts what the editor accepts', () => {
     for (const [name, xml] of Object.entries(VALID)) {
