@@ -77,6 +77,19 @@ const errors = validate(model);         // string[]; [] means valid
 const xml = serialize(model);           // back to rules.xml
 ```
 
+`validateIssues(model)` runs the same checks and returns the same messages, each
+with the place it belongs to — the rule index, the field, the path of child
+indexes down the condition tree, and the action index. The editor uses it to
+mark the input at fault; a host can use it for the same purpose.
+
+```ts
+import { validateIssues } from '@octanis/rules-editor';
+
+validateIssues(model);
+// [{ message: 'Rule "r": operator "gt" on tag "b" needs a value.',
+//    rule: 0, field: 'value', path: [1, 1] }]
+```
+
 > `parse()` uses the browser `DOMParser` global, so it runs in a browser (or a
 > jsdom test environment), not bare Node. `serialize` / `validate` / the model
 > types have no such requirement.

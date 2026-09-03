@@ -27,7 +27,7 @@ import {
   type RulesModel,
 } from './model.js';
 import { serialize } from './serialize.js';
-import { parse, validate, RulesParseError } from './parse.js';
+import { parse, validate, validateIssues, RulesParseError, type ValidationIssue } from './parse.js';
 
 export interface RulesEditorOptions {
   /** Model to start from. Cloned on entry; the caller's object is not mutated. */
@@ -57,6 +57,14 @@ export interface RulesEditorHandle {
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/**
+ * Address of one input, shared by the renderer (as `data-loc`) and by the
+ * marking pass (from a ValidationIssue), so an issue finds its field.
+ */
+type Loc = Pick<ValidationIssue, 'rule' | 'field' | 'path' | 'action'>;
+const locKey = (l: Loc): string =>
+  `${l.rule ?? ''}|${l.field ?? ''}|${(l.path ?? []).join('.')}|${l.action ?? ''}`;
 
 // ---- small DOM helper ----------------------------------------------------
 
@@ -198,6 +206,10 @@ const STYLES = `
 .re-field input.re-mono { font-family:var(--re-mono); font-size:13px; }
 .re-field input::placeholder { color:var(--re-g300); }
 .re-field input:focus, .re-field select:focus { outline:none; border-color:var(--re-accent); }
+.re-field.is-invalid input, .re-field.is-invalid select { border-color:var(--re-danger); }
+.re-field.is-invalid > span { color:var(--re-danger); }
+.re-group.is-invalid { border-left-color:var(--re-danger); }
+.re-rule.is-invalid { box-shadow:inset 2px 0 0 var(--re-danger); }
 .re-f-name { flex:1 1 200px; }
 .re-f-name input { font-family:var(--re-head); font-weight:600; font-size:15px; }
 .re-f-cool { flex:0 0 100px; }
@@ -277,6 +289,8 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return parseError ? [parseError, ...errs] : errs;
   };
 
+  const exportBtn = el('button', { class: 're-link', type: 'button', onclick: () => download() }, ['Export XML']);
+  const copyBtn = el('button', { class: 're-link', type: 'button', onclick: () => copyXml(copyBtn) }, ['Copy XML']);
   const form = el('div', { class: 're-rules' });
   const status = el('div', { class: 're-status' });
   const importPanel = el('div', { class: 're-import', hidden: true });
@@ -297,7 +311,37 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
         el('ul', {}, errs.map((e) => el('li', {}, [e])))
       );
     }
+    markFields(validateIssues(model));
+    const gate = (btn: HTMLButtonElement) => {
+      btn.disabled = errs.length > 0;
+      if (errs.length) btn.title = `Fix ${errs.length} issue${errs.length === 1 ? '' : 's'} first.`;
+      else btn.removeAttribute('title');
+    };
+    gate(exportBtn);
+    gate(copyBtn);
+    // onChange still carries the xml while invalid, so a host can autosave a draft.
     opts.onChange?.({ model: clone(model), xml: serialize(model), errors: errs });
+  }
+
+  /**
+   * Put each issue on the input it belongs to. Runs on every refresh, not only
+   * on a re-render, so a mark clears as soon as the field is fixed.
+   */
+  function markFields(issues: ValidationIssue[]): void {
+    const byLoc = new Map<string, string[]>();
+    for (const issue of issues) {
+      if (issue.rule === undefined) continue; // whole-file issue: status line only
+      const key = locKey(issue);
+      const found = byLoc.get(key);
+      if (found) found.push(issue.message);
+      else byLoc.set(key, [issue.message]);
+    }
+    for (const node of Array.from(form.querySelectorAll<HTMLElement>('[data-loc]'))) {
+      const messages = byLoc.get(node.dataset.loc ?? '');
+      node.classList.toggle('is-invalid', messages !== undefined);
+      if (messages) node.title = messages.join(' ');
+      else node.removeAttribute('title');
+    }
   }
 
   // ---- controls ----
@@ -311,7 +355,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     label: string,
     value: string | undefined,
     onInput: (v: string) => void,
-    o: { placeholder?: string; mono?: boolean; cls?: string; help?: string } = {}
+    o: { placeholder?: string; mono?: boolean; cls?: string; help?: string; loc?: Loc } = {}
   ): HTMLElement {
     const input = el('input', {
       type: 'text',
@@ -321,7 +365,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       oninput: (e) => { onInput((e.target as HTMLInputElement).value); refresh(); },
     });
     if (o.help) input.title = o.help;
-    return el('label', { class: `re-field ${o.cls ?? ''}` }, [labelSpan(label, o.help), input]);
+    const field = el('label', { class: `re-field ${o.cls ?? ''}` }, [labelSpan(label, o.help), input]);
+    if (o.loc) field.dataset.loc = locKey(o.loc);
+    return field;
   }
 
   function selectField(
@@ -361,10 +407,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     el('button', { class: 're-remove', type: 'button', title, 'aria-label': title, onclick: fn }, ['×']);
 
   // ---- condition tree ----
-  function renderLeaf(leaf: Cond, replace: (n: Condition | null) => void): HTMLElement {
+  function renderLeaf(leaf: Cond, replace: (n: Condition | null) => void, rule: number, path: number[]): HTMLElement {
     const row = el('div', { class: 're-row' }, [
       textField('device', leaf.device, (v) => { if (v) leaf.device = v; else delete leaf.device; }, { placeholder: '—', cls: 're-f-dev', help: HELP.device }),
-      textField('tag', leaf.tag, (v) => (leaf.tag = v), { placeholder: 'AlarmActive', cls: 're-f-tag', help: HELP.tag }),
+      textField('tag', leaf.tag, (v) => (leaf.tag = v), { placeholder: 'AlarmActive', cls: 're-f-tag', help: HELP.tag, loc: { rule, field: 'tag', path } }),
       selectField('operator', leaf.op, OP_OPTIONS, (v) => {
         leaf.op = v as Op;
         if (VALUELESS_OPS.includes(leaf.op)) delete leaf.value;
@@ -372,7 +418,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       }, true, 're-f-op', HELP.operator),
     ]);
     if (!VALUELESS_OPS.includes(leaf.op)) {
-      row.append(textField('value', leaf.value, (v) => (leaf.value = v), { placeholder: 'true', cls: 're-f-val', help: HELP.value }));
+      row.append(textField('value', leaf.value, (v) => (leaf.value = v), { placeholder: 'true', cls: 're-f-val', help: HELP.value, loc: { rule, field: 'value', path } }));
     }
     row.append(removeBtn('Remove condition', () => replace(null)));
     return row;
@@ -391,7 +437,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     }, true, 're-f-match', HELP.match);
   }
 
-  function renderGroupBody(group: Group, depth: number): HTMLElement {
+  function renderGroupBody(group: Group, depth: number, rule: number, path: number[]): HTMLElement {
     const kids = el('div', { class: 're-children' });
     group.children.forEach((child, i) => {
       const replace = (next: Condition | null) => {
@@ -399,7 +445,12 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
         else group.children[i] = next;
         renderForm();
       };
-      kids.append(isGroup(child) ? renderGroup(child, replace, depth + 1) : renderLeaf(child, replace));
+      const childPath = [...path, i];
+      kids.append(
+        isGroup(child)
+          ? renderGroup(child, replace, depth + 1, rule, childPath)
+          : renderLeaf(child, replace, rule, childPath)
+      );
     });
 
     // Offer only steps that stay inside the limits validate() enforces.
@@ -421,15 +472,23 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return el('div', {}, [kids, add]);
   }
 
-  function renderGroup(group: Group, replace: (n: Condition | null) => void, depth: number): HTMLElement {
+  function renderGroup(
+    group: Group,
+    replace: (n: Condition | null) => void,
+    depth: number,
+    rule: number,
+    path: number[]
+  ): HTMLElement {
     const head = el('div', { class: 're-grouphead' }, [
       matchSelect(group, replace),
       removeBtn('Remove group', () => replace(null)),
     ]);
-    return el('div', { class: 're-group' }, [head, renderGroupBody(group, depth)]);
+    const box = el('div', { class: 're-group' }, [head, renderGroupBody(group, depth, rule, path)]);
+    box.dataset.loc = locKey({ rule, field: 'condition', path });
+    return box;
   }
 
-  function renderConditionArea(rule: Rule): HTMLElement {
+  function renderConditionArea(rule: Rule, index: number): HTMLElement {
     const wrap = el('div', {}, [
       el('div', { class: 're-mode' }, [
         el('span', { class: 're-mode-lead' }, ['match']),
@@ -438,11 +497,13 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     ]);
     const c = rule.condition;
     if (!c) {
+      // Nothing to mark inside, so the area itself carries the issue.
+      wrap.dataset.loc = locKey({ rule: index, field: 'condition' });
       wrap.append(linkBtn('Add condition', () => { rule.condition = emptyCond(); renderForm(); }));
     } else if (isGroup(c)) {
-      wrap.append(renderGroupBody(c, 1));
+      wrap.append(renderGroupBody(c, 1, index, []));
     } else {
-      wrap.append(renderLeaf(c, (next) => { rule.condition = next; renderForm(); }));
+      wrap.append(renderLeaf(c, (next) => { rule.condition = next; renderForm(); }, index, []));
     }
     return wrap;
   }
@@ -453,8 +514,8 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   // ---- one rule ----
   function renderRule(rule: Rule, index: number): HTMLElement {
     const head = el('div', { class: 're-rule-head' }, [
-      textField('rule name', rule.name, (v) => (rule.name = v), { placeholder: 'rule-name', cls: 're-f-name', help: HELP.name }),
-      textField('cooldown', rule.cooldown, (v) => { if (v) rule.cooldown = v; else delete rule.cooldown; }, { placeholder: 'none', cls: 're-f-cool', help: HELP.cooldown }),
+      textField('rule name', rule.name, (v) => (rule.name = v), { placeholder: 'rule-name', cls: 're-f-name', help: HELP.name, loc: { rule: index, field: 'name' } }),
+      textField('cooldown', rule.cooldown, (v) => { if (v) rule.cooldown = v; else delete rule.cooldown; }, { placeholder: 'none', cls: 're-f-cool', help: HELP.cooldown, loc: { rule: index, field: 'cooldown' } }),
       selectField('trigger', rule.edge ?? 'none', TRIGGER_OPTIONS, (v) => { if (v === 'none') delete rule.edge; else rule.edge = v as Rule['edge']; }, false, 're-f-trig', HELP.trigger),
       linkBtn('Delete rule', () => { model.rules.splice(index, 1); renderForm(); }, 're-danger'),
     ]);
@@ -463,7 +524,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     rule.actions.forEach((a, i) => {
       actRows.append(
         el('div', { class: 're-pubrow' }, [
-          textField('topic', a.topic, (v) => (a.topic = v), { placeholder: 'camera/record', help: HELP.topic }),
+          textField('topic', a.topic, (v) => (a.topic = v), { placeholder: 'camera/record', help: HELP.topic, loc: { rule: index, field: 'topic', action: i } }),
           textField('payload', a.payload, (v) => { if (v) a.payload = v; else delete a.payload; }, { placeholder: '{}', mono: true, help: HELP.payload }),
           removeBtn('Remove action', () => { rule.actions.splice(i, 1); renderForm(); }),
         ])
@@ -480,18 +541,21 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     if (rule.incident) {
       const inc = rule.incident;
       incBody.append(
-        textField('source', inc.source, (v) => (inc.source = v), { placeholder: 'plc1', help: HELP.source }),
+        textField('source', inc.source, (v) => (inc.source = v), { placeholder: 'plc1', help: HELP.source, loc: { rule: index, field: 'source' } }),
         selectField('severity', inc.severity, SEVERITY_OPTIONS, (v) => (inc.severity = v as typeof inc.severity), false, '', HELP.severity),
-        textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary })
+        textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary, loc: { rule: index, field: 'summary' } })
       );
     }
 
-    return el('div', { class: 're-rule' }, [
+    const box = el('div', { class: 're-rule' }, [
       head,
-      el('div', { class: 're-part' }, [part('When'), renderConditionArea(rule)]),
+      el('div', { class: 're-part' }, [part('When'), renderConditionArea(rule, index)]),
       el('div', { class: 're-part' }, [part('Then publish', linkBtn('Add publish', () => { rule.actions.push({ topic: '' }); renderForm(); })), actRows]),
       el('div', { class: 're-part' }, [part('Raise incident', incToggle), incBody]),
     ]);
+    // An issue with no single field (no actions and no incident) lands here.
+    box.dataset.loc = locKey({ rule: index });
+    return box;
   }
 
   function renderForm(): void {
@@ -553,11 +617,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
 
   // ---- toolbar + layout ----
-  const copyBtn = el('button', { class: 're-link', type: 'button', onclick: () => copyXml(copyBtn) }, ['Copy XML']);
   const toolbar = el('div', { class: 're-toolbar' }, [
     el('button', { class: 're-btn-primary', type: 'button', onclick: () => { parseError = null; model.rules.push({ name: 'new-rule', condition: emptyCond(), actions: [], incident: null }); renderForm(); } }, ['Add rule']),
     linkBtn('Import XML', () => { buildImportPanel(); importPanel.hidden = false; }),
-    linkBtn('Export XML', download),
+    exportBtn,
     copyBtn,
     linkBtn('Load example', () => { parseError = null; model = exampleModel(); renderForm(); }),
     linkBtn('Clear', () => { parseError = null; model = { rules: [] }; renderForm(); }),
@@ -577,7 +640,8 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';
-export { parse, validate, RulesParseError } from './parse.js';
+export { parse, validate, validateIssues, RulesParseError } from './parse.js';
+export type { ValidationIssue } from './parse.js';
 export {
   OPERATORS,
   SEVERITIES,
@@ -585,6 +649,8 @@ export {
   VALUELESS_OPS,
   OP_ALIASES,
   LIMITS,
+  COOLDOWN_PATTERN,
+  COOLDOWN_RE,
   isGroup,
   canonicalOp,
 } from './model.js';

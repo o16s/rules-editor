@@ -135,6 +135,68 @@ describe('rules editor component (jsdom)', () => {
     expect(cool.title).toMatch(/\bh\b/);
   });
 
+  const invalid = (root: HTMLElement): string[] =>
+    Array.from(root.querySelectorAll('.is-invalid')).map((e) => (e as HTMLElement).dataset.loc ?? '?');
+
+  it('marks the field an issue belongs to, not the whole rule', () => {
+    const { root } = setup({
+      initialModel: wrap({ kind: 'and', children: [leaf(), { kind: 'cond', tag: 'b', op: 'gt' } as any] }),
+    });
+    // Only the value input of the second child is at fault.
+    expect(invalid(root)).toEqual(['0|value|1|']);
+    const marked = root.querySelector('.is-invalid') as HTMLElement;
+    expect(marked.classList.contains('re-f-val')).toBe(true);
+    expect(marked.title).toMatch(/needs a value/);
+  });
+
+  it('marks a bad cooldown on the cooldown field', () => {
+    const { root } = setup({
+      initialXml: `<rules><rule name="r" cooldown="5d"><cond tag="a" op="eq" value="1"/><actions><publish topic="t"/></actions></rule></rules>`,
+    });
+    expect(invalid(root)).toEqual(['0|cooldown||']);
+  });
+
+  it('clears the mark as soon as the field is fixed, without a re-render', () => {
+    const { root, api } = setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any) });
+    expect(invalid(root)).toEqual(['0|tag||']);
+    const input = (root.querySelector('.re-f-tag input') as HTMLInputElement);
+    input.value = 'AlarmActive';
+    input.dispatchEvent(new Event('input'));
+    expect(api.getErrors()).toEqual([]);
+    expect(invalid(root)).toEqual([]);
+  });
+
+  it('marks the group an empty-group issue belongs to', () => {
+    const { root } = setup({ initialModel: wrap({ kind: 'and', children: [{ kind: 'or', children: [] }] } as any) });
+    expect(invalid(root)).toEqual(['0|condition|0|']);
+    expect((root.querySelector('.is-invalid') as HTMLElement).classList.contains('re-group')).toBe(true);
+  });
+
+  it('marks the rule when the issue has no single field', () => {
+    const { root } = setup({ initialModel: { rules: [{ name: 'r', condition: leaf(), actions: [], incident: null }] } });
+    expect(invalid(root)).toEqual(['0|||']);
+    expect((root.querySelector('.is-invalid') as HTMLElement).classList.contains('re-rule')).toBe(true);
+  });
+
+  it('blocks Export and Copy while the model is invalid, and frees them once fixed', () => {
+    const { root } = setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any) });
+    expect(button(root, 'Export XML').disabled).toBe(true);
+    expect(button(root, 'Copy XML').disabled).toBe(true);
+    expect(button(root, 'Export XML').title).toMatch(/1 issue/);
+    const input = (root.querySelector('.re-f-tag input') as HTMLInputElement);
+    input.value = 'ok';
+    input.dispatchEvent(new Event('input'));
+    expect(button(root, 'Export XML').disabled).toBe(false);
+    expect(button(root, 'Copy XML').disabled).toBe(false);
+  });
+
+  it('still reports the xml through onChange while invalid, so a host can autosave', () => {
+    let last: any;
+    setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any), onChange: (s) => (last = s) });
+    expect(last.errors.length).toBe(1);
+    expect(last.xml).toContain('<rule name="r">');
+  });
+
   it('injects its scoped stylesheet once', () => {
     setup();
     setup();
@@ -193,6 +255,15 @@ describe('rules editor component API', () => {
     expect(api.getErrors().length).toBeGreaterThan(0);
     button(root, 'Load example').click();
     expect(api.getErrors()).toEqual([]);
+  });
+
+  it('re-exports the located issues and the cooldown pattern too', async () => {
+    const entry = await import('./index.js');
+    expect(typeof entry.validateIssues).toBe('function');
+    expect(typeof entry.COOLDOWN_PATTERN).toBe('string');
+    expect(entry.COOLDOWN_RE.test('1m30s')).toBe(true);
+    expect(entry.validateIssues({ rules: [{ name: '', condition: null, actions: [], incident: null }] })[0])
+      .toMatchObject({ rule: 0, field: 'name' });
   });
 
   it('re-exports the core (parse/serialize/validate) from the same entry', () => {

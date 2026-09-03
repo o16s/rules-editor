@@ -118,68 +118,73 @@ function parseIncident(el, ruleName) {
 function elementChildren(el) {
     return Array.from(el.children);
 }
-// ---- validation ----------------------------------------------------------
 /** Semantic checks beyond well-formedness. Returns human-readable messages. */
 export function validate(model) {
-    const errors = [];
+    return validateIssues(model).map((i) => i.message);
+}
+/** The same checks as `validate()`, each with the location of the problem. */
+export function validateIssues(model) {
+    const issues = [];
     if (model.rules.length > LIMITS.maxRules) {
-        errors.push(`Too many rules: ${model.rules.length} (max ${LIMITS.maxRules}).`);
+        issues.push({ message: `Too many rules: ${model.rules.length} (max ${LIMITS.maxRules}).` });
     }
     const seen = new Set();
-    for (const rule of model.rules) {
+    model.rules.forEach((rule, index) => {
         const where = rule.name ? `Rule "${rule.name}"` : 'Unnamed rule';
+        const at = (message, rest = {}) => issues.push({ message, rule: index, ...rest });
         if (!rule.name)
-            errors.push('A rule is missing a name.');
+            at('A rule is missing a name.', { field: 'name' });
         else if (seen.has(rule.name))
-            errors.push(`Duplicate rule name "${rule.name}".`);
+            at(`Duplicate rule name "${rule.name}".`, { field: 'name' });
         else
             seen.add(rule.name);
         if (rule.cooldown !== undefined && !COOLDOWN_RE.test(rule.cooldown)) {
-            errors.push(`${where}: cooldown "${rule.cooldown}" is not a Go duration (e.g. 30s, 1m30s, 500ms).`);
+            at(`${where}: cooldown "${rule.cooldown}" is not a Go duration (e.g. 30s, 1m30s, 500ms).`, { field: 'cooldown' });
         }
         if (!rule.condition)
-            errors.push(`${where}: needs exactly one condition.`);
+            at(`${where}: needs exactly one condition.`, { field: 'condition' });
         else
-            validateCondition(rule.condition, where, 1, errors);
+            validateCondition(rule.condition, where, 1, [], index, issues);
         if (rule.actions.length === 0 && !rule.incident) {
-            errors.push(`${where}: must have <actions>, an <incident>, or both.`);
+            at(`${where}: must have <actions>, an <incident>, or both.`);
         }
-        for (const a of rule.actions) {
+        rule.actions.forEach((a, action) => {
             if (!a.topic)
-                errors.push(`${where}: a publish action is missing a topic.`);
-        }
+                at(`${where}: a publish action is missing a topic.`, { field: 'topic', action });
+        });
         if (rule.incident) {
             if (!rule.incident.source)
-                errors.push(`${where}: incident is missing a source.`);
+                at(`${where}: incident is missing a source.`, { field: 'source' });
             if (!rule.incident.summary)
-                errors.push(`${where}: incident is missing a summary.`);
+                at(`${where}: incident is missing a summary.`, { field: 'summary' });
             // Count characters, not UTF-16 units, to match the XSD's maxLength.
             if ([...rule.incident.summary].length > LIMITS.maxSummary) {
-                errors.push(`${where}: incident summary exceeds ${LIMITS.maxSummary} characters.`);
+                at(`${where}: incident summary exceeds ${LIMITS.maxSummary} characters.`, { field: 'summary' });
             }
         }
-    }
-    return errors;
+    });
+    return issues;
 }
-function validateCondition(c, where, depth, errors) {
+function validateCondition(c, where, depth, path, rule, issues) {
+    // A group issue carries the group's own path; a leaf issue the leaf's.
+    const at = (message, field) => issues.push({ message, rule, field, path: [...path] });
     if (depth > LIMITS.maxDepth) {
-        errors.push(`${where}: condition nesting exceeds max depth of ${LIMITS.maxDepth}.`);
+        at(`${where}: condition nesting exceeds max depth of ${LIMITS.maxDepth}.`, 'condition');
         return;
     }
     if (isGroup(c)) {
         if (c.children.length === 0)
-            errors.push(`${where}: <${c.kind}> group is empty.`);
+            at(`${where}: <${c.kind}> group is empty.`, 'condition');
         if (c.children.length > LIMITS.maxChildren) {
-            errors.push(`${where}: <${c.kind}> has ${c.children.length} children (max ${LIMITS.maxChildren}).`);
+            at(`${where}: <${c.kind}> has ${c.children.length} children (max ${LIMITS.maxChildren}).`, 'condition');
         }
-        for (const child of c.children)
-            validateCondition(child, where, depth + 1, errors);
+        c.children.forEach((child, i) => validateCondition(child, where, depth + 1, [...path, i], rule, issues));
         return;
     }
     if (!c.tag)
-        errors.push(`${where}: a condition is missing a tag.`);
+        at(`${where}: a condition is missing a tag.`, 'tag');
     if (!VALUELESS_OPS.includes(c.op) && (c.value === undefined || c.value === '')) {
-        errors.push(`${where}: operator "${c.op}" on tag "${c.tag}" needs a value.`);
+        at(`${where}: operator "${c.op}" on tag "${c.tag}" needs a value.`, 'value');
     }
 }
 //# sourceMappingURL=parse.js.map

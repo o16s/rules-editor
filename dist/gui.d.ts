@@ -30,7 +30,8 @@ export interface RulesEditorHandle {
 }
 export declare function initRulesEditor(root: HTMLElement, opts?: RulesEditorOptions): RulesEditorHandle;
 export { serialize } from './serialize.js';
-export { parse, validate, RulesParseError } from './parse.js';
-export { OPERATORS, SEVERITIES, EDGES, VALUELESS_OPS, OP_ALIASES, LIMITS, isGroup, canonicalOp, } from './model.js';
+export { parse, validate, validateIssues, RulesParseError } from './parse.js';
+export type { ValidationIssue } from './parse.js';
+export { OPERATORS, SEVERITIES, EDGES, VALUELESS_OPS, OP_ALIASES, LIMITS, COOLDOWN_PATTERN, COOLDOWN_RE, isGroup, canonicalOp, } from './model.js';
 export type { Op, Severity, Edge, Cond, Group, Condition, Publish, Incident, Rule, RulesModel, } from './model.js';
 //# sourceMappingURL=gui.d.ts.map

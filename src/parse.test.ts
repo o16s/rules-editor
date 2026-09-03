@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse, validate, RulesParseError } from './parse.js';
+import { parse, validate, validateIssues, RulesParseError } from './parse.js';
 import { serialize } from './serialize.js';
 import type { RulesModel } from './model.js';
 
@@ -160,5 +160,67 @@ describe('validate', () => {
     let node: any = deep;
     for (let i = 0; i < 5; i++) node = { kind: 'and', children: [node] };
     expect(validate(base({ condition: node })).join('\n')).toMatch(/depth|nest/i);
+  });
+});
+
+describe('validateIssues', () => {
+  const model = (over: any): RulesModel => ({
+    rules: [{ name: 'r', condition: { kind: 'cond', tag: 'a', op: 'eq', value: '1' }, actions: [{ topic: 't' }], incident: null, ...over }],
+  });
+  const find = (m: RulesModel, field: string) => validateIssues(m).find((i) => i.field === field);
+
+  it('returns the same messages, in the same order, as validate()', () => {
+    const m: RulesModel = {
+      rules: [
+        { name: '', cooldown: 'nope', condition: null, actions: [{ topic: '' }], incident: { source: '', severity: 'info', summary: '' } },
+        { name: 'dup', condition: { kind: 'and', children: [] }, actions: [], incident: null },
+        { name: 'dup', condition: { kind: 'cond', tag: '', op: 'gt' }, actions: [], incident: null },
+      ],
+    };
+    expect(validateIssues(m).map((i) => i.message)).toEqual(validate(m));
+    expect(validate(m).length).toBeGreaterThan(6);
+  });
+
+  it('points a rule-level issue at its rule and field', () => {
+    expect(find(model({ cooldown: '5d' }), 'cooldown')).toMatchObject({ rule: 0, field: 'cooldown' });
+    expect(find(model({ name: '' }), 'name')).toMatchObject({ rule: 0, field: 'name' });
+    expect(find(model({ condition: null }), 'condition')).toMatchObject({ rule: 0, field: 'condition' });
+  });
+
+  it('points an incident issue at the incident field', () => {
+    const m = model({ incident: { source: '', severity: 'info', summary: 'x'.repeat(121) } });
+    expect(find(m, 'source')).toMatchObject({ rule: 0, field: 'source' });
+    expect(find(m, 'summary')).toMatchObject({ rule: 0, field: 'summary' });
+  });
+
+  it('points a publish issue at its action index', () => {
+    const m = model({ actions: [{ topic: 'ok' }, { topic: '' }] });
+    expect(find(m, 'topic')).toMatchObject({ rule: 0, field: 'topic', action: 1 });
+  });
+
+  it('carries the path of a nested condition', () => {
+    // or > [ cond, and > [ cond, cond(no value) ] ]
+    const m = model({
+      condition: {
+        kind: 'or',
+        children: [
+          { kind: 'cond', tag: 'a', op: 'eq', value: '1' },
+          { kind: 'and', children: [{ kind: 'cond', tag: 'b', op: 'eq', value: '1' }, { kind: 'cond', tag: 'c', op: 'gt' }] },
+        ],
+      },
+    });
+    expect(find(m, 'value')).toMatchObject({ rule: 0, field: 'value', path: [1, 1] });
+  });
+
+  it('gives a group issue the path of the group itself', () => {
+    const m = model({ condition: { kind: 'and', children: [{ kind: 'or', children: [] }] } });
+    const issue = validateIssues(m).find((i) => /empty/.test(i.message));
+    expect(issue).toMatchObject({ rule: 0, field: 'condition', path: [0] });
+  });
+
+  it('leaves a model-wide issue without a rule', () => {
+    const many: RulesModel = { rules: Array.from({ length: 1001 }, (_, i) => ({ name: `r${i}`, condition: { kind: 'cond', tag: 'a', op: 'eq', value: '1' } as any, actions: [{ topic: 't' }], incident: null })) };
+    expect(validateIssues(many)[0].message).toMatch(/Too many rules/);
+    expect(validateIssues(many)[0]).not.toHaveProperty('rule');
   });
 });
