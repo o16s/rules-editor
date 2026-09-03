@@ -81,6 +81,53 @@ const xml = serialize(model);           // back to rules.xml
 > jsdom test environment), not bare Node. `serialize` / `validate` / the model
 > types have no such requirement.
 
+## Schema
+
+The file `schema/rules.xsd` is the XML Schema for `rules.xml`. It is the single
+source of truth for the format. This editor and edge-hub share it: edge-hub
+validates every uploaded `rules.xml` against it on the server, and the tests in
+`src/xsd.test.ts` keep it in sync with `parse()` and `validate()`.
+
+The XSD is XSD 1.0 and uses no namespace, so a plain `<rules>` file validates
+as is. Its `version` attribute equals the package version.
+
+Read it from `node_modules` through the exported path:
+
+```ts
+import { readFileSync } from 'node:fs';
+import { RULES_XSD_PATH } from '@octanis/rules-editor';
+
+const xsd = readFileSync(new URL(RULES_XSD_PATH), 'utf8'); // file: URL in Node
+```
+
+### Application-level checks
+
+XSD 1.0 cannot express these rules. `validate()` checks them, and edge-hub
+must check them too:
+
+- `<cond value="…">` is required, and must not be empty, for every operator
+  except `changed`. An attribute cannot depend on another attribute in XSD.
+
+### Where the XSD is stricter than the editor
+
+The XSD rejects these, but `parse()` and `validate()` accept them. The
+serializer never produces them.
+
+- `cooldown` must match the Go duration pattern (for example `30s`, `1m30s`,
+  `500ms`). The editor does not inspect the value.
+- `<actions>` needs at least one `<publish>`. The parser maps an empty
+  `<actions/>` to no actions.
+- The children of `<rule>` come in the documented order: the condition, then
+  `<actions>`, then `<incident>`. The parser accepts any order.
+
+### Nesting depth
+
+XSD cannot count depth. The schema unrolls the condition content model into
+four named levels. Level 1 is the condition directly under `<rule>`. A group at
+level N holds children of level N+1. Level 4 allows only `<cond>`, so a fifth
+level has no matching type. This matches `validate()`, which counts the leaf as
+a level: at most three nested `<and>`/`<or>` groups fit above a `<cond>`.
+
 ## Develop
 
 ```bash
