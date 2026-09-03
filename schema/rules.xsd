@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  XML Schema for the octaview Edge Hub rules.xml format.
+
+  This file is the single source of truth for the format. The rules editor
+  (this package) and edge-hub (server-side, Go XSD library) both validate
+  against it. It follows the reference at
+  https://octaview.ai/en/docs/edge-hub/rules/ and the constraints in
+  src/model.ts (LIMITS) and validate() in src/parse.ts.
+
+  XSD 1.0 only. Two rules stay application-level checks in validate()
+  because XSD 1.0 cannot express them:
+    - <cond value="..."> is required for every op except "changed"
+      (an attribute cannot depend on another attribute).
+  Everything else in validate() is enforced here.
+
+  Nesting depth (LIMITS.maxDepth = 4). XSD cannot count depth, so the
+  condition content model is unrolled into four named groups,
+  conditionLevel1 .. conditionLevel4. Level N is the type of a condition
+  element N levels below <rule>: level 1 is the rule's top-level condition,
+  and a group at level N holds children of level N+1. Level 4 allows only
+  <cond>, so a fifth level has no matching type and is rejected. This is the
+  same counting validate() uses: the leaf <cond> counts as a level, so at
+  most three nested <and>/<or> groups fit above a leaf.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+
+  <xs:annotation>
+    <xs:documentation>
+      Schema for rules.xml, the rule file loaded at startup by both Edge Hub
+      ingestion services (tsend2mqtt for PLC, iolinkmaster2mqtt for IO-Link).
+    </xs:documentation>
+  </xs:annotation>
+
+  <!-- ===== simple types ================================================ -->
+
+  <xs:simpleType name="nonEmptyString">
+    <xs:annotation>
+      <xs:documentation>A string with at least one character.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="goDuration">
+    <xs:annotation>
+      <xs:documentation>
+        A non-negative Go duration string such as 30s, 1m, 1m30s, or 500ms;
+        units are ns, us, ms, s, m, h.
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="0|(([0-9]+(\.[0-9]*)?|\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="edge">
+    <xs:annotation>
+      <xs:documentation>When actions fire: rising on the false-to-true transition only, none on every cycle where the condition is true.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="rising"/>
+      <xs:enumeration value="none"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="operator">
+    <xs:annotation>
+      <xs:documentation>Comparison operator: the canonical names eq, neq, lt, leq, gt, geq, changed, or the aliases =, ==, !=, &lt;, &lt;=, &gt;, &gt;=.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <!-- canonical operators (model.ts OPERATORS) -->
+      <xs:enumeration value="eq"/>
+      <xs:enumeration value="neq"/>
+      <xs:enumeration value="lt"/>
+      <xs:enumeration value="leq"/>
+      <xs:enumeration value="gt"/>
+      <xs:enumeration value="geq"/>
+      <xs:enumeration value="changed"/>
+      <!-- aliases (model.ts OP_ALIASES) -->
+      <xs:enumeration value="="/>
+      <xs:enumeration value="=="/>
+      <xs:enumeration value="!="/>
+      <xs:enumeration value="&lt;"/>
+      <xs:enumeration value="&lt;="/>
+      <xs:enumeration value="&gt;"/>
+      <xs:enumeration value="&gt;="/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="severity">
+    <xs:annotation>
+      <xs:documentation>Incident severity: critical, error, warning, or info.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="critical"/>
+      <xs:enumeration value="error"/>
+      <xs:enumeration value="warning"/>
+      <xs:enumeration value="info"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="summary">
+    <xs:annotation>
+      <xs:documentation>Human-readable incident description, 1 to 120 characters (LIMITS.maxSummary).</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="120"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ===== leaf condition ============================================== -->
+
+  <xs:complexType name="cond">
+    <xs:annotation>
+      <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="device" type="nonEmptyString" use="optional">
+      <xs:annotation>
+        <xs:documentation>IO-Link only: the device name from config.yaml ports; tsend2mqtt has a single implicit PLC source and omits it.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="tag" type="nonEmptyString" use="required">
+      <xs:annotation>
+        <xs:documentation>Field name from the service's decoded output.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="op" type="operator" use="required">
+      <xs:annotation>
+        <xs:documentation>Comparison operator, canonical or alias.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="value" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>Comparison value, parsed to match the field's type; required for all operators except changed (application-level check, see validate()).</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <!-- ===== condition levels 1..4 (see the depth note at the top) ======= -->
+
+  <!-- Level 1: the rule's single top-level condition. -->
+  <xs:group name="conditionLevel1">
+    <xs:choice>
+      <xs:element name="cond" type="cond"/>
+      <xs:element name="and" type="groupLevel1">
+        <xs:annotation>
+          <xs:documentation>Logic group: true when every child is true; evaluation stops at the first false child.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="or" type="groupLevel1">
+        <xs:annotation>
+          <xs:documentation>Logic group: true when any child is true; evaluation stops at the first true child.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:choice>
+  </xs:group>
+
+  <xs:complexType name="groupLevel1">
+    <xs:annotation>
+      <xs:documentation>An and/or group at level 1; holds 1 to 16 level-2 conditions (LIMITS.maxChildren).</xs:documentation>
+    </xs:annotation>
+    <xs:group ref="conditionLevel2" minOccurs="1" maxOccurs="16"/>
+  </xs:complexType>
+
+  <!-- Level 2: children of a level-1 group. -->
+  <xs:group name="conditionLevel2">
+    <xs:choice>
+      <xs:element name="cond" type="cond"/>
+      <xs:element name="and" type="groupLevel2">
+        <xs:annotation>
+          <xs:documentation>Logic group: true when every child is true; evaluation stops at the first false child.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="or" type="groupLevel2">
+        <xs:annotation>
+          <xs:documentation>Logic group: true when any child is true; evaluation stops at the first true child.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:choice>
+  </xs:group>
+
+  <xs:complexType name="groupLevel2">
+    <xs:annotation>
+      <xs:documentation>An and/or group at level 2; holds 1 to 16 level-3 conditions.</xs:documentation>
+    </xs:annotation>
+    <xs:group ref="conditionLevel3" minOccurs="1" maxOccurs="16"/>
+  </xs:complexType>
+
+  <!-- Level 3: children of a level-2 group. -->
+  <xs:group name="conditionLevel3">
+    <xs:choice>
+      <xs:element name="cond" type="cond"/>
+      <xs:element name="and" type="groupLevel3">
+        <xs:annotation>
+          <xs:documentation>Logic group: true when every child is true; evaluation stops at the first false child.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="or" type="groupLevel3">
+        <xs:annotation>
+          <xs:documentation>Logic group: true when any child is true; evaluation stops at the first true child.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:choice>
+  </xs:group>
+
+  <xs:complexType name="groupLevel3">
+    <xs:annotation>
+      <xs:documentation>An and/or group at level 3, the deepest group; holds 1 to 16 level-4 conditions, which must be leaves.</xs:documentation>
+    </xs:annotation>
+    <xs:group ref="conditionLevel4" minOccurs="1" maxOccurs="16"/>
+  </xs:complexType>
+
+  <!-- Level 4: children of a level-3 group. Leaves only: no group type
+       exists for a fifth level, so deeper nesting is rejected. -->
+  <xs:group name="conditionLevel4">
+    <xs:choice>
+      <xs:element name="cond" type="cond"/>
+    </xs:choice>
+  </xs:group>
+
+  <!-- ===== actions and incident ======================================== -->
+
+  <xs:complexType name="publish">
+    <xs:annotation>
+      <xs:documentation>Publishes one MQTT message, fire-and-forget (QoS 0, non-retained), to an absolute topic.</xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="topic" type="nonEmptyString" use="required">
+      <xs:annotation>
+        <xs:documentation>Absolute MQTT topic; no prefix is prepended.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="payload" type="xs:string" use="optional">
+      <xs:annotation>
+        <xs:documentation>Message payload; {} is used when omitted.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="actions">
+    <xs:annotation>
+      <xs:documentation>Ordered publish actions that fire sequentially when the rule fires.</xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="publish" type="publish" minOccurs="1" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="incident">
+    <xs:annotation>
+      <xs:documentation>Enables the trigger/resolve lifecycle for human-facing alerting on the incidents/ topic.</xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="source" type="nonEmptyString" use="required">
+      <xs:annotation>
+        <xs:documentation>The data source, which must match a configured device or port; builds the source ID {topic_prefix}/{source}.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="severity" type="severity" use="required">
+      <xs:annotation>
+        <xs:documentation>critical, error, warning, or info.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="summary" type="summary" use="required">
+      <xs:annotation>
+        <xs:documentation>Human-readable description, max 120 characters.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <!-- ===== rule and root =============================================== -->
+
+  <xs:complexType name="rule">
+    <xs:annotation>
+      <xs:documentation>One rule: exactly one top-level condition, then actions, an incident, or both.</xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:group ref="conditionLevel1"/>
+      <!-- "at least one of actions, incident", in this order. -->
+      <xs:choice>
+        <xs:sequence>
+          <xs:element name="actions" type="actions"/>
+          <xs:element name="incident" type="incident" minOccurs="0"/>
+        </xs:sequence>
+        <xs:element name="incident" type="incident"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="name" type="nonEmptyString" use="required">
+      <xs:annotation>
+        <xs:documentation>Unique rule identifier, used in the incident dedup_key and in log messages.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="cooldown" type="goDuration" use="optional">
+      <xs:annotation>
+        <xs:documentation>Minimum time between firings as a Go duration string such as 30s, 1m, or 500ms; default 0 (no cooldown).</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="edge" type="edge" use="optional">
+      <xs:annotation>
+        <xs:documentation>rising or none (default); see edge detection.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:element name="rules">
+    <xs:annotation>
+      <xs:documentation>Root element; holds up to 1000 rules (LIMITS.maxRules) that the engine loads once at startup.</xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="rule" type="rule" minOccurs="0" maxOccurs="1000">
+          <xs:annotation>
+            <xs:documentation>One rule; its name must be unique across the file.</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:unique name="uniqueRuleName">
+      <xs:annotation>
+        <xs:documentation>Rule names are unique across the file.</xs:documentation>
+      </xs:annotation>
+      <xs:selector xpath="rule"/>
+      <xs:field xpath="@name"/>
+    </xs:unique>
+  </xs:element>
+
+</xs:schema>
