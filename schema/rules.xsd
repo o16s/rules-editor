@@ -24,7 +24,8 @@
   most three nested <and>/<or> groups fit above a leaf.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           elementFormDefault="qualified">
+           elementFormDefault="qualified"
+           version="0.1.0">
 
   <xs:annotation>
     <xs:documentation>
