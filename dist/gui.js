@@ -12,7 +12,7 @@
 // Colours/fonts read the host's design tokens (--accent, --ink, --font-body, …)
 // with sensible fallbacks, so it looks native inside octaview and still works
 // standalone.
-import { OPERATORS, SEVERITIES, VALUELESS_OPS, isGroup, } from './model.js';
+import { LIMITS, OPERATORS, SEVERITIES, VALUELESS_OPS, isGroup, } from './model.js';
 import { serialize } from './serialize.js';
 import { parse, validate, RulesParseError } from './parse.js';
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -56,7 +56,7 @@ const TRIGGER_OPTIONS = [
 // Field help — grounded in the documented rules.xml schema (docs/edge-hub/rules).
 const HELP = {
     name: 'Unique rule id — used in the incident dedup_key and logs.',
-    cooldown: 'Min time between firings, e.g. 30s, 1m30s. Blank = none.',
+    cooldown: 'Min time between firings — a Go duration: 30s, 1m30s, 500ms. Units ns, us, ms, s, m, h. Blank = none.',
     trigger: 'Rising edge fires once on false→true; every cycle fires each poll while true.',
     match: 'Combine conditions: a single one, all of them (AND), or any of them (OR).',
     device: 'IO-Link device name (config.yaml port). Leave blank for tsend2mqtt / PLC.',
@@ -126,6 +126,7 @@ const STYLES = `
 .re-btn-primary:hover { background:var(--re-accent-hover); }
 .re-link { background:none; border:none; padding:2px 0; margin:0; cursor:pointer; font-family:var(--re-font); font-size:14px; color:var(--re-accent); line-height:1.4; }
 .re-link:hover { text-decoration:underline; }
+.re-link:disabled { color:var(--re-g300); cursor:not-allowed; text-decoration:none; }
 .re-link.re-danger { color:var(--re-g500); }
 .re-link.re-danger:hover { color:var(--re-danger); }
 .re-remove { background:none; border:none; cursor:pointer; color:var(--re-g300); font-size:19px; line-height:1; padding:0 2px; align-self:end; margin-bottom:8px; }
@@ -279,6 +280,12 @@ export function initRulesEditor(root, opts = {}) {
         return el('label', { class: `re-field ${cls}` }, [labelSpan(label, help), sel]);
     }
     const linkBtn = (label, fn, cls = '') => el('button', { class: `re-link ${cls}`, type: 'button', onclick: fn }, [label]);
+    /** Turn a button off with the reason, so the UI never offers an invalid step. */
+    const disableWith = (btn, why) => {
+        btn.disabled = true;
+        btn.title = why;
+        return btn;
+    };
     const removeBtn = (title, fn) => el('button', { class: 're-remove', type: 'button', title, 'aria-label': title, onclick: fn }, ['×']);
     // ---- condition tree ----
     function renderLeaf(leaf, replace) {
@@ -328,10 +335,23 @@ export function initRulesEditor(root, opts = {}) {
             };
             kids.append(isGroup(child) ? renderGroup(child, replace, depth + 1) : renderLeaf(child, replace));
         });
-        const add = el('div', { class: 're-add' }, [
-            linkBtn('Add condition', () => { group.children.push(emptyCond()); renderForm(); }),
-            linkBtn('Add group', () => { group.children.push({ kind: 'and', children: [emptyCond()] }); renderForm(); }),
-        ]);
+        // Offer only steps that stay inside the limits validate() enforces.
+        // `depth` is this group's own level, so a new child sits at depth + 1 and
+        // a new child group needs room for its own condition at depth + 2.
+        const full = group.children.length >= LIMITS.maxChildren;
+        const fullWhy = `A group holds at most ${LIMITS.maxChildren} conditions.`;
+        const deepWhy = `Conditions nest at most ${LIMITS.maxDepth} levels deep.`;
+        const addCond = linkBtn('Add condition', () => { group.children.push(emptyCond()); renderForm(); });
+        if (full)
+            disableWith(addCond, fullWhy);
+        else if (depth >= LIMITS.maxDepth)
+            disableWith(addCond, deepWhy);
+        const addGroup = linkBtn('Add group', () => { group.children.push({ kind: 'and', children: [emptyCond()] }); renderForm(); });
+        if (full)
+            disableWith(addGroup, fullWhy);
+        else if (depth >= LIMITS.maxDepth - 1)
+            disableWith(addGroup, deepWhy);
+        const add = el('div', { class: 're-add' }, [addCond, addGroup]);
         return el('div', {}, [kids, add]);
     }
     function renderGroup(group, replace, depth) {

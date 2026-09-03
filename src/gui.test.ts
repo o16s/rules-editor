@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 // Everything is importable from the one entry (the editor + the core).
+import { LIMITS } from './model.js';
 import {
   initRulesEditor,
   parse,
@@ -79,6 +80,59 @@ describe('rules editor component (jsdom)', () => {
     input.value = '';
     input.dispatchEvent(new Event('input'));
     expect(root.querySelector('.re-status.is-error')).toBeTruthy();
+  });
+
+  // The add buttons must not offer a step that validate() would then reject.
+  function buttons(root: HTMLElement, label: string): HTMLButtonElement[] {
+    return Array.from(root.querySelectorAll('button')).filter((b) => b.textContent === label);
+  }
+
+  const leaf = (): any => ({ kind: 'cond', tag: 'a', op: 'eq', value: '1' });
+  const wrap = (condition: any): RulesModel => ({
+    rules: [{ name: 'r', condition, actions: [{ topic: 't' }], incident: null }],
+  });
+
+  it('stops Add group at the deepest level that still fits a condition', () => {
+    // and(1) > and(2) > and(3) > cond(4): a group added at level 3 would put
+    // its own condition at level 5, past LIMITS.maxDepth.
+    const { root, api } = setup({
+      initialModel: wrap({
+        kind: 'and',
+        children: [{ kind: 'and', children: [{ kind: 'and', children: [leaf()] }] }],
+      }),
+    });
+    expect(api.getErrors()).toEqual([]);
+    // A group renders its children before its own add row, so the buttons come
+    // back innermost first: level 3, then 2, then 1.
+    const addGroup = buttons(root, 'Add group');
+    expect(addGroup).toHaveLength(3);
+    expect(addGroup.map((b) => b.disabled)).toEqual([true, false, false]);
+    // A condition at level 4 is still allowed, at every level.
+    expect(buttons(root, 'Add condition').map((b) => b.disabled)).toEqual([false, false, false]);
+    expect(addGroup[0].title).toMatch(/4 levels|deep/i);
+  });
+
+  it('stops both add buttons at the maximum number of children', () => {
+    const { root, api } = setup({
+      initialModel: wrap({ kind: 'and', children: Array.from({ length: LIMITS.maxChildren }, leaf) }),
+    });
+    expect(api.getErrors()).toEqual([]);
+    expect(buttons(root, 'Add condition')[0].disabled).toBe(true);
+    expect(buttons(root, 'Add group')[0].disabled).toBe(true);
+    expect(buttons(root, 'Add condition')[0].title).toMatch(/16/);
+  });
+
+  it('leaves the add buttons enabled below the limits', () => {
+    const { root } = setup({ initialModel: wrap({ kind: 'and', children: [leaf()] }) });
+    expect(buttons(root, 'Add condition')[0].disabled).toBe(false);
+    expect(buttons(root, 'Add group')[0].disabled).toBe(false);
+  });
+
+  it('names the accepted cooldown units in the field help', () => {
+    const { root } = setup();
+    const cool = root.querySelector('.re-f-cool input') as HTMLInputElement;
+    expect(cool.title).toMatch(/ms/);
+    expect(cool.title).toMatch(/\bh\b/);
   });
 
   it('injects its scoped stylesheet once', () => {
