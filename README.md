@@ -64,6 +64,27 @@ editor.destroy();    // tear down
 
 `getModel()` · `getXml()` · `getErrors()` · `setModel(model)` · `destroy()`
 
+### Small screens
+
+The editor works down to 320px wide. It adapts to **its own container**, not
+just to the window, so it also reflows when embedded in a narrow column on a
+wide screen. Below 560px the controls grow to 16px and the small ones get a
+44px touch target; below 430px each field takes a whole row.
+
+Two things are the host page's job, because a component cannot do them:
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1">
+```
+
+- Without that tag a phone renders the page at about 980px and scales it down,
+  so none of the above applies.
+- Do not add `user-scalable=no` or `maximum-scale=1`. That blocks pinch zoom,
+  which fails WCAG 1.4.4, and the editor does not need it.
+
+Field help is a button (ⓘ) that reveals its text, and validation messages
+appear under the field they belong to, so both work without a mouse hover.
+
 ## Use the core without the UI
 
 The same entry exports the pure functions:
