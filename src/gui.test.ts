@@ -254,6 +254,21 @@ describe('rules editor component (jsdom)', () => {
     expect(block).toMatch(/\.re-toggle input[^{]*\{[^}]*(width|height):\s*2[2-9]px/);
   });
 
+  it('gives the long fields a whole row at the smallest widths', () => {
+    const css = sheet();
+    // A second, tighter breakpoint, emitted for container and viewport alike.
+    const tight = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+    expect(tight.length).toBe(2);
+    const block = tight.join('');
+    // summary, payload and topic are the longest values in the format; at two
+    // columns they were showing about eleven characters.
+    expect(block).toMatch(/\.re-row[^{]*,[^{]*\.re-pubrow[^{]*,[^{]*\.re-incrow[^{]*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/);
+    // The remove button pairs with the fields it removes instead of sitting alone below them.
+    expect(block).toMatch(/\.re-remove[^{]*\{[^}]*grid-row:\s*1\s*\/\s*-1/);
+    // The trigger select clipped to "on rising edg" while sharing a row.
+    expect(block).toMatch(/\.re-rule-head\s*>\s*\.re-field[^{]*\{[^}]*flex:\s*1 1 100%/);
+  });
+
   it('injects its scoped stylesheet once', () => {
     setup();
     setup();

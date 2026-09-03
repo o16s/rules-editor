@@ -116,13 +116,30 @@ const NARROW = `
   .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; margin-bottom:0; }
   .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; padding:0; }
   .re-root .re-btn-primary { min-height:44px; }
-  .re-root .re-toggle input { width:22px; height:22px; }
+  .re-root .re-toggle input { width:24px; height:24px; }
   .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:1fr 1fr; }
   .re-root .re-row .re-remove { grid-column:auto; justify-self:end; }
+`;
+/**
+ * Below this, two columns leave the longest values in the format — summary,
+ * payload, topic — about eleven characters wide, so each field takes the whole
+ * row and the remove button pairs with the fields it removes.
+ */
+const TIGHT = `
+  .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:minmax(0,1fr) auto; gap:10px 12px; }
+  .re-root .re-row > .re-field, .re-root .re-pubrow > .re-field, .re-root .re-incrow > .re-field { grid-column:1; }
+  .re-root .re-row .re-remove, .re-root .re-pubrow .re-remove { grid-column:2; grid-row:1 / -1; align-self:start; justify-self:end; }
+  .re-root .re-rule { padding:20px 16px; }
+  .re-root .re-toolbar { gap:2px 18px; }
+  .re-root .re-f-match select { min-width:0; width:100%; }
+  .re-root .re-rule-head > .re-field { flex:1 1 100%; }
+  .re-root .re-mode { gap:6px; }
 `;
 const NARROW_BLOCKS = `
 @media (max-width:560px) {${NARROW}}
 @container re (max-width:560px) {${NARROW}}
+@media (max-width:430px) {${TIGHT}}
+@container re (max-width:430px) {${TIGHT}}
 `;
 const STYLES = `
 .re-root {
