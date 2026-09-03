@@ -298,6 +298,14 @@ export function initRulesEditor(root, opts = {}) {
             placeholder: o.placeholder ?? '',
             oninput: (e) => { onInput(e.target.value); refresh(); },
         });
+        // Identifiers must survive a phone keyboard: iOS otherwise capitalises the
+        // first letter and autocorrects, so `alert_temp` is stored as `Alert_temp`
+        // and no longer matches the field it names. Prose fields keep the defaults.
+        if (!o.prose) {
+            input.setAttribute('autocapitalize', 'off');
+            input.setAttribute('autocorrect', 'off');
+            input.setAttribute('spellcheck', 'false');
+        }
         if (o.help)
             input.title = o.help;
         const field = el('label', { class: `re-field ${o.cls ?? ''}` }, [labelSpan(label, o.help), input]);
@@ -469,7 +477,7 @@ export function initRulesEditor(root, opts = {}) {
         const incBody = el('div', { class: 're-incrow' });
         if (rule.incident) {
             const inc = rule.incident;
-            incBody.append(textField('source', inc.source, (v) => (inc.source = v), { placeholder: 'plc1', help: HELP.source, loc: { rule: index, field: 'source' } }), selectField('severity', inc.severity, SEVERITY_OPTIONS, (v) => (inc.severity = v), false, '', HELP.severity), textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary, loc: { rule: index, field: 'summary' } }));
+            incBody.append(textField('source', inc.source, (v) => (inc.source = v), { placeholder: 'plc1', help: HELP.source, loc: { rule: index, field: 'source' } }), selectField('severity', inc.severity, SEVERITY_OPTIONS, (v) => (inc.severity = v), false, '', HELP.severity), textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary, loc: { rule: index, field: 'summary' }, prose: true }));
         }
         const box = el('div', { class: 're-rule' }, [
             head,

@@ -355,7 +355,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     label: string,
     value: string | undefined,
     onInput: (v: string) => void,
-    o: { placeholder?: string; mono?: boolean; cls?: string; help?: string; loc?: Loc } = {}
+    o: { placeholder?: string; mono?: boolean; cls?: string; help?: string; loc?: Loc; prose?: boolean } = {}
   ): HTMLElement {
     const input = el('input', {
       type: 'text',
@@ -364,6 +364,14 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       placeholder: o.placeholder ?? '',
       oninput: (e) => { onInput((e.target as HTMLInputElement).value); refresh(); },
     });
+    // Identifiers must survive a phone keyboard: iOS otherwise capitalises the
+    // first letter and autocorrects, so `alert_temp` is stored as `Alert_temp`
+    // and no longer matches the field it names. Prose fields keep the defaults.
+    if (!o.prose) {
+      input.setAttribute('autocapitalize', 'off');
+      input.setAttribute('autocorrect', 'off');
+      input.setAttribute('spellcheck', 'false');
+    }
     if (o.help) input.title = o.help;
     const field = el('label', { class: `re-field ${o.cls ?? ''}` }, [labelSpan(label, o.help), input]);
     if (o.loc) field.dataset.loc = locKey(o.loc);
@@ -543,7 +551,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       incBody.append(
         textField('source', inc.source, (v) => (inc.source = v), { placeholder: 'plc1', help: HELP.source, loc: { rule: index, field: 'source' } }),
         selectField('severity', inc.severity, SEVERITY_OPTIONS, (v) => (inc.severity = v as typeof inc.severity), false, '', HELP.severity),
-        textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary, loc: { rule: index, field: 'summary' } })
+        textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary, loc: { rule: index, field: 'summary' }, prose: true })
       );
     }
 

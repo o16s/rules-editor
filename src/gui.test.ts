@@ -197,6 +197,25 @@ describe('rules editor component (jsdom)', () => {
     expect(last.xml).toContain('<rule name="r">');
   });
 
+  it('stops mobile keyboards rewriting identifier fields', () => {
+    const { root } = setup();
+    // A tag must match the .udt field exactly; iOS would capitalise and correct it.
+    for (const cls of ['.re-f-name', '.re-f-cool', '.re-f-dev', '.re-f-tag', '.re-f-val']) {
+      const input = root.querySelector(`${cls} input`) as HTMLInputElement;
+      expect(input, cls).toBeTruthy();
+      expect(input.getAttribute('autocapitalize'), cls).toBe('off');
+      expect(input.getAttribute('autocorrect'), cls).toBe('off');
+      expect(input.getAttribute('spellcheck'), cls).toBe('false');
+    }
+    const inputs = Array.from(root.querySelectorAll('input')) as HTMLInputElement[];
+    const topic = inputs.find((i) => i.value.includes('camera/record'))!;
+    expect(topic.getAttribute('autocapitalize')).toBe('off');
+    // A summary is prose, so leave the keyboard alone.
+    const summary = inputs.find((i) => i.value.startsWith('Machine alarm'))!;
+    expect(summary.getAttribute('autocapitalize')).toBe(null);
+    expect(summary.getAttribute('spellcheck')).toBe(null);
+  });
+
   it('injects its scoped stylesheet once', () => {
     setup();
     setup();
