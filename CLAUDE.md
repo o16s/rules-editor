@@ -13,10 +13,16 @@ self-injecting scoped styles. Consumed by the octaview website and edge-hub.
   - `index.ts` — barrel (`export * from './gui.js'`), the package entry.
   - `*.test.ts` — vitest specs (jsdom).
 - `dist/` — built ESM + `.d.ts`, **committed** so git-tag installs need no build.
+- `stories/` + `.storybook/` — Storybook (dev only, never shipped: outside
+  `tsconfig` `rootDir`, so it cannot leak into `dist/`). Stories import
+  `../src/*.ts` directly, so a save in `src/` hot-reloads without a build.
 
 ## Workflow
 - After editing `src/`, run `npm run build` and **commit the updated `dist/`**.
 - `npm test` (vitest + jsdom) · `npm run typecheck`.
+- `npm run storybook` — dev server on `0.0.0.0:6100`, for working on the
+  component (widths, themes, error states). `npm run build-storybook` for a
+  static bundle in `storybook-static/` (gitignored).
 - Keep the API in `gui.ts`; `index.ts` just re-exports it. One import for
   consumers: `initRulesEditor`, `parse`, `serialize`, `validate`, model types.
 

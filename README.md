@@ -186,6 +186,28 @@ npm install
 npm run build      # -> dist/*.js + *.d.ts (commit the result)
 npm test           # vitest (jsdom)
 npm run typecheck
+npm run storybook  # component workbench on http://0.0.0.0:6100
 ```
+
+### Storybook
+
+`npm run storybook` serves on `0.0.0.0:6100`, so you can also open it from a
+phone on the same network — useful, since the layout responds to the width of
+the **container** it is mounted in, not the browser window.
+
+Stories live in `stories/` and import `src/` directly, so editing the component
+hot-reloads without `npm run build`. Every story has three harness controls:
+
+| Control | What it is for |
+|---------|----------------|
+| `containerWidth` | Mount width (320 → 1024 px) — check the narrow layout without resizing anything. |
+| `theme` | Swap the host design tokens (`--accent`, `--ink`, `--font-body`, …), which are the entire theming surface. |
+| `showOutput` | Live `rules.xml` + validation messages beside the editor. |
+
+The mounted `RulesEditorHandle` is on `window.editor` in the preview frame, so
+`editor.getXml()` works from the browser console.
+
+Storybook is dev-only: it sits outside the `tsconfig` `rootDir`, so it never
+reaches `dist/` or the published package.
 
 See the schema reference at [octaview.ai/en/docs/edge-hub/rules](https://octaview.ai/en/docs/edge-hub/rules/).
