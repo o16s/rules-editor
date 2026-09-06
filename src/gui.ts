@@ -312,10 +312,11 @@ const MEDIUM = `
   .re-root .re-rail-select { display:block; }
 `;
 const NARROW = `
-  .re-root .re-name, .re-root .re-cool input, .re-root .re-filter input, .re-root .re-xml textarea, .re-root .re-rail-select { font-size:16px; }
+  .re-root .re-cool input, .re-root .re-filter input, .re-root .re-xml textarea, .re-root .re-rail-select { font-size:16px; }
   .re-root .re-cell select, .re-root .re-when-title select { font-size:16px; }
   .re-root .re-bar input { font-size:16px; }
   .re-root .re-cell input { pointer-events:none; }
+  .re-root .re-add { min-height:44px; }
   .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
   .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; }
   .re-root .re-btn, .re-root .re-btn-primary, .re-root .re-tab { min-height:44px; }
@@ -427,7 +428,13 @@ const STYLES = `
 .re-pane-body { padding:14px 18px 18px; display:flex; flex-direction:column; gap:16px; }
 .re-empty { color:var(--re-muted); padding:48px 28px; text-align:center; }
 .re-sheet-title { display:flex; align-items:baseline; gap:9px; font-size:15px; color:var(--re-muted); margin-bottom:8px; }
-.re-when-title select { font-size:15px; color:var(--re-ink); background:none; border:none; padding:0 14px 0 0; cursor:pointer; appearance:none; -webkit-appearance:none; background-image:linear-gradient(45deg, transparent 50%, var(--re-muted) 50%), linear-gradient(135deg, var(--re-muted) 50%, transparent 50%); background-position:right 4px top 55%, right 0 top 55%; background-size:4px 4px, 4px 4px; background-repeat:no-repeat; }
+.re-pick { position:relative; display:inline-flex; align-items:center; gap:5px; cursor:pointer; color:var(--re-ink); }
+.re-pick-caret { font-size:12px; color:var(--re-muted); }
+.re-pick select { position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; border:none; background:none; opacity:0; font-size:16px; cursor:pointer; appearance:none; -webkit-appearance:none; }
+.re-pick:focus-within { outline:2px solid var(--re-reading); outline-offset:-2px; }
+.re-when-title .re-pick { font-size:15px; }
+.re-cell-pick .re-pick { display:flex; width:100%; justify-content:space-between; align-items:flex-start; padding:7px 9px; min-height:32px; }
+.re-cell-pick .re-pick-caret { padding-top:2px; }
 .re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
 .re-info:hover, .re-info[aria-expanded="true"] { color:var(--re-accent); }
 .re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
@@ -462,11 +469,9 @@ const STYLES = `
 .re-bar-btn.re-bar-ok { background:var(--re-reading); color:#fff; border-color:var(--re-reading); }
 .re-bar > .re-msg { padding:6px 0 0; background:none; }
 .re-cell { position:relative; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
-.re-cell input, .re-cell select { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
-.re-cell select { height:auto; }
-.re-cell input:focus, .re-cell select:focus { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
+.re-cell input { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
+.re-cell input:focus { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
 .re-cell input::placeholder { color:var(--re-muted); }
-.re-cell select { cursor:pointer; appearance:none; -webkit-appearance:none; padding-right:22px; background-image:linear-gradient(45deg, transparent 50%, var(--re-muted) 50%), linear-gradient(135deg, var(--re-muted) 50%, transparent 50%); background-position:right 12px top 50%, right 8px top 50%; background-size:4px 4px, 4px 4px; background-repeat:no-repeat; }
 .re-cell-text { color:var(--re-text); }
 .re-cell-field { padding:7px 9px; color:var(--re-text); }
 .re-cell-result { padding:7px 9px; background:var(--re-result); color:var(--re-reading); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
@@ -488,7 +493,8 @@ const STYLES = `
 .re-pane-head > .re-msg, .re-sheet-block > .re-msg { padding:6px 9px; border-radius:3px; margin-top:6px; }
 .re-remove { background:none; border:none; cursor:pointer; color:var(--re-muted); display:flex; align-items:center; justify-content:center; padding:0; }
 .re-remove:hover { color:var(--re-critical); }
-.re-add { grid-column:2; text-align:left; background:none; border:none; padding:7px 9px; font-size:13px; color:var(--re-muted); cursor:text; width:100%; }
+/* Sticky, so Add stays in view while the sheet is scrolled sideways. */
+.re-add { grid-column:2; justify-self:start; position:sticky; left:30px; text-align:left; background:none; border:none; padding:7px 9px; font-size:13px; color:var(--re-muted); cursor:text; }
 .re-add:hover, .re-add:focus { color:var(--re-ink); outline:none; background:var(--re-paper); }
 .re-add:disabled { cursor:not-allowed; color:var(--re-muted); background:none; }
 .re-cool { display:flex; align-items:center; gap:7px; background:var(--re-paper); padding:8px 12px; border-top:1px solid var(--re-grid); font-size:12px; color:var(--re-muted); }
@@ -670,10 +676,23 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return sel;
   }
 
+  /**
+   * A choice shown as text with a caret, styled like the text around it. The
+   * native select sits on top, transparent and 16px, so a tap opens the
+   * picker without iOS zooming and without the visible text changing size.
+   */
+  function pickInput(value: string, options: Opt[], onChange: (v: string) => void, label: string): HTMLElement {
+    const labelOf = (v: string): string => options.find((o) => o.value === v)?.label ?? v;
+    const text = el('span', { class: 're-pick-label' }, [labelOf(value)]);
+    const sel = selectInput(value, options, (v) => { text.textContent = labelOf(v); onChange(v); }, label);
+    return el('span', { class: 're-pick' }, [text, el('span', { class: 're-pick-caret', 'aria-hidden': 'true' }, ['▾']), sel]);
+  }
+
   /** The coloured, read-only view of a formula, shown while the cell is not focused. */
   function formulaView(text: string, literal: boolean): HTMLElement {
     const view = el('span', { class: 're-formula-view', 'aria-hidden': 'true' });
-    if (literal) {
+    // An empty cell shows only the input's placeholder, not a lone "=".
+    if (literal || text === '') {
       view.textContent = text;
       return view;
     }
@@ -703,7 +722,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     const literal = (v: string) => Boolean(o.thenField) && !isFormula(v);
     let view = formulaView(value, literal(value));
     // The model updates inside textInput's own handler, before it refreshes.
-    const input = textInput(value, (v) => {
+    const input = textInput(value, (raw) => {
+      // Excel habit: a typed leading "=" is the cell's own prefix, not formula text.
+      const v = !o.thenField && raw.startsWith('=') ? raw.slice(1) : raw;
+      if (v !== raw) input.value = v;
       const next = formulaView(v, literal(v));
       view.replaceWith(next);
       view = next;
@@ -930,8 +952,8 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
 
   function renderWhen(rule: Rule, index: number): HTMLElement {
-    const match = selectInput(rule.match, MATCH_OPTIONS, (v) => { rule.match = v as Match; refresh(); }, 'Match');
-    const edge = selectInput(rule.edge ?? 'none', EDGE_OPTIONS, (v) => { if (v === 'none') delete rule.edge; else rule.edge = v as Edge; refresh(); }, 'Trigger');
+    const match = pickInput(rule.match, MATCH_OPTIONS, (v) => { rule.match = v as Match; refresh(); }, 'Match');
+    const edge = pickInput(rule.edge ?? 'none', EDGE_OPTIONS, (v) => { if (v === 'none') delete rule.edge; else rule.edge = v as Edge; refresh(); }, 'Trigger');
     const { title, help } = sheetTitle('re-when-title', HELP.when, ['When', match, 'of these', edge]);
     const sheet = el('div', { class: 're-sheet re-sheet-when' }, [
       sheetHead(['Condition', 'Condition result', 'Description'], ['A formula that is true or false', 'Live value from the host', 'What the row means; the alarm can quote it']),
@@ -990,7 +1012,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 
   function thenRow(row: ThenRow, i: number, rule: Rule, index: number): HTMLElement {
     const current = row.kind === 'publish' ? 'publish' : rule.incident!.severity;
-    const action = selectInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`);
+    const action = pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`);
     const value = thenGet(rule, row);
     const loc: Loc = row.kind === 'publish'
       ? { rule: index, field: THEN_ISSUE_FIELD[row.field], action: row.index }
@@ -1006,7 +1028,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     let result = resultCell('Formula result', previewThen(value, rule), resultInfo);
     return el('div', { class: 're-row' }, [
       gutter(i + 1),
-      cell('', 'Action', null, [action], { address: `${who} · Action`, remove }),
+      cell('re-cell-pick', 'Action', null, [action], { address: `${who} · Action`, remove }),
       cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
       formulaCell(value, (v) => {
         thenSet(rule, row, v);
@@ -1136,9 +1158,22 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     selectCell(c);
   });
 
+  /**
+   * In narrow mode the in-cell inputs are display only: read-only and out of
+   * the tab order, so neither a tap nor Safari's form-navigation arrows can
+   * focus one (a focused 13px field makes iOS zoom the page). The bar edits.
+   */
+  function lockCells(): void {
+    for (const input of Array.from(pane.querySelectorAll<HTMLInputElement>('.re-cell input'))) {
+      input.readOnly = narrow;
+      input.tabIndex = narrow ? -1 : 0;
+    }
+  }
+
   function setNarrow(v: boolean): void {
     if (v === narrow) return;
     narrow = v;
+    lockCells();
     applySheetVisibility();
     if (v) updateBar();
     else clearSelection();
@@ -1160,6 +1195,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     bar.classList.remove('is-open');
     renderRail();
     renderPane();
+    lockCells();
     refresh();
     if (focusNext) {
       const target = pane.querySelector<HTMLElement>(`[data-loc="${focusNext}"]`);
@@ -1169,6 +1205,8 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
         const sheet = target.closest<HTMLElement>('.re-sheet-block')?.dataset.sheet as SheetName | undefined;
         if (sheet) { activeSheet = sheet; applySheetVisibility(); }
         selectCell(target);
+        // The row came from a tap on Add, so the keyboard may open right away.
+        barInput.focus();
       } else {
         target.querySelector<HTMLElement>('input')?.focus();
       }

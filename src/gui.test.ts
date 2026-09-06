@@ -93,6 +93,20 @@ describe('rules editor component (jsdom)', () => {
     expect(view.querySelectorAll('.re-tok-string').length).toBe(2);
   });
 
+  it('shows nothing over the placeholder of an empty formula cell, and strips a typed leading =', () => {
+    const { root, api } = setup({ initialModel: wrap({ conditions: [{ expr: '' }] }) });
+    const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('');
+    expect(inputByLabel(root, 'Condition 1').placeholder).toBe('temp > 50');
+    type(inputByLabel(root, 'Condition 1'), '=temp > 1');
+    expect(inputByLabel(root, 'Condition 1').value).toBe('temp > 1');
+    expect(api.getModel().rules[0].conditions[0].expr).toBe('temp > 1');
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp > 1');
+    // Then fields keep the "=": there it marks a formula
+    type(inputByLabel(root, 'topic of row 1'), '="a/" & "b"');
+    expect(api.getModel().rules[0].actions[0].topic).toBe('="a/" & "b"');
+  });
+
   it('shows Then rows per field, with the literal as its result and a folded formula preview', () => {
     const { root } = setup();
     const rows = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'));
@@ -569,6 +583,43 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(visibleBlocks(root).map((b) => b.dataset.sheet)).toEqual(['when']);
     expect(root.querySelector('.re-bar-address')?.textContent).toBe('Row 2 · Condition');
     expect(bar(root).classList.contains('is-open')).toBe(true);
+  });
+
+  it('locks the in-cell inputs so only the bar edits, and unlocks them when wide', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
+    const cellInput = inputByLabel(root, 'Condition 1');
+    expect(cellInput.readOnly).toBe(true);
+    expect(cellInput.tabIndex).toBe(-1);
+    // a row added while narrow is locked too
+    (root.querySelector('.re-sheet-when .re-add') as HTMLButtonElement).click();
+    expect(inputByLabel(root, 'Condition 2').readOnly).toBe(true);
+    // going wide unlocks without a re-render
+    Object.defineProperty(root, 'clientWidth', { value: 1180, configurable: true });
+    api.setModel(api.getModel());
+    expect(inputByLabel(root, 'Condition 1').readOnly).toBe(false);
+    expect(inputByLabel(root, 'Condition 1').tabIndex).toBe(0);
+  });
+
+  it('Add focuses the bar input so the keyboard opens', () => {
+    const { root } = narrowSetup({ initialModel: wrap() });
+    (root.querySelector('.re-sheet-vars .re-add') as HTMLButtonElement).click();
+    expect(document.activeElement).toBe(barInput(root));
+    expect(root.querySelector('.re-bar-address')?.textContent).toBe('Row 2 · Name');
+  });
+
+  it('shows choices as cell text with a transparent native select over it', () => {
+    const { root } = setup();
+    const pick = root.querySelector('.re-sheet-then .re-cell-pick .re-pick') as HTMLElement;
+    expect(pick.querySelector('.re-pick-label')?.textContent).toBe('Publish MQTT message');
+    const select = pick.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe('publish');
+    choose(select, 'warning');
+    // the label follows the choice, and the model too
+    expect((root.querySelector('.re-sheet-then .re-cell-pick .re-pick-label') as HTMLElement).textContent).toBe('Raise warning alarm');
+    const css = document.getElementById('octaview-rules-editor-styles')!.textContent ?? '';
+    expect(css).toMatch(/\.re-pick select\s*\{[^}]*opacity:\s*0/);
+    expect(css).toMatch(/\.re-pick select\s*\{[^}]*font-size:\s*16px/);
+    expect(css).toMatch(/\.re-add\s*\{[^}]*position:\s*sticky/);
   });
 
   it('tapping outside a cell closes the bar; wide mode never opens it', () => {
