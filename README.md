@@ -339,6 +339,12 @@ npm run storybook  # component workbench on http://0.0.0.0:6100
 
 ### Storybook
 
+The published Storybook is at **https://o16s.github.io/rules-editor/**. The
+`Storybook` workflow (`.github/workflows/storybook.yml`) builds and deploys it
+on every push to `main`, runs the tests and the build on every pull request,
+and can deploy any branch by hand through "Run workflow". The repo's Pages
+source must be set to "GitHub Actions" once (Settings → Pages).
+
 `npm run storybook` serves on `0.0.0.0:6100`, so you can also open it from a
 phone on the same network — useful, since the layout responds to the width of
 the **container** it is mounted in, not the browser window.
