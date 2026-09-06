@@ -1,22 +1,26 @@
 // Drop-in rules.xml editor component (browser). Self-contained: it injects its
 // own scoped, prefixed styles (`re-*` under `.re-root`) and depends only on the
-// tested core (model/serialize/parse/validate) — no external stylesheet.
+// tested core (model/formula/serialize/parse/validate) — no external stylesheet.
 //
 //   import { initRulesEditor } from '@octanis/rules-editor';
 //   const editor = initRulesEditor(document.getElementById('app'), {
-//     initialModel,                       // optional; defaults to a small example
+//     initialModel,                       // optional; defaults to an example
 //     onChange: ({ model, xml, errors }) => save(xml),
+//     monitor: (ref) => liveValues[ref.kind === 'variable' ? ref.name : ref.index],
 //   });
 //   editor.getXml(); editor.getModel(); editor.setModel(m); editor.destroy();
 //
-// Colours/fonts read the host's design tokens (--accent, --ink, --font-body, …)
-// with sensible fallbacks, so it looks native inside octaview and still works
-// standalone.
-import { LIMITS, OPERATORS, SEVERITIES, VALUELESS_OPS, isGroup, } from './model.js';
+// Layout: a rule rail on the left, and for the selected rule three sheets —
+// Variables (name / formula / result / description), When (condition / result
+// / description) and Then (action / field / formula / result) — in the
+// spreadsheet style of the design handoff. Colours and fonts read the host's
+// design tokens (--accent, --ink, --font-body, …) with fallbacks.
+import { LIMITS, SEVERITIES, } from './model.js';
 import { serialize } from './serialize.js';
 import { parse, validate, validateIssues, RulesParseError } from './parse.js';
+import { formulaTokens, isFormula, parseFormula } from './formula.js';
 const clone = (v) => JSON.parse(JSON.stringify(v));
-const locKey = (l) => `${l.rule ?? ''}|${l.field ?? ''}|${(l.path ?? []).join('.')}|${l.action ?? ''}`;
+const locKey = (l) => `${l.rule ?? ''}|${l.field ?? ''}|${l.variable ?? ''}|${l.condition ?? ''}|${l.action ?? ''}`;
 function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -33,71 +37,192 @@ function el(tag, attrs = {}, children = []) {
         node.append(c);
     return node;
 }
-// Human-readable labels — the option value stays the canonical XML token.
-const OP_LABELS = {
-    eq: '=  equals',
-    neq: '≠  not equal',
-    lt: '<  less than',
-    leq: '≤  at most',
-    gt: '>  greater than',
-    geq: '≥  at least',
-    changed: 'changed',
-};
-const OP_OPTIONS = OPERATORS.map((o) => ({ value: o, label: OP_LABELS[o] }));
+/** An inline icon from a static path list (never from user input). */
+function icon(paths) {
+    const span = el('span', { class: 're-icon', 'aria-hidden': 'true' });
+    span.innerHTML = `<svg viewBox="0 0 14 14">${paths}</svg>`;
+    return span;
+}
+const ICON_TRASH = '<path d="M2.5 4h9M5.5 4V2.5h3V4M4 4v7.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4" fill="none" stroke="currentColor" stroke-width="1.2"/>';
+const ICON_COPY = '<rect x="1.5" y="1.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="4.5" y="4.5" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2"/>';
 const MATCH_OPTIONS = [
-    { value: 'cond', label: 'a single condition' },
-    { value: 'and', label: 'all of (AND)' },
-    { value: 'or', label: 'any of (OR)' },
+    { value: 'any', label: 'any' },
+    { value: 'all', label: 'all' },
 ];
-const SEVERITY_OPTIONS = SEVERITIES.map((s) => ({ value: s, label: s }));
-const TRIGGER_OPTIONS = [
-    { value: 'rising', label: 'on rising edge' },
-    { value: 'none', label: 'every cycle' },
+const EDGE_OPTIONS = [
+    { value: 'rising', label: 'becomes true' },
+    { value: 'none', label: 'is true' },
 ];
-// Field help — grounded in the documented rules.xml schema (docs/edge-hub/rules).
+const EDGE_META = { rising: 'rising edge', none: 'every cycle' };
+const ACTION_OPTIONS = [
+    { value: 'publish', label: 'Publish MQTT message' },
+    ...SEVERITIES.map((s) => ({ value: s, label: `Raise ${s} alarm` })),
+];
+// Help, one paragraph per sheet, grounded in the documented rules.xml schema.
 const HELP = {
-    name: 'Unique rule id — used in the incident dedup_key and logs.',
-    cooldown: 'Min time between firings — a Go duration: 30s, 1m30s, 500ms. Units ns, us, ms, s, m, h. Blank = none.',
-    trigger: 'Rising edge fires once on false→true; every cycle fires each poll while true.',
-    match: 'Combine conditions: a single one, all of them (AND), or any of them (OR).',
-    device: 'IO-Link device name (config.yaml port). Leave blank for tsend2mqtt / PLC.',
-    tag: 'Field to test: a .udt tag (PLC) or decoded device field (IO-Link). Exact match.',
-    operator: '= ≠ any type; < ≤ > ≥ numbers only; “changed” = value changed since last cycle.',
-    value: 'Value to compare against; type follows the field. Not used with “changed”.',
-    topic: 'Absolute MQTT topic to publish to when the rule fires (no prefix added).',
-    payload: 'Message body, usually JSON. Defaults to {} if left blank.',
-    source: 'Device the incident is attributed to; builds the dedup_key {prefix}/{source}-{rule}.',
-    severity: 'Urgency — maps to PagerDuty: critical, error, warning, info.',
-    summary: 'One-line human-readable alert text (max 120 characters).',
+    variables: 'One named formula per row. Name: letters, digits and underscores. Formula: TAG("device", "tag") reads a field; RATE(x, 30min), CHANGED(x), BITAND(x, mask), HEX2DEC("FF") and the comparison operators build on it. Formula result: the live value, when the host supplies one. Description: what the value means, for the operator.',
+    when: 'One condition per row, written with the variable names, for example temp > 50 or AND(milk_temp > 3.6, door_changed). "any" fires when one row is true, "all" when every row is true. "becomes true" fires once on the false-to-true change; "is true" fires on every cycle while true. Description: quoted by the alarm as condition.description.',
+    then: 'One row per field of an action. Publish MQTT message: topic and payload. Raise alarm: source (the device the alarm is attributed to), title (at most 120 characters), first step (what the operator does first) and cause (why it fired, and where the boundary of what we read sits). A field that starts with = is a formula and can use condition.description. Cooldown: a Go duration such as 30s, 1m30s or 500ms; blank fires every time.',
 };
-const emptyCond = () => ({ kind: 'cond', tag: '', op: 'eq', value: '' });
 function exampleModel() {
+    const rule = (r) => ({
+        variables: [],
+        match: 'any',
+        conditions: [],
+        actions: [],
+        incident: null,
+        ...r,
+    });
     return {
         rules: [
-            {
+            rule({
                 name: 'alarm-camera',
                 cooldown: '45s',
                 edge: 'rising',
-                condition: { kind: 'cond', tag: 'AlarmActive', op: 'eq', value: 'true' },
+                variables: [
+                    { name: 'alarm_active', formula: 'TAG("plc1", "AlarmActive")', description: 'Cell 3 PLC has set its own alarm bit' },
+                    { name: 'temp', formula: 'TAG("vibration1", "temperature")', description: 'Press motor housing temperature' },
+                    { name: 'temp_rate', formula: 'RATE(temp, 30min)', description: 'How fast the housing is heating, over 30 min' },
+                    { name: 'milk_temp', formula: 'TAG("bulk1", "milk_temperature")', description: 'Bulk tank 1 milk temperature' },
+                    { name: 'door_changed', formula: 'CHANGED(TAG("bulk1", "door_state"))', description: 'Bulk tank 1 door opened or closed' },
+                    { name: 'status_word', formula: 'TAG("plc1", "StatusWord")', description: 'Cell 3 PLC status register, 16 bits' },
+                    { name: 'guard_open', formula: 'BITAND(status_word, 4) != 0', description: 'Bit 2 of the status word: guard door open' },
+                    { name: 'in_manual', formula: 'BITAND(status_word, HEX2DEC("10")) != 0', description: 'Bit 4 of the status word: cell in manual mode' },
+                    { name: 'alarm_byte', formula: 'TAG("plc1", "AlarmFlags")', description: 'Cell 3 PLC alarm flags, one bit per alarm' },
+                    { name: 'any_plc_alarm', formula: 'BITAND(alarm_byte, HEX2DEC("FF")) != 0', description: 'At least one PLC alarm flag is raised' },
+                ],
+                conditions: [
+                    { expr: 'alarm_active', description: 'Cell 3 PLC raised its own alarm' },
+                    { expr: 'temp > 50', description: 'Housing above 50 °C' },
+                    { expr: 'temp_rate > 4', description: 'Housing heating faster than 4 °C/h' },
+                    { expr: 'AND(milk_temp > 3.6, door_changed)', description: 'Milk warm while the tank door moved' },
+                    { expr: 'any_plc_alarm', description: 'Cell 3 PLC reports an alarm' },
+                ],
                 actions: [{ topic: 'camera/record', payload: '{"duration":40}' }],
-                incident: { source: 'plc1', severity: 'critical', summary: 'Machine alarm active' },
-            },
-            {
+                incident: {
+                    source: 'Cell 3 press',
+                    severity: 'critical',
+                    summary: 'Press guard alarm on cell 3',
+                    firstStep: 'Watch the 40 s camera clip before you open the cell.',
+                    cause: '=condition.description & ". The press PLC set its own alarm bit. We read that bit and nothing upstream of it, so the reason sits in the PLC."',
+                },
+            }),
+            rule({
                 name: 'pump-overtemp',
                 cooldown: '60s',
                 edge: 'rising',
-                condition: {
-                    kind: 'and',
-                    children: [
-                        { kind: 'cond', device: 'vibration1', tag: 'alert_vrms_max', op: 'eq', value: 'true' },
-                        { kind: 'cond', device: 'vibration1', tag: 'temperature', op: 'gt', value: '50.0' },
-                    ],
-                },
-                actions: [],
-                incident: { source: 'vibration1', severity: 'warning', summary: 'Pump 1 vibration + overtemp' },
-            },
+                variables: [
+                    { name: 'vrms_alert', formula: 'TAG("vibration1", "alert_vrms_max")', description: 'Sensor vibration alert bit' },
+                    { name: 'temp', formula: 'TAG("vibration1", "temperature")', description: 'Pump housing temperature' },
+                ],
+                match: 'all',
+                conditions: [
+                    { expr: 'vrms_alert', description: 'Vibration above the sensor limit' },
+                    { expr: 'temp > 50.0', description: 'Housing above 50 °C' },
+                ],
+                incident: { source: 'vibration1', severity: 'error', summary: 'Pump 1 vibrates while hot', firstStep: 'Stop pump 1 and check the bearing.' },
+            }),
+            rule({
+                name: 'wetwell-highlevel',
+                cooldown: '5m',
+                edge: 'rising',
+                variables: [{ name: 'level', formula: 'TAG("wetwell", "level")', description: 'Wet well level' }],
+                conditions: [{ expr: 'level > 3.6', description: 'Wet well above 3.6 m' }],
+                actions: [{ topic: 'pumps/start', payload: '{"pump":2}' }],
+                incident: { source: 'wetwell', severity: 'critical', summary: 'Wet well high level', firstStep: 'Check that pump 2 started.' },
+            }),
+            rule({
+                name: 'weekly-flow-total',
+                variables: [{ name: 'flow', formula: 'TAG("flowmeter1", "total")', description: 'Flow meter totaliser' }],
+                conditions: [{ expr: 'CHANGED(flow)', description: 'Totaliser updated' }],
+                actions: [{ topic: 'reports/flow', payload: '=flow' }],
+            }),
+            rule({
+                name: 'firmware-updated',
+                variables: [{ name: 'version', formula: 'TAG("plc1", "FirmwareVersion")', description: 'PLC firmware version string' }],
+                conditions: [{ expr: 'CHANGED(version)', description: 'PLC reports a new firmware version' }],
+                actions: [{ topic: 'events/firmware', payload: '=version' }],
+            }),
+            rule({
+                name: 'bulk1-milk-temp',
+                cooldown: '10m',
+                edge: 'rising',
+                variables: [{ name: 'milk_temp', formula: 'TAG("bulk1", "milk_temperature")', description: 'Bulk tank 1 milk temperature' }],
+                conditions: [{ expr: 'milk_temp > 4', description: 'Milk above 4 °C' }],
+                incident: { source: 'bulk1', severity: 'warning', summary: 'Bulk tank 1 milk too warm', firstStep: 'Check the cooling compressor.' },
+            }),
         ],
     };
+}
+const THEN_LABEL = { topic: 'topic', payload: 'payload', source: 'source', summary: 'title', firstStep: 'first step', cause: 'cause' };
+/** The `field` name in a ValidationIssue for each Then field. */
+const THEN_ISSUE_FIELD = {
+    topic: 'topic', payload: 'payload', source: 'source', summary: 'summary', firstStep: 'first_step', cause: 'cause',
+};
+function thenRows(rule) {
+    const rows = [];
+    rule.actions.forEach((_, index) => rows.push({ kind: 'publish', index, field: 'topic' }, { kind: 'publish', index, field: 'payload' }));
+    if (rule.incident)
+        rows.push({ kind: 'incident', field: 'source' }, { kind: 'incident', field: 'summary' }, { kind: 'incident', field: 'firstStep' }, { kind: 'incident', field: 'cause' });
+    return rows;
+}
+function thenGet(rule, row) {
+    if (row.kind === 'publish')
+        return rule.actions[row.index][row.field] ?? '';
+    return rule.incident?.[row.field] ?? '';
+}
+function thenSet(rule, row, value) {
+    if (row.kind === 'publish') {
+        const a = rule.actions[row.index];
+        if (row.field === 'topic')
+            a.topic = value;
+        else if (value)
+            a.payload = value;
+        else
+            delete a.payload;
+        return;
+    }
+    const inc = rule.incident;
+    if (row.field === 'source' || row.field === 'summary')
+        inc[row.field] = value;
+    else if (value)
+        inc[row.field] = value;
+    else
+        delete inc[row.field];
+}
+/**
+ * What a Then field shows as its result: literal text as is; a formula folded
+ * as far as constants go, with condition.description read from the first
+ * condition as a preview. Anything that needs live data gives null.
+ */
+function previewThen(text, rule) {
+    if (!isFormula(text))
+        return text;
+    let ast;
+    try {
+        ast = parseFormula(text);
+    }
+    catch {
+        return null;
+    }
+    const fold = (n) => {
+        switch (n.kind) {
+            case 'string': return n.value;
+            case 'number': return n.raw;
+            case 'bool': return n.value ? 'true' : 'false';
+            case 'duration': return n.raw;
+            case 'context': return n.name === 'condition.description' ? rule.conditions[0]?.description ?? null : null;
+            case 'binary': {
+                if (n.op !== '&')
+                    return null;
+                const l = fold(n.left);
+                const r = fold(n.right);
+                return l === null || r === null ? null : l + r;
+            }
+            default: return null;
+        }
+    };
+    return fold(ast);
 }
 // ---- scoped styles -------------------------------------------------------
 const STYLE_ID = 'octaview-rules-editor-styles';
@@ -105,39 +230,46 @@ const STYLE_ID = 'octaview-rules-editor-styles';
  * Declarations that apply when the editor is narrow. Emitted twice, once for a
  * narrow window and once for a narrow container: the editor is embedded, so it
  * can sit in a small column on a wide screen, which a viewport query misses.
- * Controls go to 16px because iOS Safari zooms the page when a focused field is
- * smaller, and the small controls get a 44px target (WCAG 2.5.8 asks 24px).
+ * Below 900px the rail folds into a select above the sheets. Below 560px each
+ * sheet row becomes a stacked card with the column name over every cell,
+ * controls go to 16px because iOS Safari zooms the page when a focused field
+ * is smaller, and the small controls get a 44px target (WCAG 2.5.8 asks 24px).
  */
+const MEDIUM = `
+  .re-root .re-body { grid-template-columns:minmax(0,1fr); }
+  .re-root .re-rail { display:none; }
+  .re-root .re-rail-select { display:block; }
+`;
 const NARROW = `
-  .re-root .re-field input, .re-root .re-field select { font-size:16px; }
-  .re-root .re-field input.re-mono { font-size:16px; }
-  .re-root .re-f-name input { font-size:17px; }
-  .re-root .re-import textarea { font-size:16px; }
-  .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; margin-bottom:0; }
-  .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; padding:0; }
-  .re-root .re-btn-primary { min-height:44px; }
-  .re-root .re-toggle input { width:24px; height:24px; }
+  .re-root .re-cell input, .re-root .re-cell select, .re-root .re-name, .re-root .re-cool input, .re-root .re-filter input, .re-root .re-xml textarea { font-size:16px; }
+  .re-root .re-when-title select { font-size:16px; }
+  .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+  .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; }
+  .re-root .re-btn, .re-root .re-btn-primary { min-height:44px; }
   .re-root .re-info { min-width:32px; min-height:32px; font-size:15px; }
   .re-root .re-help, .re-root .re-msg { font-size:13px; }
-  .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:1fr 1fr; }
-  .re-root .re-row .re-remove { grid-column:auto; justify-self:end; }
+  .re-root .re-sheet-head { display:none; }
+  .re-root .re-row { display:block; position:relative; padding:8px 10px 8px 10px; }
+  .re-root .re-row.re-row-add { display:grid; padding:0; }
+  .re-root .re-row > .re-gutter { display:inline-block; background:none; border:none; padding:0 0 4px; text-align:left; }
+  .re-root .re-row > .re-cell { display:block; border-right:none; padding:2px 0 6px; }
+  .re-root .re-row > .re-cell::before { content:attr(data-label); display:block; font-size:12px; line-height:16px; color:var(--re-muted); margin-bottom:2px; }
+  .re-root .re-cell-formula input { top:20px; }
+  .re-root .re-row > .re-remove { position:absolute; top:4px; right:4px; }
 `;
 /**
- * Below this, two columns leave the longest values in the format — summary,
- * payload, topic — about eleven characters wide, so each field takes the whole
- * row and the remove button pairs with the fields it removes.
+ * Below this the pane padding and the When heading are the last things that
+ * still take width, so they tighten and wrap.
  */
 const TIGHT = `
-  .re-root .re-row, .re-root .re-pubrow, .re-root .re-incrow { grid-template-columns:minmax(0,1fr) auto; gap:10px 12px; }
-  .re-root .re-row > .re-field, .re-root .re-pubrow > .re-field, .re-root .re-incrow > .re-field { grid-column:1; }
-  .re-root .re-row .re-remove, .re-root .re-pubrow .re-remove { grid-column:2; grid-row:1 / -1; align-self:start; justify-self:end; }
-  .re-root .re-rule { padding:20px 16px; }
-  .re-root .re-toolbar { gap:2px 18px; }
-  .re-root .re-f-match select { min-width:0; width:100%; }
-  .re-root .re-rule-head > .re-field { flex:1 1 100%; }
-  .re-root .re-mode { gap:6px; }
+  .re-root .re-pane-head, .re-root .re-pane-body { padding-left:12px; padding-right:12px; }
+  .re-root .re-when-title { flex-wrap:wrap; }
+  .re-root .re-cool { flex-wrap:wrap; }
+  .re-root .re-top { flex-wrap:wrap; gap:8px; }
 `;
 const NARROW_BLOCKS = `
+@media (max-width:900px) {${MEDIUM}}
+@container re (max-width:900px) {${MEDIUM}}
 @media (max-width:560px) {${NARROW}}
 @container re (max-width:560px) {${NARROW}}
 @media (max-width:430px) {${TIGHT}}
@@ -145,99 +277,138 @@ const NARROW_BLOCKS = `
 `;
 const STYLES = `
 .re-root {
-  --re-accent: var(--accent, #FF5C00);
-  --re-accent-hover: var(--accent-hover, #E65200);
-  --re-ink: var(--ink, #0E0E16);
+  --re-accent: var(--accent, #b8460f);
+  --re-accent-hover: var(--accent-hover, #a03d0c);
+  --re-ink: var(--ink, #1b1a17);
+  --re-text: var(--gray-700, #3b3934);
+  --re-muted: var(--gray-500, #6a6660);
+  --re-line: var(--gray-200, #ddd9d2);
+  --re-grid: #efece7;
+  --re-head: #f2efe9;
+  --re-paper: var(--bg, #faf9f6);
   --re-surface: var(--surface, #ffffff);
-  --re-bg: var(--bg, #F7F7F5);
-  --re-g700: var(--gray-700, #3C3C4A);
-  --re-g500: var(--gray-500, #6E6E7C);
-  --re-g300: var(--gray-300, #B9B9C2);
-  --re-g200: var(--gray-200, #E3E3E8);
-  --re-ok: var(--ok, #30A46C);
-  --re-warn: var(--warning, #F5B82E);
-  --re-danger: var(--incident, #E5484D);
-  --re-r: 8px; --re-rlg: 16px;
-  --re-font: var(--font-body, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
-  --re-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  --re-head: var(--font-heading, var(--re-font));
-  font-family: var(--re-font); color: var(--re-ink); font-size: 14px; line-height: 1.5;
+  --re-result: #f7f6f2;
+  --re-select: #efece5;
+  --re-reading: #3b5570;
+  --re-focus: #dfe5ee;
+  --re-warn-wash: #fbf3e0;
+  --re-warn: var(--warning, #8a5a00);
+  --re-critical: var(--incident, #a32c1e);
+  --re-error: #b8460f;
+  --re-warning: #c4891a;
+  --re-info: #3b5570;
+  --re-font: var(--font-body, "Helvetica Neue", Helvetica, Arial, sans-serif);
+  font-family: var(--re-font); color: var(--re-ink); font-size: 13px; line-height: 1.45;
+  background: var(--re-surface); border: 1px solid var(--re-line); border-radius: 4px; overflow: hidden;
   /* The editor is embedded, so it can be narrow inside a wide window. */
   container-type: inline-size; container-name: re;
 }
 .re-root *, .re-root *::before, .re-root *::after { box-sizing: border-box; }
-.re-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:22px; margin-bottom:18px; }
-.re-btn-primary { background:var(--re-accent); color:#fff; border:none; border-radius:999px; padding:9px 18px; font-family:var(--re-font); font-size:14px; cursor:pointer; }
+.re-root button, .re-root input, .re-root select, .re-root textarea { font-family: inherit; }
+.re-top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 15px; border-bottom:1px solid var(--re-line); background:var(--re-paper); }
+.re-title { font-size:14px; font-weight:600; }
+.re-top-actions { display:flex; align-items:center; gap:8px; }
+.re-btn { font-size:12.5px; color:var(--re-text); background:var(--re-surface); border:1px solid var(--re-line); border-radius:3px; padding:6px 11px; cursor:pointer; }
+.re-btn:hover { border-color:var(--re-muted); }
+.re-btn-primary { font-size:12.5px; font-weight:500; color:#fff; background:var(--re-accent); border:1px solid var(--re-accent-hover); border-radius:3px; padding:6px 13px; cursor:pointer; }
 .re-btn-primary:hover { background:var(--re-accent-hover); }
-.re-link { background:none; border:none; padding:2px 0; margin:0; cursor:pointer; font-family:var(--re-font); font-size:14px; color:var(--re-accent); line-height:1.4; }
+.re-link { background:none; border:none; padding:0; margin:0; cursor:pointer; font-size:12px; color:var(--re-accent); }
 .re-link:hover { text-decoration:underline; }
-.re-link:disabled { color:var(--re-g300); cursor:not-allowed; text-decoration:none; }
-.re-link.re-danger { color:var(--re-g500); }
-.re-link.re-danger:hover { color:var(--re-danger); }
-.re-remove { background:none; border:none; cursor:pointer; color:var(--re-g300); font-size:19px; line-height:1; padding:0 2px; align-self:end; margin-bottom:8px; }
-.re-remove:hover { color:var(--re-danger); }
-.re-status { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--re-g700); margin-bottom:22px; max-width:900px; }
-.re-status .re-dot { width:8px; height:8px; border-radius:999px; background:var(--re-g300); flex:none; }
-.re-status.is-ok .re-dot { background:var(--re-ok); }
-.re-status.is-error .re-dot { background:var(--re-warn); }
-.re-status ul { flex-basis:100%; list-style:none; margin:4px 0 0; padding-left:12px; border-left:2px solid var(--re-warn); }
-.re-status li { font-size:12.5px; color:var(--re-g700); padding:2px 0; }
-.re-rules { background:var(--re-surface); border:1px solid var(--re-g200); border-radius:var(--re-rlg); max-width:900px; }
-.re-rule { padding:32px 34px; }
-.re-rule + .re-rule { border-top:1px solid var(--re-g200); }
-.re-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
-.re-field > span { font-size:11px; color:var(--re-g500); }
-.re-field input, .re-field select { font-family:var(--re-font); font-size:14px; color:var(--re-ink); background:var(--re-surface); border:1px solid var(--re-g200); border-radius:var(--re-r); padding:8px 10px; width:100%; }
-.re-field input.re-mono { font-family:var(--re-mono); font-size:13px; }
-.re-field input::placeholder { color:var(--re-g300); }
-.re-field input:focus, .re-field select:focus { outline:none; border-color:var(--re-accent); }
-.re-field.is-invalid input, .re-field.is-invalid select { border-color:var(--re-danger); }
-.re-field.is-invalid > span { color:var(--re-danger); }
-.re-group.is-invalid { border-left-color:var(--re-danger); }
-.re-rule.is-invalid { box-shadow:inset 2px 0 0 var(--re-danger); }
-.re-f-name { flex:1 1 200px; }
-.re-f-name input { font-family:var(--re-head); font-weight:600; font-size:15px; }
-.re-f-cool { flex:0 0 100px; }
-.re-f-trig { flex:0 0 140px; }
-.re-f-dev { flex:0 0 108px; }
-.re-f-tag { flex:1 1 150px; }
-.re-f-op { flex:0 0 150px; }
-.re-f-val { flex:1 1 110px; }
-.re-f-match { flex:0 0 auto; }
-.re-f-match > span { display:none; }
-.re-f-match select { min-width:158px; width:auto; }
-.re-info { margin-left:4px; padding:0 4px; background:none; border:none; color:var(--re-g300); font-size:12px; line-height:1; cursor:help; font-family:var(--re-font); }
-.re-info:hover { color:var(--re-accent); }
-.re-info[aria-expanded="true"] { color:var(--re-accent); }
-.re-help { margin:4px 0 0; font-size:12px; line-height:1.45; color:var(--re-g500); }
-.re-msg { margin:4px 0 0; font-size:12px; line-height:1.45; color:var(--re-danger); }
-.re-rule > .re-msg, .re-group > .re-msg { margin-top:8px; }
-.re-rule-head { display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px; }
-.re-rule-head .re-link.re-danger { margin-left:auto; align-self:flex-end; margin-bottom:8px; }
-.re-part { margin-top:22px; }
-.re-part-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:8px; }
-.re-part-label { font-family:var(--re-head); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.6px; color:var(--re-g500); }
-.re-mode { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0 0 8px; }
-.re-mode-lead { font-size:13px; color:var(--re-g500); }
-.re-row { display:grid; grid-template-columns:112px minmax(0,1fr) 148px minmax(0,1fr) 18px; gap:14px; align-items:end; padding:5px 0; }
-.re-row .re-remove { grid-column:5; }
-.re-group { border-left:2px solid var(--re-g200); padding-left:16px; margin:6px 0 6px 2px; }
-.re-grouphead { display:flex; align-items:center; gap:10px; margin-bottom:2px; }
-.re-children { margin-top:2px; }
-.re-add { display:flex; gap:20px; padding:8px 0 2px; }
-.re-pubrow { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 18px; gap:14px; align-items:end; padding:5px 0; }
-.re-incrow { display:grid; grid-template-columns:112px 148px minmax(0,1fr); gap:14px; align-items:end; padding:4px 0; }
-.re-publist { display:flex; flex-direction:column; gap:6px; }
-.re-toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--re-g700); cursor:pointer; }
-.re-toggle input { width:15px; height:15px; accent-color:var(--re-accent); }
-.re-empty { color:var(--re-g500); padding:48px 28px; text-align:center; }
-.re-import { background:var(--re-surface); border:1px solid var(--re-g200); border-radius:var(--re-rlg); padding:20px; margin-bottom:24px; max-width:900px; }
-.re-import-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-.re-import textarea { width:100%; border:1px solid var(--re-g200); border-radius:var(--re-r); padding:12px; font-family:var(--re-mono); font-size:13px; background:var(--re-bg); color:var(--re-ink); resize:vertical; }
-.re-import-actions { display:flex; align-items:center; gap:16px; margin-top:12px; }
-.re-import-msg { font-size:13px; margin-top:10px; }
-.re-import-msg.is-ok { color:var(--re-ok); }
-.re-import-msg.is-error { color:var(--re-danger); }
+.re-link:disabled { color:var(--re-muted); cursor:not-allowed; text-decoration:none; }
+.re-link.re-danger { color:var(--re-critical); }
+.re-status { display:none; padding:8px 15px; font-size:12.5px; color:var(--re-warn); background:var(--re-warn-wash); border-bottom:1px solid var(--re-line); }
+.re-status.is-error { display:block; }
+.re-xml { padding:14px 15px; border-bottom:1px solid var(--re-line); background:var(--re-paper); }
+.re-xml-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:13px; font-weight:500; }
+.re-xml textarea { width:100%; border:1px solid var(--re-line); border-radius:3px; padding:10px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; background:var(--re-surface); color:var(--re-ink); resize:vertical; }
+.re-xml-actions { display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-top:10px; }
+.re-xml-msg { font-size:12.5px; margin-top:8px; color:var(--re-muted); }
+.re-xml-msg.is-error { color:var(--re-critical); }
+.re-body { display:grid; grid-template-columns:286px minmax(0,1fr); }
+.re-rail { border-right:1px solid var(--re-line); background:var(--re-paper); min-width:0; }
+.re-filter { padding:9px 12px; border-bottom:1px solid var(--re-grid); }
+.re-filter input { width:100%; background:var(--re-surface); border:1px solid var(--re-line); border-radius:3px; padding:6px 9px; font-size:12.5px; color:var(--re-ink); }
+.re-filter input::placeholder { color:var(--re-muted); }
+.re-rail-row { display:grid; grid-template-columns:14px minmax(0,1fr) 48px; column-gap:10px; align-items:center; padding:10px 13px; border-bottom:1px solid var(--re-grid); cursor:pointer; }
+.re-rail-row.is-selected { background:var(--re-select); border-bottom-color:#e0dcd4; }
+.re-rail-row[hidden] { display:none; }
+.re-square { display:block; width:8px; height:8px; margin:0 auto; background:var(--re-muted); }
+.re-square.is-hollow { background:none; border:1px solid #a8a49c; }
+.re-square.is-critical { background:var(--re-critical); }
+.re-square.is-error { background:var(--re-error); }
+.re-square.is-warning { background:var(--re-warning); }
+.re-square.is-info { background:var(--re-info); }
+.re-rail-text { min-width:0; }
+.re-rail-name { display:flex; align-items:baseline; gap:7px; font-size:13.5px; color:var(--re-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.re-rail-row.is-selected .re-rail-name { font-weight:500; }
+.re-rail-issues { font-size:11.5px; color:var(--re-warn); flex:none; }
+.re-rail-issues:empty { display:none; }
+.re-rail-meta { font-size:11.5px; color:var(--re-muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.re-rail-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; visibility:hidden; }
+.re-rail-row:hover .re-rail-actions, .re-rail-row.is-selected .re-rail-actions, .re-rail-row:focus-within .re-rail-actions { visibility:visible; }
+.re-icon svg { width:13px; height:13px; display:block; }
+.re-icon-btn { background:none; border:none; padding:3px; cursor:pointer; color:var(--re-muted); border-radius:3px; }
+.re-icon-btn:hover { color:var(--re-ink); background:rgba(0,0,0,.05); }
+.re-pane { min-width:0; }
+.re-rail-select { display:none; width:100%; margin:12px 18px 0; width:calc(100% - 36px); font-size:13px; padding:6px 9px; border:1px solid var(--re-line); border-radius:3px; background:var(--re-surface); color:var(--re-ink); }
+.re-pane-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--re-grid); }
+.re-name { font-size:18px; font-weight:500; color:var(--re-ink); background:none; border:none; border-bottom:1px solid transparent; padding:0; min-width:0; flex:1 1 auto; }
+.re-name:hover, .re-name:focus { border-bottom-color:var(--re-line); outline:none; }
+.re-pane-head.is-invalid .re-name { border-bottom-color:var(--re-critical); }
+.re-pane-body { padding:14px 18px 18px; display:flex; flex-direction:column; gap:16px; }
+.re-empty { color:var(--re-muted); padding:48px 28px; text-align:center; }
+.re-sheet-title { display:flex; align-items:baseline; gap:9px; font-size:15px; color:var(--re-muted); margin-bottom:8px; }
+.re-when-title select { font-size:15px; color:var(--re-ink); background:none; border:none; padding:0 14px 0 0; cursor:pointer; appearance:none; -webkit-appearance:none; background-image:linear-gradient(45deg, transparent 50%, var(--re-muted) 50%), linear-gradient(135deg, var(--re-muted) 50%, transparent 50%); background-position:right 4px top 55%, right 0 top 55%; background-size:4px 4px, 4px 4px; background-repeat:no-repeat; }
+.re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
+.re-info:hover, .re-info[aria-expanded="true"] { color:var(--re-accent); }
+.re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
+.re-sheet { border:1px solid var(--re-line); border-radius:4px; overflow:hidden; }
+.re-sheet-block.is-invalid > .re-sheet { border-color:var(--re-critical); }
+.re-sheet-head, .re-row { display:grid; align-items:stretch; }
+.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(0,1fr) 100px 220px 30px; }
+.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(0,1fr) 110px 280px 30px; }
+.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(0,1fr) 220px 30px; }
+.re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
+.re-sheet-head { background:var(--re-head); border-bottom:1px solid #e4e0d9; }
+.re-sheet-head > span { font-size:12px; color:var(--re-muted); padding:6px 9px; border-right:1px solid var(--re-grid); }
+.re-sheet-head > span:last-child { border-right:none; }
+.re-row { border-bottom:1px solid var(--re-grid); }
+.re-row:last-child { border-bottom:none; }
+.re-gutter { font-size:12px; color:var(--re-muted); padding:7px 8px; text-align:center; background:var(--re-head); border-right:1px solid var(--re-grid); }
+.re-cell { position:relative; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
+.re-cell input, .re-cell select { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
+.re-cell select { height:auto; }
+.re-cell input:focus, .re-cell select:focus { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
+.re-cell input::placeholder { color:var(--re-muted); }
+.re-cell select { cursor:pointer; appearance:none; -webkit-appearance:none; padding-right:22px; background-image:linear-gradient(45deg, transparent 50%, var(--re-muted) 50%), linear-gradient(135deg, var(--re-muted) 50%, transparent 50%); background-position:right 12px top 50%, right 8px top 50%; background-size:4px 4px, 4px 4px; background-repeat:no-repeat; }
+.re-cell-text { color:var(--re-text); }
+.re-cell-field { padding:7px 9px; color:var(--re-text); }
+.re-cell-result { padding:7px 9px; background:var(--re-result); color:var(--re-reading); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.re-cell-result:empty::before { content:"—"; color:var(--re-muted); }
+/* The view is in flow, so a wrapped formula sets the row height; the input
+   sits over it, transparent until focused, when it takes over the cell. */
+.re-cell-formula .re-formula-view { display:block; min-height:32px; padding:7px 9px; white-space:pre-wrap; overflow-wrap:anywhere; pointer-events:none; }
+.re-cell-formula input { position:absolute; left:0; right:0; bottom:0; top:0; color:transparent; caret-color:var(--re-ink); }
+.re-cell-formula input:focus { color:var(--re-ink); }
+.re-cell-formula:focus-within .re-formula-view { visibility:hidden; }
+.re-tok-function { color:var(--re-muted); }
+.re-tok-string { color:var(--re-reading); }
+.re-tok-context { color:var(--re-reading); font-style:italic; }
+.re-tok-error { color:var(--re-critical); text-decoration:underline wavy; }
+.re-cell.is-invalid { background:var(--re-warn-wash); }
+.re-cell.is-invalid .re-formula-view { background:var(--re-warn-wash); }
+.re-msg { grid-column:1 / -1; margin:0; padding:4px 9px 6px 39px; font-size:12px; line-height:1.45; color:var(--re-warn); background:var(--re-warn-wash); }
+.re-cell > .re-msg { padding-left:9px; }
+.re-pane-head > .re-msg, .re-sheet-block > .re-msg { padding:6px 9px; border-radius:3px; margin-top:6px; }
+.re-remove { background:none; border:none; cursor:pointer; color:var(--re-muted); display:flex; align-items:center; justify-content:center; padding:0; }
+.re-remove:hover { color:var(--re-critical); }
+.re-add { grid-column:2; text-align:left; background:none; border:none; padding:7px 9px; font-size:13px; color:var(--re-muted); cursor:text; width:100%; }
+.re-add:hover, .re-add:focus { color:var(--re-ink); outline:none; background:var(--re-paper); }
+.re-add:disabled { cursor:not-allowed; color:var(--re-muted); background:none; }
+.re-cool { display:flex; align-items:center; gap:7px; background:var(--re-paper); padding:8px 12px; border-top:1px solid var(--re-grid); font-size:12px; color:var(--re-muted); }
+.re-cool input { width:6em; font-size:12.5px; color:var(--re-ink); background:var(--re-surface); border:1px solid var(--re-line); border-radius:3px; padding:3px 8px; }
+.re-cool.is-invalid input { border-color:var(--re-critical); }
+.re-cool .re-msg { flex-basis:100%; background:none; padding:0; }
 ${NARROW_BLOCKS}`;
 function injectStyles() {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID))
@@ -266,30 +437,33 @@ export function initRulesEditor(root, opts = {}) {
     else {
         model = opts.initialModel ? clone(opts.initialModel) : exampleModel();
     }
+    let selected = 0;
+    let filter = '';
+    /** data-loc of the input to focus after the next render. */
+    let focusNext = null;
     /** Validation messages, with any initial parse error surfaced first. */
     const computeErrors = () => {
         const errs = validate(model);
         return parseError ? [parseError, ...errs] : errs;
     };
-    const exportBtn = el('button', { class: 're-link', type: 'button', onclick: () => download() }, ['Export XML']);
+    const status = el('div', { class: 're-status', role: 'alert' });
+    const xmlPanel = el('div', { class: 're-xml', hidden: true });
+    const rail = el('aside', { class: 're-rail', 'aria-label': 'Rules' });
+    const pane = el('section', { class: 're-pane' });
     const copyBtn = el('button', { class: 're-link', type: 'button', onclick: () => copyXml(copyBtn) }, ['Copy XML']);
-    const form = el('div', { class: 're-rules' });
-    const status = el('div', { class: 're-status' });
-    const importPanel = el('div', { class: 're-import', hidden: true });
+    const exportBtn = el('button', { class: 're-link', type: 'button', onclick: () => download() }, ['Download rules.xml']);
     // ---- validation + change notification (cheap; runs on every change) ----
     function refresh() {
         const errs = computeErrors();
-        const n = model.rules.length;
+        const issues = validateIssues(model);
         status.replaceChildren();
-        if (errs.length === 0) {
-            status.className = 're-status is-ok';
-            status.append(el('span', { class: 're-dot' }), `Valid · ${n} rule${n === 1 ? '' : 's'}`);
-        }
-        else {
-            status.className = 're-status is-error';
-            status.append(el('span', { class: 're-dot' }), `${errs.length} issue${errs.length === 1 ? '' : 's'} to resolve`, el('ul', {}, errs.map((e) => el('li', {}, [e]))));
-        }
-        markFields(validateIssues(model));
+        const fileLevel = issues.filter((i) => i.rule === undefined).map((i) => i.message);
+        if (parseError)
+            fileLevel.unshift(parseError);
+        status.className = fileLevel.length ? 're-status is-error' : 're-status';
+        status.textContent = fileLevel.join(' ');
+        markFields(issues);
+        markRail(issues);
         const gate = (btn) => {
             btn.disabled = errs.length > 0;
             if (errs.length)
@@ -318,7 +492,7 @@ export function initRulesEditor(root, opts = {}) {
             else
                 byLoc.set(key, [issue.message]);
         }
-        for (const node of Array.from(form.querySelectorAll('[data-loc]'))) {
+        for (const node of Array.from(pane.querySelectorAll('[data-loc]'))) {
             const messages = byLoc.get(node.dataset.loc ?? '');
             node.classList.toggle('is-invalid', messages !== undefined);
             // The message is text on the page, not a tooltip: touch has no hover.
@@ -334,254 +508,414 @@ export function initRulesEditor(root, opts = {}) {
             }
         }
     }
-    // ---- controls ----
-    /**
-     * Label plus, when there is help, a button that reveals it. Touch has no
-     * hover, so a title attribute is unreadable on a phone; the text has to be
-     * something the user can put on screen. Returns the help element for the
-     * caller to place under the control.
-     */
-    function labelSpan(label, help) {
-        const span = el('span', {}, [label]);
-        if (!help)
-            return { head: span, help: null };
-        const text = el('p', { class: 're-help', hidden: true }, [help]);
-        const info = el('button', {
-            class: 're-info',
-            type: 'button',
-            'aria-expanded': 'false',
-            'aria-label': `Help: ${label}`,
-            title: help,
-            onclick: (e) => {
-                // Inside a <label>, so keep the click from focusing the control.
-                e.preventDefault();
-                e.stopPropagation();
-                text.hidden = !text.hidden;
-                info.setAttribute('aria-expanded', String(!text.hidden));
-            },
-        }, ['ⓘ']);
-        span.append(info);
-        return { head: span, help: text };
+    /** Issue counts and names in the rail, without re-rendering it. */
+    function markRail(issues) {
+        const counts = new Map();
+        for (const i of issues)
+            if (i.rule !== undefined)
+                counts.set(i.rule, (counts.get(i.rule) ?? 0) + 1);
+        for (const row of Array.from(rail.querySelectorAll('.re-rail-row'))) {
+            const index = Number(row.dataset.rule);
+            const n = counts.get(index) ?? 0;
+            const count = row.querySelector('.re-rail-issues');
+            if (count)
+                count.textContent = n ? `${n} issue${n === 1 ? '' : 's'}` : '';
+            row.classList.toggle('is-invalid', n > 0);
+            const rule = model.rules[index];
+            const name = row.querySelector('.re-rail-name-text');
+            if (rule && name)
+                name.textContent = rule.name || 'unnamed';
+            const meta = row.querySelector('.re-rail-meta');
+            if (rule && meta)
+                meta.textContent = EDGE_META[rule.edge ?? 'none'];
+        }
+        const select = pane.querySelector('.re-rail-select');
+        if (select) {
+            Array.from(select.options).forEach((o) => {
+                const rule = model.rules[Number(o.value)];
+                if (rule)
+                    o.textContent = rule.name || 'unnamed';
+            });
+        }
     }
-    function textField(label, value, onInput, o = {}) {
-        const input = el('input', {
-            type: 'text',
-            class: o.mono ? 're-mono' : '',
-            value: value ?? '',
-            placeholder: o.placeholder ?? '',
-            oninput: (e) => { onInput(e.target.value); refresh(); },
-        });
+    // ---- controls ----
+    const identifierAttrs = (input) => {
         // Identifiers must survive a phone keyboard: iOS otherwise capitalises the
         // first letter and autocorrects, so `alert_temp` is stored as `Alert_temp`
         // and no longer matches the field it names. Prose fields keep the defaults.
-        if (!o.prose) {
-            input.setAttribute('autocapitalize', 'off');
-            input.setAttribute('autocorrect', 'off');
-            input.setAttribute('spellcheck', 'false');
-        }
-        if (o.help)
-            input.title = o.help;
-        const { head, help } = labelSpan(label, o.help);
-        const field = el('label', { class: `re-field ${o.cls ?? ''}` }, [head, input]);
-        if (help)
-            field.append(help);
-        if (o.loc)
-            field.dataset.loc = locKey(o.loc);
-        return field;
-    }
-    function selectField(label, value, options, onChange, rerender = false, cls = '', help = '') {
-        const sel = el('select', {
-            onchange: (e) => {
-                onChange(e.target.value);
-                if (rerender)
-                    renderForm();
-                else
-                    refresh();
-            },
+        input.setAttribute('autocapitalize', 'off');
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('spellcheck', 'false');
+        return input;
+    };
+    function textInput(value, onInput, o) {
+        const input = el('input', {
+            type: 'text',
+            value,
+            placeholder: o.placeholder ?? '',
+            'aria-label': o.label,
+            oninput: (e) => { onInput(e.target.value); refresh(); },
+            onkeydown: (e) => { if (e.key === 'Enter')
+                e.target.blur(); },
         });
+        return o.prose ? input : identifierAttrs(input);
+    }
+    function selectInput(value, options, onChange, label) {
+        const sel = el('select', { 'aria-label': label, onchange: (e) => onChange(e.target.value) });
         for (const opt of options) {
             const o = el('option', { value: opt.value }, [opt.label]);
             if (opt.value === value)
                 o.setAttribute('selected', 'selected');
             sel.append(o);
         }
-        if (help)
-            sel.title = help;
-        const { head, help: helpEl } = labelSpan(label, help);
-        const field = el('label', { class: `re-field ${cls}` }, [head, sel]);
-        if (helpEl)
-            field.append(helpEl);
-        return field;
+        return sel;
     }
-    const linkBtn = (label, fn, cls = '') => el('button', { class: `re-link ${cls}`, type: 'button', onclick: fn }, [label]);
-    /** Turn a button off with the reason, so the UI never offers an invalid step. */
-    const disableWith = (btn, why) => {
-        btn.disabled = true;
-        btn.title = why;
-        return btn;
-    };
-    const removeBtn = (title, fn) => el('button', { class: 're-remove', type: 'button', title, 'aria-label': title, onclick: fn }, ['×']);
-    // ---- condition tree ----
-    function renderLeaf(leaf, replace, rule, path) {
-        const row = el('div', { class: 're-row' }, [
-            textField('device', leaf.device, (v) => { if (v)
-                leaf.device = v;
-            else
-                delete leaf.device; }, { placeholder: '—', cls: 're-f-dev', help: HELP.device }),
-            textField('tag', leaf.tag, (v) => (leaf.tag = v), { placeholder: 'AlarmActive', cls: 're-f-tag', help: HELP.tag, loc: { rule, field: 'tag', path } }),
-            selectField('operator', leaf.op, OP_OPTIONS, (v) => {
-                leaf.op = v;
-                if (VALUELESS_OPS.includes(leaf.op))
-                    delete leaf.value;
-                else if (leaf.value === undefined)
-                    leaf.value = '';
-            }, true, 're-f-op', HELP.operator),
-        ]);
-        if (!VALUELESS_OPS.includes(leaf.op)) {
-            row.append(textField('value', leaf.value, (v) => (leaf.value = v), { placeholder: 'true', cls: 're-f-val', help: HELP.value, loc: { rule, field: 'value', path } }));
+    /** The coloured, read-only view of a formula, shown while the cell is not focused. */
+    function formulaView(text, literal) {
+        const view = el('span', { class: 're-formula-view', 'aria-hidden': 'true' });
+        if (literal) {
+            view.textContent = text;
+            return view;
         }
-        row.append(removeBtn('Remove condition', () => replace(null)));
-        return row;
+        view.append('=');
+        for (const t of formulaTokens(text))
+            view.append(el('span', { class: `re-tok-${t.kind}` }, [t.text]));
+        return view;
     }
-    function matchSelect(current, apply) {
-        const mode = current && isGroup(current) ? current.kind : 'cond';
-        return selectField('match', mode, MATCH_OPTIONS, (v) => {
-            if (v === 'cond') {
-                apply(current && isGroup(current) ? current.children[0] ?? null : current);
-            }
-            else if (current && isGroup(current)) {
-                current.kind = v;
-            }
-            else {
-                apply({ kind: v, children: [current && !isGroup(current) ? current : emptyCond()] });
-            }
-        }, true, 're-f-match', HELP.match);
+    /** A cell; `loc` lets the marking pass find it. */
+    function cell(cls, label, loc, children) {
+        const c = el('div', { class: `re-cell ${cls}`, 'data-label': label }, children);
+        if (loc)
+            c.dataset.loc = locKey(loc);
+        return c;
     }
-    function renderGroupBody(group, depth, rule, path) {
-        const kids = el('div', { class: 're-children' });
-        group.children.forEach((child, i) => {
-            const replace = (next) => {
-                if (next === null)
-                    group.children.splice(i, 1);
-                else
-                    group.children[i] = next;
-                renderForm();
-            };
-            const childPath = [...path, i];
-            kids.append(isGroup(child)
-                ? renderGroup(child, replace, depth + 1, rule, childPath)
-                : renderLeaf(child, replace, rule, childPath));
+    /**
+     * A formula cell: the input holds the text; the view over it colours the
+     * tokens until the cell is focused. `thenField` cells are literal text
+     * unless the value starts with "=".
+     */
+    function formulaCell(value, onInput, o) {
+        const literal = (v) => Boolean(o.thenField) && !isFormula(v);
+        let view = formulaView(value, literal(value));
+        // The model updates inside textInput's own handler, before it refreshes.
+        const input = textInput(value, (v) => {
+            const next = formulaView(v, literal(v));
+            view.replaceWith(next);
+            view = next;
+            onInput(v, input);
+        }, { label: o.label, placeholder: o.placeholder, prose: Boolean(o.thenField) });
+        return cell('re-cell-formula', o.column, o.loc, [view, input]);
+    }
+    const resultCell = (label, value) => cell('re-cell-result', label, null, value ? [value] : []);
+    const removeBtn = (title, fn) => el('button', { class: 're-remove', type: 'button', title, 'aria-label': title, onclick: fn }, [icon(ICON_TRASH)]);
+    const gutter = (n) => el('span', { class: 're-gutter' }, [String(n)]);
+    function addRow(n, label, fn, disabledWhy) {
+        const btn = el('button', { class: 're-add', type: 'button', onclick: fn }, [label]);
+        if (disabledWhy) {
+            btn.disabled = true;
+            btn.title = disabledWhy;
+        }
+        return el('div', { class: 're-row re-row-add' }, [gutter(n), btn]);
+    }
+    function sheetHead(cols, titles = []) {
+        return el('div', { class: 're-sheet-head' }, [
+            el('span'),
+            ...cols.map((c, i) => el('span', titles[i] ? { title: titles[i] } : {}, [c])),
+            el('span'),
+        ]);
+    }
+    /** A sheet title with a help toggle that reveals its paragraph on tap. */
+    function sheetTitle(cls, help, children) {
+        const text = el('p', { class: 're-help', hidden: true }, [help]);
+        const info = el('button', {
+            class: 're-info',
+            type: 'button',
+            'aria-expanded': 'false',
+            'aria-label': 'Help',
+            title: help,
+            onclick: () => {
+                text.hidden = !text.hidden;
+                info.setAttribute('aria-expanded', String(!text.hidden));
+            },
+        }, ['ⓘ']);
+        return { title: el('div', { class: `re-sheet-title ${cls}` }, [...children, info]), help: text };
+    }
+    // ---- rail ----
+    function renderRail() {
+        rail.replaceChildren();
+        const filterInput = identifierAttrs(el('input', {
+            type: 'search',
+            value: filter,
+            placeholder: 'Filter',
+            'aria-label': 'Filter rules',
+            oninput: (e) => { filter = e.target.value; applyFilter(); },
+        }));
+        rail.append(el('div', { class: 're-filter' }, [filterInput]));
+        const list = el('div', { class: 're-rail-list', role: 'list' });
+        model.rules.forEach((rule, index) => {
+            const square = el('span', { class: `re-square ${rule.incident ? `is-${rule.incident.severity}` : 'is-hollow'}` });
+            const row = el('div', {
+                class: `re-rail-row${index === selected ? ' is-selected' : ''}`,
+                role: 'listitem',
+                tabindex: '0',
+                'data-rule': String(index),
+                onclick: () => selectRule(index),
+                onkeydown: (e) => { if (e.key === 'Enter')
+                    selectRule(index); },
+            }, [
+                el('span', {}, [square]),
+                el('div', { class: 're-rail-text' }, [
+                    el('div', { class: 're-rail-name' }, [
+                        el('span', { class: 're-rail-name-text' }, [rule.name || 'unnamed']),
+                        el('span', { class: 're-rail-issues' }),
+                    ]),
+                    el('div', { class: 're-rail-meta' }, [EDGE_META[rule.edge ?? 'none']]),
+                ]),
+                el('span', { class: 're-rail-actions' }, [
+                    el('button', { class: 're-icon-btn', type: 'button', title: 'Duplicate', 'aria-label': `Duplicate ${rule.name}`, onclick: (e) => { e.stopPropagation(); duplicateRule(index); } }, [icon(ICON_COPY)]),
+                    el('button', { class: 're-icon-btn', type: 'button', title: 'Delete', 'aria-label': `Delete ${rule.name}`, onclick: (e) => { e.stopPropagation(); deleteRule(index); } }, [icon(ICON_TRASH)]),
+                ]),
+            ]);
+            list.append(row);
         });
-        // Offer only steps that stay inside the limits validate() enforces.
-        // `depth` is this group's own level, so a new child sits at depth + 1 and
-        // a new child group needs room for its own condition at depth + 2.
-        const full = group.children.length >= LIMITS.maxChildren;
-        const fullWhy = `A group holds at most ${LIMITS.maxChildren} conditions.`;
-        const deepWhy = `Conditions nest at most ${LIMITS.maxDepth} levels deep.`;
-        const addCond = linkBtn('Add condition', () => { group.children.push(emptyCond()); renderForm(); });
-        if (full)
-            disableWith(addCond, fullWhy);
-        else if (depth >= LIMITS.maxDepth)
-            disableWith(addCond, deepWhy);
-        const addGroup = linkBtn('Add group', () => { group.children.push({ kind: 'and', children: [emptyCond()] }); renderForm(); });
-        if (full)
-            disableWith(addGroup, fullWhy);
-        else if (depth >= LIMITS.maxDepth - 1)
-            disableWith(addGroup, deepWhy);
-        const add = el('div', { class: 're-add' }, [addCond, addGroup]);
-        return el('div', {}, [kids, add]);
+        rail.append(list);
+        applyFilter();
     }
-    function renderGroup(group, replace, depth, rule, path) {
-        const head = el('div', { class: 're-grouphead' }, [
-            matchSelect(group, replace),
-            removeBtn('Remove group', () => replace(null)),
+    function applyFilter() {
+        const q = filter.trim().toLowerCase();
+        for (const row of Array.from(rail.querySelectorAll('.re-rail-row'))) {
+            const rule = model.rules[Number(row.dataset.rule)];
+            row.hidden = q !== '' && !(rule?.name ?? '').toLowerCase().includes(q);
+        }
+    }
+    function selectRule(index) {
+        selected = index;
+        render();
+    }
+    function duplicateRule(index) {
+        const copy = clone(model.rules[index]);
+        const names = new Set(model.rules.map((r) => r.name));
+        let name = `${copy.name}-copy`;
+        for (let n = 2; names.has(name); n++)
+            name = `${copy.name}-copy${n}`;
+        copy.name = name;
+        model.rules.splice(index + 1, 0, copy);
+        selected = index + 1;
+        render();
+    }
+    function deleteRule(index) {
+        model.rules.splice(index, 1);
+        if (selected >= model.rules.length)
+            selected = Math.max(0, model.rules.length - 1);
+        render();
+    }
+    // ---- pane: the selected rule as three sheets ----
+    function renderPane() {
+        pane.replaceChildren();
+        const railSelect = selectInput(String(selected), model.rules.map((r, i) => ({ value: String(i), label: r.name || 'unnamed' })), (v) => selectRule(Number(v)), 'Rule');
+        railSelect.className = 're-rail-select';
+        if (model.rules.length === 0) {
+            pane.append(el('p', { class: 're-empty' }, [
+                'No rules yet. Add one, or ',
+                el('button', { class: 're-link', type: 'button', onclick: () => { parseError = null; model = exampleModel(); selected = 0; render(); } }, ['Load example']),
+                '.',
+            ]));
+            return;
+        }
+        if (selected >= model.rules.length)
+            selected = 0;
+        const index = selected;
+        const rule = model.rules[index];
+        pane.append(railSelect);
+        const nameInput = identifierAttrs(el('input', {
+            type: 'text',
+            class: 're-name',
+            value: rule.name,
+            placeholder: 'rule-name',
+            'aria-label': 'Rule name',
+            oninput: (e) => { rule.name = e.target.value; refresh(); },
+        }));
+        const head = el('div', { class: 're-pane-head' }, [
+            nameInput,
+            el('button', { class: 're-link re-danger', type: 'button', onclick: () => deleteRule(index) }, ['Delete']),
         ]);
-        const box = el('div', { class: 're-group' }, [head, renderGroupBody(group, depth, rule, path)]);
-        box.dataset.loc = locKey({ rule, field: 'condition', path });
-        return box;
+        head.dataset.loc = locKey({ rule: index, field: 'name' });
+        pane.append(head);
+        const body = el('div', { class: 're-pane-body' }, [renderVariables(rule, index), renderWhen(rule, index), renderThen(rule, index)]);
+        // An issue with no single field (no actions and no incident) lands on the body.
+        body.dataset.loc = locKey({ rule: index });
+        pane.append(body);
     }
-    function renderConditionArea(rule, index) {
-        const wrap = el('div', {}, [
-            el('div', { class: 're-mode' }, [
-                el('span', { class: 're-mode-lead' }, ['match']),
-                matchSelect(rule.condition, (next) => { rule.condition = next; renderForm(); }),
+    function renderVariables(rule, index) {
+        const { title, help } = sheetTitle('', HELP.variables, ['Variables']);
+        const sheet = el('div', { class: 're-sheet re-sheet-vars' }, [
+            sheetHead(['Name', 'Formula', 'Formula result', 'Description'], ['Letters, digits and underscores', 'An Excel-style formula', 'Live value from the host', 'What the value means']),
+        ]);
+        rule.variables.forEach((v, i) => sheet.append(variableRow(v, i, rule, index)));
+        const n = rule.variables.length + 1;
+        const full = rule.variables.length >= LIMITS.maxVariables;
+        sheet.append(addRow(n, 'Add', () => {
+            rule.variables.push({ name: '', formula: '' });
+            focusNext = locKey({ rule: index, field: 'variable', variable: rule.variables.length - 1 });
+            render();
+        }, full ? `A rule holds at most ${LIMITS.maxVariables} variables.` : undefined));
+        const block = el('div', { class: 're-sheet-block' }, [title, help, sheet]);
+        block.dataset.loc = locKey({ rule: index, field: 'variable' });
+        return block;
+    }
+    function variableRow(v, i, rule, index) {
+        const result = resultCell('Formula result', opts.monitor?.({ rule: index, kind: 'variable', name: v.name }));
+        const nameCell = cell('', 'Name', { rule: index, field: 'variable', variable: i }, [
+            textInput(v.name, (val) => { v.name = val; }, { label: `Name of variable ${i + 1}`, placeholder: 'name' }),
+        ]);
+        return el('div', { class: 're-row' }, [
+            gutter(i + 1),
+            nameCell,
+            formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")' }),
+            result,
+            cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [
+                textInput(v.description ?? '', (val) => { if (val)
+                    v.description = val;
+                else
+                    delete v.description; }, { label: `Description of variable ${i + 1}`, prose: true }),
             ]),
+            removeBtn('Delete variable', () => { rule.variables.splice(i, 1); render(); }),
         ]);
-        const c = rule.condition;
-        if (!c) {
-            // Nothing to mark inside, so the area itself carries the issue.
-            wrap.dataset.loc = locKey({ rule: index, field: 'condition' });
-            wrap.append(linkBtn('Add condition', () => { rule.condition = emptyCond(); renderForm(); }));
-        }
-        else if (isGroup(c)) {
-            wrap.append(renderGroupBody(c, 1, index, []));
-        }
-        else {
-            wrap.append(renderLeaf(c, (next) => { rule.condition = next; renderForm(); }, index, []));
-        }
-        return wrap;
     }
-    const part = (label, trailing) => el('div', { class: 're-part-head' }, [el('span', { class: 're-part-label' }, [label]), ...(trailing ? [trailing] : [])]);
-    // ---- one rule ----
-    function renderRule(rule, index) {
-        const head = el('div', { class: 're-rule-head' }, [
-            textField('rule name', rule.name, (v) => (rule.name = v), { placeholder: 'rule-name', cls: 're-f-name', help: HELP.name, loc: { rule: index, field: 'name' } }),
-            textField('cooldown', rule.cooldown, (v) => { if (v)
+    function renderWhen(rule, index) {
+        const match = selectInput(rule.match, MATCH_OPTIONS, (v) => { rule.match = v; refresh(); }, 'Match');
+        const edge = selectInput(rule.edge ?? 'none', EDGE_OPTIONS, (v) => { if (v === 'none')
+            delete rule.edge;
+        else
+            rule.edge = v; refresh(); }, 'Trigger');
+        const { title, help } = sheetTitle('re-when-title', HELP.when, ['When', match, 'of these', edge]);
+        const sheet = el('div', { class: 're-sheet re-sheet-when' }, [
+            sheetHead(['Condition', 'Condition result', 'Description'], ['A formula that is true or false', 'Live value from the host', 'What the row means; the alarm can quote it']),
+        ]);
+        rule.conditions.forEach((c, i) => sheet.append(conditionRow(c, i, rule, index)));
+        const full = rule.conditions.length >= LIMITS.maxChildren;
+        sheet.append(addRow(rule.conditions.length + 1, 'Add', () => {
+            rule.conditions.push({ expr: '' });
+            focusNext = locKey({ rule: index, field: 'expr', condition: rule.conditions.length - 1 });
+            render();
+        }, full ? `A rule holds at most ${LIMITS.maxChildren} conditions.` : undefined));
+        const block = el('div', { class: 're-sheet-block' }, [title, help, sheet]);
+        block.dataset.loc = locKey({ rule: index, field: 'condition' });
+        return block;
+    }
+    function conditionRow(c, i, rule, index) {
+        return el('div', { class: 're-row' }, [
+            gutter(i + 1),
+            formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50' }),
+            resultCell('Condition result', opts.monitor?.({ rule: index, kind: 'condition', index: i })),
+            cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [
+                textInput(c.description ?? '', (val) => { if (val)
+                    c.description = val;
+                else
+                    delete c.description; }, { label: `Description of condition ${i + 1}`, prose: true }),
+            ]),
+            removeBtn('Delete condition', () => { rule.conditions.splice(i, 1); render(); }),
+        ]);
+    }
+    function renderThen(rule, index) {
+        const { title, help } = sheetTitle('', HELP.then, ['Then']);
+        const sheet = el('div', { class: 're-sheet re-sheet-then' }, [
+            sheetHead(['Action', 'Field', 'Formula', 'Formula result'], ['What happens when the rule fires', 'The field of the action', 'Text, or a formula when it starts with =', 'What the gateway sends']),
+        ]);
+        const rows = thenRows(rule);
+        rows.forEach((row, i) => sheet.append(thenRow(row, i, rule, index)));
+        sheet.append(addRow(rows.length + 1, 'Add', () => {
+            rule.actions.push({ topic: '' });
+            focusNext = locKey({ rule: index, field: 'topic', action: rule.actions.length - 1 });
+            render();
+        }));
+        const cooldown = el('input', {
+            type: 'text',
+            value: rule.cooldown ?? '',
+            placeholder: '0s',
+            'aria-label': 'Cooldown',
+            title: 'A Go duration: 30s, 1m30s, 500ms. Units ns, us, ms, s, m, h. Blank fires every time.',
+            oninput: (e) => { const v = e.target.value; if (v)
                 rule.cooldown = v;
             else
-                delete rule.cooldown; }, { placeholder: 'none', cls: 're-f-cool', help: HELP.cooldown, loc: { rule: index, field: 'cooldown' } }),
-            selectField('trigger', rule.edge ?? 'none', TRIGGER_OPTIONS, (v) => { if (v === 'none')
-                delete rule.edge;
-            else
-                rule.edge = v; }, false, 're-f-trig', HELP.trigger),
-            linkBtn('Delete rule', () => { model.rules.splice(index, 1); renderForm(); }, 're-danger'),
-        ]);
-        const actRows = el('div', { class: 're-publist' });
-        rule.actions.forEach((a, i) => {
-            actRows.append(el('div', { class: 're-pubrow' }, [
-                textField('topic', a.topic, (v) => (a.topic = v), { placeholder: 'camera/record', help: HELP.topic, loc: { rule: index, field: 'topic', action: i } }),
-                textField('payload', a.payload, (v) => { if (v)
-                    a.payload = v;
-                else
-                    delete a.payload; }, { placeholder: '{}', mono: true, help: HELP.payload }),
-                removeBtn('Remove action', () => { rule.actions.splice(i, 1); renderForm(); }),
-            ]));
+                delete rule.cooldown; refresh(); },
         });
-        const incCheckbox = el('input', { type: 'checkbox', onchange: (e) => {
-                rule.incident = e.target.checked ? { source: '', severity: 'warning', summary: '' } : null;
-                renderForm();
-            } });
-        if (rule.incident)
-            incCheckbox.setAttribute('checked', 'checked');
-        const incToggle = el('label', { class: 're-toggle' }, [incCheckbox, el('span', {}, ['enabled'])]);
-        const incBody = el('div', { class: 're-incrow' });
-        if (rule.incident) {
-            const inc = rule.incident;
-            incBody.append(textField('source', inc.source, (v) => (inc.source = v), { placeholder: 'plc1', help: HELP.source, loc: { rule: index, field: 'source' } }), selectField('severity', inc.severity, SEVERITY_OPTIONS, (v) => (inc.severity = v), false, '', HELP.severity), textField('summary', inc.summary, (v) => (inc.summary = v), { placeholder: 'Machine alarm active', help: HELP.summary, loc: { rule: index, field: 'summary' }, prose: true }));
-        }
-        const box = el('div', { class: 're-rule' }, [
-            head,
-            el('div', { class: 're-part' }, [part('When'), renderConditionArea(rule, index)]),
-            el('div', { class: 're-part' }, [part('Then publish', linkBtn('Add publish', () => { rule.actions.push({ topic: '' }); renderForm(); })), actRows]),
-            el('div', { class: 're-part' }, [part('Raise incident', incToggle), incBody]),
+        identifierAttrs(cooldown);
+        const cool = el('div', { class: 're-cool' }, ['Actions are fired at most once every', cooldown]);
+        cool.dataset.loc = locKey({ rule: index, field: 'cooldown' });
+        sheet.append(cool);
+        return el('div', { class: 're-sheet-block' }, [title, help, sheet]);
+    }
+    function thenRow(row, i, rule, index) {
+        const current = row.kind === 'publish' ? 'publish' : rule.incident.severity;
+        const action = selectInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`);
+        const value = thenGet(rule, row);
+        let result = resultCell('Formula result', previewThen(value, rule));
+        const loc = row.kind === 'publish'
+            ? { rule: index, field: THEN_ISSUE_FIELD[row.field], action: row.index }
+            : { rule: index, field: THEN_ISSUE_FIELD[row.field] };
+        const placeholder = row.field === 'topic' ? 'camera/record' : row.field === 'payload' ? '{}' : row.field === 'summary' ? 'Eight words, lead with the fix' : '';
+        return el('div', { class: 're-row' }, [
+            gutter(i + 1),
+            cell('', 'Action', null, [action]),
+            cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]]),
+            formulaCell(value, (v) => {
+                thenSet(rule, row, v);
+                const next = resultCell('Formula result', previewThen(v, rule));
+                result.replaceWith(next);
+                result = next;
+            }, { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder }),
+            result,
+            removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', () => {
+                if (row.kind === 'publish')
+                    rule.actions.splice(row.index, 1);
+                else
+                    rule.incident = null;
+                render();
+            }),
         ]);
-        // An issue with no single field (no actions and no incident) lands here.
-        box.dataset.loc = locKey({ rule: index });
-        return box;
     }
-    function renderForm() {
-        form.replaceChildren();
-        if (model.rules.length === 0) {
-            form.append(el('p', { class: 're-empty' }, ['No rules yet — add one, or load the example.']));
+    /** The Action select changed: convert between a publish and the alarm, or change severity. */
+    function setAction(row, value, rule) {
+        if (value === 'publish') {
+            if (row.kind === 'publish')
+                return;
+            rule.incident = null;
+            rule.actions.push({ topic: '' });
         }
-        model.rules.forEach((r, i) => form.append(renderRule(r, i)));
-        refresh();
+        else {
+            const severity = value;
+            if (row.kind === 'incident') {
+                rule.incident.severity = severity;
+                refresh();
+                return;
+            }
+            rule.actions.splice(row.index, 1);
+            if (rule.incident)
+                rule.incident.severity = severity;
+            else
+                rule.incident = { source: '', severity, summary: '' };
+        }
+        render();
     }
-    // ---- import ----
-    function buildImportPanel() {
-        const ta = el('textarea', { class: 're-mono', rows: 10, placeholder: 'Paste rules.xml here…', spellcheck: false });
-        const msg = el('div', { class: 're-import-msg' });
-        const file = el('input', { type: 'file', accept: '.xml,text/xml,application/xml' });
+    // ---- render ----
+    function render() {
+        renderRail();
+        renderPane();
+        refresh();
+        if (focusNext) {
+            const target = pane.querySelector(`[data-loc="${focusNext}"] input`);
+            focusNext = null;
+            target?.focus();
+        }
+    }
+    // ---- XML panel: view, copy, download, import ----
+    function openXml() {
+        const ta = el('textarea', { rows: 14, 'aria-label': 'rules.xml', spellcheck: false });
+        ta.value = serialize(model);
+        identifierAttrs(ta);
+        const msg = el('div', { class: 're-xml-msg' });
+        const file = el('input', { type: 'file', accept: '.xml,text/xml,application/xml', 'aria-label': 'Open a rules.xml file' });
         file.addEventListener('change', async () => {
             const f = file.files?.[0];
             if (f)
@@ -591,19 +925,28 @@ export function initRulesEditor(root, opts = {}) {
             try {
                 model = parse(ta.value);
                 parseError = null;
-                msg.className = 're-import-msg is-ok';
-                msg.textContent = `Imported ${model.rules.length} rule(s).`;
-                importPanel.hidden = true;
-                renderForm();
+                selected = 0;
+                msg.className = 're-xml-msg';
+                msg.textContent = `Imported ${model.rules.length} rule${model.rules.length === 1 ? '' : 's'}.`;
+                xmlPanel.hidden = true;
+                render();
             }
             catch (err) {
-                msg.className = 're-import-msg is-error';
+                msg.className = 're-xml-msg is-error';
                 msg.textContent = err instanceof RulesParseError ? err.message : 'Could not parse XML.';
             }
         };
-        importPanel.replaceChildren(el('div', { class: 're-import-head' }, [el('strong', {}, ['Import rules.xml']), removeBtn('Close', () => (importPanel.hidden = true))]), ta, el('div', { class: 're-import-actions' }, [file, el('button', { class: 're-btn-primary', type: 'button', onclick: doImport }, ['Import'])]), msg);
+        xmlPanel.replaceChildren(el('div', { class: 're-xml-head' }, [
+            el('span', {}, ['rules.xml']),
+            el('button', { class: 're-link', type: 'button', onclick: () => (xmlPanel.hidden = true) }, ['Close']),
+        ]), ta, el('div', { class: 're-xml-actions' }, [
+            el('button', { class: 're-btn-primary', type: 'button', onclick: doImport }, ['Import']),
+            file,
+            copyBtn,
+            exportBtn,
+        ]), msg);
+        xmlPanel.hidden = false;
     }
-    // ---- export ----
     function download() {
         const blob = new Blob([serialize(model)], { type: 'application/xml' });
         const a = el('a', { href: URL.createObjectURL(blob), download: 'rules.xml' });
@@ -622,27 +965,33 @@ export function initRulesEditor(root, opts = {}) {
             /* clipboard unavailable */
         }
     }
-    // ---- toolbar + layout ----
-    const toolbar = el('div', { class: 're-toolbar' }, [
-        el('button', { class: 're-btn-primary', type: 'button', onclick: () => { parseError = null; model.rules.push({ name: 'new-rule', condition: emptyCond(), actions: [], incident: null }); renderForm(); } }, ['Add rule']),
-        linkBtn('Import XML', () => { buildImportPanel(); importPanel.hidden = false; }),
-        exportBtn,
-        copyBtn,
-        linkBtn('Load example', () => { parseError = null; model = exampleModel(); renderForm(); }),
-        linkBtn('Clear', () => { parseError = null; model = { rules: [] }; renderForm(); }),
+    // ---- top bar + layout ----
+    const top = el('div', { class: 're-top' }, [
+        el('span', { class: 're-title' }, ['Rules']),
+        el('div', { class: 're-top-actions' }, [
+            el('button', { class: 're-btn', type: 'button', onclick: () => (xmlPanel.hidden ? openXml() : (xmlPanel.hidden = true)) }, ['XML']),
+            el('button', { class: 're-btn-primary', type: 'button', onclick: () => {
+                    parseError = null;
+                    model.rules.push({ name: 'new-rule', variables: [], match: 'any', conditions: [{ expr: '' }], actions: [], incident: null });
+                    selected = model.rules.length - 1;
+                    focusNext = locKey({ rule: selected, field: 'name' });
+                    render();
+                } }, ['Add rule']),
+        ]),
     ]);
-    root.replaceChildren(toolbar, status, importPanel, form);
-    renderForm();
+    root.replaceChildren(top, status, xmlPanel, el('div', { class: 're-body' }, [rail, pane]));
+    render();
     return {
         getModel: () => clone(model),
         getXml: () => serialize(model),
         getErrors: () => computeErrors(),
-        setModel: (m) => { parseError = null; model = clone(m); renderForm(); },
+        setModel: (m) => { parseError = null; model = clone(m); selected = 0; render(); },
         destroy: () => { root.replaceChildren(); root.classList.remove('re-root'); },
     };
 }
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';
-export { OPERATORS, SEVERITIES, EDGES, VALUELESS_OPS, OP_ALIASES, LIMITS, COOLDOWN_PATTERN, COOLDOWN_RE, isGroup, canonicalOp, } from './model.js';
+export { FUNCTIONS, RESERVED_NAMES, CONTEXT_NAMES, FormulaError, parseFormula, printFormula, formulaTokens, formulaRefs, inferType, checkFunctions, functionSpec, legacyCondToFormula, isFormula, formulaBody, quoteString, } from './formula.js';
+export { OPERATORS, SEVERITIES, EDGES, MATCHES, VALUELESS_OPS, OP_ALIASES, LIMITS, COOLDOWN_PATTERN, COOLDOWN_RE, VARIABLE_NAME_PATTERN, VARIABLE_NAME_RE, canonicalOp, } from './model.js';
 //# sourceMappingURL=gui.js.map

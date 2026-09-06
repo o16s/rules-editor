@@ -9,6 +9,7 @@ import {
   RulesParseError,
   type RulesEditorHandle,
   type RulesModel,
+  type Rule,
 } from './gui.js';
 
 function setup(opts?: Parameters<typeof initRulesEditor>[1]): { root: HTMLElement; api: RulesEditorHandle } {
@@ -18,202 +19,312 @@ function setup(opts?: Parameters<typeof initRulesEditor>[1]): { root: HTMLElemen
   return { root, api };
 }
 
-function button(root: HTMLElement, label: string): HTMLButtonElement {
-  const b = Array.from(root.querySelectorAll('button')).find((x) => x.textContent === label);
-  if (!b) throw new Error(`button "${label}" not found`);
-  return b as HTMLButtonElement;
+/** Buttons by their text, or by aria-label for the icon-only ones. */
+function buttons(root: HTMLElement, label: string): HTMLButtonElement[] {
+  return Array.from(root.querySelectorAll('button')).filter(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label
+  ) as HTMLButtonElement[];
 }
+function button(root: HTMLElement, label: string): HTMLButtonElement {
+  const b = buttons(root, label)[0];
+  if (!b) throw new Error(`button "${label}" not found`);
+  return b;
+}
+function inputByLabel(root: HTMLElement, label: string): HTMLInputElement {
+  const i = root.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+  if (!i) throw new Error(`input "${label}" not found`);
+  return i;
+}
+function type(input: HTMLInputElement, value: string): void {
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+}
+function choose(select: HTMLSelectElement, value: string): void {
+  select.value = value;
+  select.dispatchEvent(new Event('change'));
+}
+
+const rule = (over: Partial<Rule> = {}): Rule => ({
+  name: 'r',
+  variables: [{ name: 'temp', formula: 'TAG("t")' }],
+  match: 'any',
+  conditions: [{ expr: 'temp > 50' }],
+  actions: [{ topic: 't' }],
+  incident: null,
+  ...over,
+});
+const wrap = (over: Partial<Rule> = {}): RulesModel => ({ rules: [rule(over)] });
 
 describe('rules editor component (jsdom)', () => {
   beforeEach(() => (document.body.innerHTML = ''));
 
-  it('renders the example model with a valid status', () => {
+  it('renders the example model: rail rows, the first rule selected, three sheets', () => {
     const { root, api } = setup();
     expect(api.getXml()).toContain('name="alarm-camera"');
-    expect(root.querySelectorAll('.re-rule').length).toBe(2);
-    expect(root.querySelector('.re-status.is-ok')).toBeTruthy();
+    expect(api.getErrors()).toEqual([]);
+    expect(root.querySelectorAll('.re-rail-row').length).toBe(6);
+    expect(root.querySelector('.re-rail-row.is-selected')?.textContent).toContain('alarm-camera');
+    expect(root.querySelector('.re-sheet-vars .re-row:not(.re-row-add)')).toBeTruthy();
+    expect(root.querySelectorAll('.re-sheet-vars .re-row:not(.re-row-add)').length).toBe(10);
+    expect(root.querySelectorAll('.re-sheet-when .re-row:not(.re-row-add)').length).toBe(5);
+    expect(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)').length).toBe(6);
     expect(root.classList.contains('re-root')).toBe(true);
   });
 
-  it('Clear empties the model', () => {
-    const { root, api } = setup();
-    button(root, 'Clear').click();
-    expect(api.getXml()).toBe('<rules>\n</rules>\n');
-    expect(root.querySelectorAll('.re-rule').length).toBe(0);
-  });
-
-  it('Add rule appends a rule', () => {
+  it('shows column headers and the When sentence from the design', () => {
     const { root } = setup();
-    const before = root.querySelectorAll('.re-rule').length;
-    button(root, 'Add rule').click();
-    expect(root.querySelectorAll('.re-rule').length).toBe(before + 1);
-  });
-
-  it('editing a tag input updates the serialized XML', () => {
-    const { root, api } = setup();
-    const input = Array.from(root.querySelectorAll('input')).find(
-      (i) => (i as HTMLInputElement).value === 'AlarmActive'
-    ) as HTMLInputElement;
-    input.value = 'RenamedTag';
-    input.dispatchEvent(new Event('input'));
-    expect(api.getXml()).toContain('tag="RenamedTag"');
-    expect(api.getXml()).not.toContain('tag="AlarmActive"');
-  });
-
-  it('uses human-readable labels and no emoji', () => {
-    const { root } = setup();
-    const html = root.innerHTML;
-    expect(html.toLowerCase()).toContain('all of');
-    expect(html.toLowerCase()).toContain('any of');
-    expect(html).toContain('at least'); // geq
-    expect(Array.from(root.querySelectorAll('button')).some((b) => b.textContent === 'Delete rule')).toBe(true);
+    const text = root.textContent ?? '';
+    for (const h of ['Name', 'Formula', 'Formula result', 'Description', 'Condition', 'Condition result', 'Action', 'Field']) expect(text).toContain(h);
+    const when = root.querySelector('.re-when-title')!;
+    expect(when.textContent).toContain('When');
+    expect(when.textContent).toContain('of these');
+    const selects = when.querySelectorAll('select');
+    expect(selects[0].value).toBe('any');
+    expect(selects[1].value).toBe('rising');
+    expect(root.textContent).toContain('Actions are fired at most once every');
     expect(/[\u{1F000}-\u{1FAFF}⚙✅↗✖\u{1F5D1}]/u.test(root.textContent ?? '')).toBe(false);
   });
 
-  it('surfaces a validation error for an incomplete rule', () => {
+  it('colours formula tokens in the view and shows the = prefix', () => {
     const { root } = setup();
-    button(root, 'Clear').click();
+    const view = root.querySelector('.re-sheet-vars .re-cell-formula .re-formula-view')!;
+    expect(view.textContent).toBe('=TAG("plc1", "AlarmActive")');
+    expect(view.querySelector('.re-tok-function')?.textContent).toBe('TAG');
+    expect(view.querySelectorAll('.re-tok-string').length).toBe(2);
+  });
+
+  it('shows Then rows per field, with the literal as its result and a folded formula preview', () => {
+    const { root } = setup();
+    const rows = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'));
+    const fields = rows.map((r) => r.querySelector('.re-cell-field')?.textContent);
+    expect(fields).toEqual(['topic', 'payload', 'source', 'title', 'first step', 'cause']);
+    expect(rows[0].querySelector('.re-cell-result')?.textContent).toBe('camera/record');
+    expect(rows[0].querySelector('select')?.value).toBe('publish');
+    expect(rows[3].querySelector('select')?.value).toBe('critical');
+    // cause = condition.description & "…" previews with the first condition's description
+    expect(rows[5].querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
+  });
+
+  it('fills result cells from the monitor callback, and shows a dash without one', () => {
+    const { root } = setup({
+      monitor: (ref) => (ref.kind === 'variable' ? `${ref.name}!` : ref.kind === 'condition' ? `c${ref.index}` : undefined),
+    });
+    expect(root.querySelector('.re-sheet-vars .re-cell-result')?.textContent).toBe('alarm_active!');
+    expect(root.querySelector('.re-sheet-when .re-cell-result')?.textContent).toBe('c0');
+    const { root: plain } = setup();
+    expect(plain.querySelector('.re-sheet-vars .re-cell-result')?.textContent).toBe('');
+  });
+
+  it('selects a rule from the rail and from the narrow select', () => {
+    const { root } = setup();
+    (root.querySelectorAll('.re-rail-row')[1] as HTMLElement).click();
+    expect(root.querySelector('.re-rail-row.is-selected')?.textContent).toContain('pump-overtemp');
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('pump-overtemp');
+    choose(root.querySelector('.re-rail-select') as HTMLSelectElement, '2');
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('wetwell-highlevel');
+  });
+
+  it('filters the rail by name', () => {
+    const { root } = setup();
+    type(inputByLabel(root, 'Filter rules'), 'milk');
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.re-rail-row'));
+    expect(rows.filter((r) => !r.hidden).map((r) => r.textContent)).toHaveLength(1);
+    expect(rows.find((r) => !r.hidden)?.textContent).toContain('bulk1-milk-temp');
+    type(inputByLabel(root, 'Filter rules'), '');
+    expect(rows.filter((r) => !r.hidden)).toHaveLength(6);
+  });
+
+  it('Add rule appends and selects a rule; the rail meta shows the trigger', () => {
+    const { root, api } = setup();
     button(root, 'Add rule').click();
-    const input = Array.from(root.querySelectorAll('input')).find(
-      (i) => i.previousSibling?.textContent?.startsWith('tag')
-    ) as HTMLInputElement;
-    input.value = '';
-    input.dispatchEvent(new Event('input'));
-    expect(root.querySelector('.re-status.is-error')).toBeTruthy();
+    expect(root.querySelectorAll('.re-rail-row').length).toBe(7);
+    expect(api.getModel().rules[6].name).toBe('new-rule');
+    expect(root.querySelector('.re-rail-row.is-selected .re-rail-meta')?.textContent).toBe('every cycle');
+    expect(root.querySelector('.re-rail-row .re-rail-meta')?.textContent).toBe('rising edge');
   });
 
-  // The add buttons must not offer a step that validate() would then reject.
-  function buttons(root: HTMLElement, label: string): HTMLButtonElement[] {
-    return Array.from(root.querySelectorAll('button')).filter((b) => b.textContent === label);
-  }
-
-  const leaf = (): any => ({ kind: 'cond', tag: 'a', op: 'eq', value: '1' });
-  const wrap = (condition: any): RulesModel => ({
-    rules: [{ name: 'r', condition, actions: [{ topic: 't' }], incident: null }],
+  it('duplicates a rule with a unique name and deletes from the rail', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    button(root, 'Duplicate r').click();
+    expect(api.getModel().rules.map((r) => r.name)).toEqual(['r', 'r-copy']);
+    button(root, 'Duplicate r').click();
+    expect(api.getModel().rules.map((r) => r.name)).toEqual(['r', 'r-copy2', 'r-copy']);
+    button(root, 'Delete r-copy2').click();
+    expect(api.getModel().rules.map((r) => r.name)).toEqual(['r', 'r-copy']);
   });
 
-  it('stops Add group at the deepest level that still fits a condition', () => {
-    // and(1) > and(2) > and(3) > cond(4): a group added at level 3 would put
-    // its own condition at level 5, past LIMITS.maxDepth.
-    const { root, api } = setup({
+  it('editing the name, a formula, a condition, and a description updates the XML', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    type(root.querySelector('.re-name') as HTMLInputElement, 'renamed');
+    expect(api.getXml()).toContain('name="renamed"');
+    expect(root.querySelector('.re-rail-name-text')?.textContent).toBe('renamed');
+    type(inputByLabel(root, 'Formula of variable 1'), 'TAG("plc1", "Temp")');
+    expect(api.getXml()).toContain(`formula='TAG("plc1", "Temp")'`);
+    type(inputByLabel(root, 'Condition 1'), 'temp > 60');
+    expect(api.getXml()).toContain('expr="temp &gt; 60"');
+    type(inputByLabel(root, 'Description of condition 1'), 'Hot');
+    expect(api.getXml()).toContain('description="Hot"');
+    expect(root.querySelector('.re-sheet-when .re-formula-view')?.textContent).toBe('=temp > 60');
+  });
+
+  it('Add rows append a variable, a condition, and a publish; delete icons remove them', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    const add = (sheet: string) => (root.querySelector(`${sheet} .re-add`) as HTMLButtonElement).click();
+    add('.re-sheet-vars');
+    expect(api.getModel().rules[0].variables).toHaveLength(2);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Name of variable 2');
+    add('.re-sheet-when');
+    expect(api.getModel().rules[0].conditions).toHaveLength(2);
+    add('.re-sheet-then');
+    expect(api.getModel().rules[0].actions).toHaveLength(2);
+    button(root, 'Delete variable').click();
+    expect(api.getModel().rules[0].variables).toHaveLength(1);
+    buttons(root, 'Delete condition')[1].click();
+    expect(api.getModel().rules[0].conditions).toHaveLength(1);
+    buttons(root, 'Delete action')[2].click();
+    expect(api.getModel().rules[0].actions).toHaveLength(1);
+  });
+
+  it('stops Add at the variable and condition limits', () => {
+    const { root } = setup({
       initialModel: wrap({
-        kind: 'and',
-        children: [{ kind: 'and', children: [{ kind: 'and', children: [leaf()] }] }],
+        variables: Array.from({ length: LIMITS.maxVariables }, (_, i) => ({ name: `v${i}`, formula: '1' })),
+        conditions: Array.from({ length: LIMITS.maxChildren }, () => ({ expr: 'v0 = 1' })),
       }),
     });
-    expect(api.getErrors()).toEqual([]);
-    // A group renders its children before its own add row, so the buttons come
-    // back innermost first: level 3, then 2, then 1.
-    const addGroup = buttons(root, 'Add group');
-    expect(addGroup).toHaveLength(3);
-    expect(addGroup.map((b) => b.disabled)).toEqual([true, false, false]);
-    // A condition at level 4 is still allowed, at every level.
-    expect(buttons(root, 'Add condition').map((b) => b.disabled)).toEqual([false, false, false]);
-    expect(addGroup[0].title).toMatch(/4 levels|deep/i);
+    expect((root.querySelector('.re-sheet-vars .re-add') as HTMLButtonElement).disabled).toBe(true);
+    expect((root.querySelector('.re-sheet-when .re-add') as HTMLButtonElement).disabled).toBe(true);
+    expect((root.querySelector('.re-sheet-then .re-add') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('stops both add buttons at the maximum number of children', () => {
-    const { root, api } = setup({
-      initialModel: wrap({ kind: 'and', children: Array.from({ length: LIMITS.maxChildren }, leaf) }),
-    });
-    expect(api.getErrors()).toEqual([]);
-    expect(buttons(root, 'Add condition')[0].disabled).toBe(true);
-    expect(buttons(root, 'Add group')[0].disabled).toBe(true);
-    expect(buttons(root, 'Add condition')[0].title).toMatch(/16/);
+  it('turns a publish row into an alarm through the Action select, and back', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    choose(root.querySelector('.re-sheet-then select') as HTMLSelectElement, 'error');
+    let r = api.getModel().rules[0];
+    expect(r.actions).toHaveLength(0);
+    expect(r.incident).toMatchObject({ severity: 'error', source: '', summary: '' });
+    expect(api.getXml()).toContain('<incident source="" severity="error"');
+    // severity changes in place
+    choose(root.querySelector('.re-sheet-then select') as HTMLSelectElement, 'info');
+    expect(api.getModel().rules[0].incident?.severity).toBe('info');
+    // fields are editable
+    type(inputByLabel(root, 'title of row 2'), 'Press guard alarm');
+    type(inputByLabel(root, 'first step of row 3'), 'Look.');
+    expect(api.getModel().rules[0].incident).toMatchObject({ summary: 'Press guard alarm', firstStep: 'Look.' });
+    // and back to a publish
+    choose(root.querySelector('.re-sheet-then select') as HTMLSelectElement, 'publish');
+    r = api.getModel().rules[0];
+    expect(r.incident).toBeNull();
+    expect(r.actions).toEqual([{ topic: '' }]);
+    button(root, 'Delete action').click();
+    expect(api.getModel().rules[0].actions).toEqual([]);
   });
 
-  it('leaves the add buttons enabled below the limits', () => {
-    const { root } = setup({ initialModel: wrap({ kind: 'and', children: [leaf()] }) });
-    expect(buttons(root, 'Add condition')[0].disabled).toBe(false);
-    expect(buttons(root, 'Add group')[0].disabled).toBe(false);
+  it('edits the match mode, the trigger, and the cooldown', () => {
+    const { root, api } = setup({ initialModel: wrap({ conditions: [{ expr: 'temp > 1' }, { expr: 'temp < 9' }] }) });
+    const [match, edge] = Array.from(root.querySelectorAll<HTMLSelectElement>('.re-when-title select'));
+    choose(match, 'all');
+    expect(api.getXml()).toContain('<and>');
+    choose(edge, 'rising');
+    expect(api.getXml()).toContain('edge="rising"');
+    type(inputByLabel(root, 'Cooldown'), '45s');
+    expect(api.getXml()).toContain('cooldown="45s"');
   });
 
-  it('names the accepted cooldown units in the field help', () => {
-    const { root } = setup();
-    const cool = root.querySelector('.re-f-cool input') as HTMLInputElement;
-    expect(cool.title).toMatch(/ms/);
-    expect(cool.title).toMatch(/\bh\b/);
+  it('marks a bad formula on its cell with the message, and clears it without a re-render', () => {
+    const { root } = setup({ initialModel: wrap() });
+    const input = inputByLabel(root, 'Condition 1');
+    const cellEl = input.closest('.re-cell') as HTMLElement;
+    type(input, 'temp >');
+    expect(cellEl.classList.contains('is-invalid')).toBe(true);
+    const msg = cellEl.querySelector('.re-msg') as HTMLElement;
+    expect(msg.textContent).toMatch(/column 7/);
+    expect(msg.hidden).toBe(false);
+    expect(root.querySelector('.re-rail-issues')?.textContent).toBe('1 issue');
+    type(input, 'temp > 1');
+    expect(cellEl.classList.contains('is-invalid')).toBe(false);
+    expect(cellEl.querySelector('.re-msg')).toBeNull();
+    expect(root.querySelector('.re-rail-issues')?.textContent).toBe('');
   });
 
-  const invalid = (root: HTMLElement): string[] =>
-    Array.from(root.querySelectorAll('.is-invalid')).map((e) => (e as HTMLElement).dataset.loc ?? '?');
-
-  it('marks the field an issue belongs to, not the whole rule', () => {
+  it('marks the variable name, the description, a Then field, and the cooldown', () => {
     const { root } = setup({
-      initialModel: wrap({ kind: 'and', children: [leaf(), { kind: 'cond', tag: 'b', op: 'gt' } as any] }),
+      initialModel: wrap({
+        cooldown: '5d',
+        variables: [{ name: '1x', formula: 'TAG("t")', description: 'x'.repeat(241) }],
+        conditions: [{ expr: 'TAG("a")' }],
+        actions: [{ topic: '=(' }],
+      }),
     });
-    // Only the value input of the second child is at fault.
-    expect(invalid(root)).toEqual(['0|value|1|']);
-    const marked = root.querySelector('.is-invalid') as HTMLElement;
-    expect(marked.classList.contains('re-f-val')).toBe(true);
-    expect(marked.title).toMatch(/needs a value/);
+    const invalid = Array.from(root.querySelectorAll<HTMLElement>('.is-invalid')).map((n) => n.dataset.loc);
+    expect(invalid).toContain('0|variable|0||');
+    expect(invalid).toContain('0|description|0||');
+    expect(invalid).toContain('0|topic|||0');
+    expect(invalid).toContain('0|cooldown|||');
   });
 
-  it('marks a bad cooldown on the cooldown field', () => {
-    const { root } = setup({
-      initialXml: `<rules><rule name="r" cooldown="5d"><cond tag="a" op="eq" value="1"/><actions><publish topic="t"/></actions></rule></rules>`,
-    });
-    expect(invalid(root)).toEqual(['0|cooldown||']);
+  it('marks the sheet when a rule has no condition, and the pane when it has no action', () => {
+    const { root } = setup({ initialModel: wrap({ conditions: [], actions: [], incident: null }) });
+    expect(root.querySelector('.re-sheet-block.is-invalid .re-sheet-when')).toBeTruthy();
+    expect(root.querySelector('.re-pane-body.is-invalid')).toBeTruthy();
+    expect(root.querySelector('.re-pane-body > .re-msg')?.textContent).toMatch(/actions.*incident/i);
   });
 
-  it('clears the mark as soon as the field is fixed, without a re-render', () => {
-    const { root, api } = setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any) });
-    expect(invalid(root)).toEqual(['0|tag||']);
-    const input = (root.querySelector('.re-f-tag input') as HTMLInputElement);
-    input.value = 'AlarmActive';
-    input.dispatchEvent(new Event('input'));
-    expect(api.getErrors()).toEqual([]);
-    expect(invalid(root)).toEqual([]);
+  it('keeps whole-file issues on the status line', () => {
+    const { root } = setup({ initialXml: '<not-rules/>' });
+    expect(root.querySelector('.re-status.is-error')?.textContent).toMatch(/Root element/);
+    expect(root.querySelector('.re-empty')).toBeTruthy();
   });
 
-  it('marks the group an empty-group issue belongs to', () => {
-    const { root } = setup({ initialModel: wrap({ kind: 'and', children: [{ kind: 'or', children: [] }] } as any) });
-    expect(invalid(root)).toEqual(['0|condition|0|']);
-    expect((root.querySelector('.is-invalid') as HTMLElement).classList.contains('re-group')).toBe(true);
+  it('opens the XML panel with the current file, and imports what is pasted', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    button(root, 'XML').click();
+    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+    expect(ta.value).toBe(api.getXml());
+    ta.value = '<rules><rule name="imported"><cond expr="TAG(&quot;a&quot;)"/><actions><publish topic="t"/></actions></rule></rules>';
+    button(root, 'Import').click();
+    expect(api.getModel().rules[0].name).toBe('imported');
+    expect(root.querySelector('.re-xml')?.hasAttribute('hidden')).toBe(true);
+    button(root, 'XML').click();
+    (root.querySelector('textarea') as HTMLTextAreaElement).value = '<rules><rule';
+    button(root, 'Import').click();
+    expect(root.querySelector('.re-xml-msg.is-error')?.textContent).toMatch(/Malformed/);
   });
 
-  it('marks the rule when the issue has no single field', () => {
-    const { root } = setup({ initialModel: { rules: [{ name: 'r', condition: leaf(), actions: [], incident: null }] } });
-    expect(invalid(root)).toEqual(['0|||']);
-    expect((root.querySelector('.is-invalid') as HTMLElement).classList.contains('re-rule')).toBe(true);
-  });
-
-  it('blocks Export and Copy while the model is invalid, and frees them once fixed', () => {
-    const { root } = setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any) });
-    expect(button(root, 'Export XML').disabled).toBe(true);
-    expect(button(root, 'Copy XML').disabled).toBe(true);
-    expect(button(root, 'Export XML').title).toMatch(/1 issue/);
-    const input = (root.querySelector('.re-f-tag input') as HTMLInputElement);
-    input.value = 'ok';
-    input.dispatchEvent(new Event('input'));
-    expect(button(root, 'Export XML').disabled).toBe(false);
-    expect(button(root, 'Copy XML').disabled).toBe(false);
+  it('blocks Download and Copy while the model is invalid, and frees them once fixed', () => {
+    const { root } = setup({ initialModel: wrap({ conditions: [{ expr: 'temp >' }] }) });
+    button(root, 'XML').click();
+    const dl = button(root, 'Download rules.xml');
+    const copy = button(root, 'Copy XML');
+    expect(dl.disabled).toBe(true);
+    expect(copy.disabled).toBe(true);
+    expect(dl.title).toMatch(/1 issue/);
+    type(inputByLabel(root, 'Condition 1'), 'temp > 1');
+    expect(dl.disabled).toBe(false);
+    expect(copy.disabled).toBe(false);
   });
 
   it('still reports the xml through onChange while invalid, so a host can autosave', () => {
-    let last: any;
-    setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any), onChange: (s) => (last = s) });
-    expect(last.errors.length).toBe(1);
-    expect(last.xml).toContain('<rule name="r">');
+    let last: { xml: string; errors: string[] } | undefined;
+    const { root } = setup({ initialModel: wrap(), onChange: (s) => (last = s) });
+    type(inputByLabel(root, 'Condition 1'), 'temp >');
+    expect(last!.errors.length).toBe(1);
+    expect(last!.xml).toContain('expr="temp &gt;"');
   });
 
-  it('stops mobile keyboards rewriting identifier fields', () => {
+  it('stops mobile keyboards rewriting identifier cells, but not prose cells', () => {
     const { root } = setup();
-    // A tag must match the .udt field exactly; iOS would capitalise and correct it.
-    for (const cls of ['.re-f-name', '.re-f-cool', '.re-f-dev', '.re-f-tag', '.re-f-val']) {
-      const input = root.querySelector(`${cls} input`) as HTMLInputElement;
-      expect(input, cls).toBeTruthy();
-      expect(input.getAttribute('autocapitalize'), cls).toBe('off');
-      expect(input.getAttribute('autocorrect'), cls).toBe('off');
-      expect(input.getAttribute('spellcheck'), cls).toBe('false');
+    for (const label of ['Rule name', 'Name of variable 1', 'Formula of variable 1', 'Condition 1', 'Cooldown', 'Filter rules']) {
+      const input = inputByLabel(root, label);
+      expect(input.getAttribute('autocapitalize'), label).toBe('off');
+      expect(input.getAttribute('autocorrect'), label).toBe('off');
+      expect(input.getAttribute('spellcheck'), label).toBe('false');
     }
-    const inputs = Array.from(root.querySelectorAll('input')) as HTMLInputElement[];
-    const topic = inputs.find((i) => i.value.includes('camera/record'))!;
-    expect(topic.getAttribute('autocapitalize')).toBe('off');
-    // A summary is prose, so leave the keyboard alone.
-    const summary = inputs.find((i) => i.value.startsWith('Machine alarm'))!;
-    expect(summary.getAttribute('autocapitalize')).toBe(null);
-    expect(summary.getAttribute('spellcheck')).toBe(null);
+    for (const label of ['Description of variable 1', 'Description of condition 1', 'title of row 4']) {
+      const input = inputByLabel(root, label);
+      expect(input.getAttribute('autocapitalize'), label).toBe(null);
+      expect(input.getAttribute('spellcheck'), label).toBe(null);
+    }
   });
 
   // ---- narrow-screen guards (no browser: assertions over the injected CSS) ----
@@ -234,6 +345,15 @@ describe('rules editor component (jsdom)', () => {
     expect(css).toMatch(/@media\s*\(max-width/);
   });
 
+  it('folds the rail into a select below 900px', () => {
+    const css = sheet();
+    const medium = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*900px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+    expect(medium.length).toBe(2);
+    expect(medium.join('')).toMatch(/\.re-rail\s*\{[^}]*display:\s*none/);
+    expect(medium.join('')).toMatch(/\.re-rail-select\s*\{[^}]*display:\s*block/);
+    expect(medium.join('')).toMatch(/\.re-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  });
+
   it('lifts every text control to 16px when narrow, so iOS does not zoom on focus', () => {
     // The zoom happens when a focused text field is under 16px. Static help
     // text and buttons do not trigger it, so only controls are checked.
@@ -250,7 +370,7 @@ describe('rules editor component (jsdom)', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
-    expect(blocks.join('')).toMatch(/\.re-field input[^{]*\{[^}]*font-size:\s*16px/);
+    expect(blocks.join('')).toMatch(/\.re-cell input[^{]*\{[^}]*font-size:\s*16px/);
   });
 
   it('gives the small controls a touch-sized target when narrow', () => {
@@ -260,64 +380,46 @@ describe('rules editor component (jsdom)', () => {
       expect(rule, `${sel} has no min-height when narrow`).not.toBeNull();
       expect(Number(rule![1]), sel).toBeGreaterThanOrEqual(44);
     }
-    expect(block).toMatch(/\.re-toggle input[^{]*\{[^}]*(width|height):\s*2[2-9]px/);
   });
 
-  it('gives the long fields a whole row at the smallest widths', () => {
+  it('stacks each sheet row into a labelled card below 560px', () => {
     const css = sheet();
-    // A second, tighter breakpoint, emitted for container and viewport alike.
-    const tight = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*430px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
-    expect(tight.length).toBe(2);
-    const block = tight.join('');
-    // summary, payload and topic are the longest values in the format; at two
-    // columns they were showing about eleven characters.
-    expect(block).toMatch(/\.re-row[^{]*,[^{]*\.re-pubrow[^{]*,[^{]*\.re-incrow[^{]*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/);
-    // The remove button pairs with the fields it removes instead of sitting alone below them.
-    expect(block).toMatch(/\.re-remove[^{]*\{[^}]*grid-row:\s*1\s*\/\s*-1/);
-    // The trigger select clipped to "on rising edg" while sharing a row.
-    expect(block).toMatch(/\.re-rule-head\s*>\s*\.re-field[^{]*\{[^}]*flex:\s*1 1 100%/);
+    const narrow = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*560px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+    expect(narrow.length).toBe(2);
+    const block = narrow.join('');
+    expect(block).toMatch(/\.re-sheet-head\s*\{[^}]*display:\s*none/);
+    expect(block).toMatch(/\.re-row\s*\{[^}]*display:\s*block/);
+    expect(block).toMatch(/\.re-cell::before\s*\{[^}]*content:\s*attr\(data-label\)/);
+    // every cell carries the column name the card shows
+    const { root } = setup();
+    const labels = new Set(Array.from(root.querySelectorAll('.re-cell')).map((c) => c.getAttribute('data-label')));
+    expect([...labels].sort()).toEqual(['Action', 'Condition', 'Condition result', 'Description', 'Field', 'Formula', 'Formula result', 'Name']);
   });
 
   it('shows the error as text, not only as a hover tooltip', () => {
-    const { root } = setup({ initialModel: wrap({ kind: 'cond', tag: '', op: 'eq', value: '1' } as any) });
-    const field = root.querySelector('.re-f-tag') as HTMLElement;
+    const { root } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: '' }] }) });
+    const field = inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement;
     const msg = field.querySelector('.re-msg') as HTMLElement;
     expect(msg, 'no visible message under the field').toBeTruthy();
-    expect(msg.textContent).toMatch(/missing a tag/);
+    expect(msg.textContent).toMatch(/no formula/);
     expect(msg.hidden).toBe(false);
-    // and it goes away again when fixed, without a re-render
-    const input = field.querySelector('input') as HTMLInputElement;
-    input.value = 'AlarmActive';
-    input.dispatchEvent(new Event('input'));
-    expect(field.querySelector('.re-msg')).toBeNull();
   });
 
-  it('makes the help marker a button that reveals its text on tap', () => {
+  it('makes each sheet help a button that reveals its text on tap', () => {
     const { root } = setup();
-    const field = root.querySelector('.re-f-tag') as HTMLElement;
-    const info = field.querySelector('.re-info') as HTMLButtonElement;
-    expect(info.tagName).toBe('BUTTON');
+    const infos = root.querySelectorAll<HTMLButtonElement>('.re-info');
+    expect(infos.length).toBe(3);
+    const info = infos[0];
     expect(info.type).toBe('button');
     expect(info.getAttribute('aria-expanded')).toBe('false');
-    const help = field.querySelector('.re-help') as HTMLElement;
-    expect(help).toBeTruthy();
+    const help = info.closest('.re-sheet-block')!.querySelector('.re-help') as HTMLElement;
     expect(help.hidden).toBe(true);
     info.click();
     expect(help.hidden).toBe(false);
     expect(info.getAttribute('aria-expanded')).toBe('true');
-    expect(help.textContent).toMatch(/Field to test/);
+    expect(help.textContent).toMatch(/TAG\("device", "tag"\)/);
     info.click();
     expect(help.hidden).toBe(true);
-  });
-
-  it('does not focus the field when the help marker is tapped', () => {
-    const { root } = setup();
-    const field = root.querySelector('.re-f-tag') as HTMLElement;
-    const info = field.querySelector('.re-info') as HTMLButtonElement;
-    let labelActivated = false;
-    (field.querySelector('input') as HTMLInputElement).addEventListener('click', () => (labelActivated = true));
-    info.click();
-    expect(labelActivated).toBe(false);
   });
 
   it('injects its scoped stylesheet once', () => {
@@ -330,9 +432,7 @@ describe('rules editor component (jsdom)', () => {
 describe('rules editor component API', () => {
   beforeEach(() => (document.body.innerHTML = ''));
 
-  const oneRule: RulesModel = {
-    rules: [{ name: 'x', condition: { kind: 'cond', tag: 'a', op: 'eq', value: '1' }, actions: [{ topic: 't' }], incident: null }],
-  };
+  const oneRule: RulesModel = wrap({ name: 'x' });
 
   it('honours initialModel', () => {
     const { api } = setup({ initialModel: oneRule });
@@ -357,11 +457,12 @@ describe('rules editor component API', () => {
     expect(last!.model.rules.some((r) => r.name === 'new-rule')).toBe(true);
   });
 
-  it('accepts valid initialXml', () => {
+  it('accepts valid initialXml, in the v0.2 form too', () => {
     const xml = '<rules>\n  <rule name="r">\n    <cond tag="a" op="eq" value="1"/>\n    <actions>\n      <publish topic="t"/>\n    </actions>\n  </rule>\n</rules>\n';
-    const { api } = setup({ initialXml: xml });
+    const { root, api } = setup({ initialXml: xml });
     expect(api.getXml()).toContain('name="r"');
     expect(api.getErrors()).toEqual([]);
+    expect(root.querySelector('.re-sheet-when .re-formula-view')?.textContent).toBe('=TAG("a") = 1');
   });
 
   it('surfaces a malformed initialXml via errors instead of throwing', () => {
@@ -380,17 +481,20 @@ describe('rules editor component API', () => {
     expect(api.getErrors()).toEqual([]);
   });
 
-  it('re-exports the located issues and the cooldown pattern too', async () => {
+  it('re-exports the located issues, the patterns, and the formula core', async () => {
     const entry = await import('./index.js');
     expect(typeof entry.validateIssues).toBe('function');
     expect(typeof entry.COOLDOWN_PATTERN).toBe('string');
     expect(entry.COOLDOWN_RE.test('1m30s')).toBe(true);
-    expect(entry.validateIssues({ rules: [{ name: '', condition: null, actions: [], incident: null }] })[0])
-      .toMatchObject({ rule: 0, field: 'name' });
+    expect(entry.VARIABLE_NAME_RE.test('milk_temp')).toBe(true);
+    expect(entry.validateIssues({ rules: [rule({ name: '' })] })[0]).toMatchObject({ rule: 0, field: 'name' });
+    expect(entry.printFormula(entry.parseFormula('and(a,b)'))).toBe('AND(a, b)');
+    expect(entry.FUNCTIONS.some((f) => f.name === 'RATE')).toBe(true);
+    expect(entry.LIMITS.maxVariables).toBe(64);
   });
 
   it('re-exports the core (parse/serialize/validate) from the same entry', () => {
-    const m: RulesModel = parse('<rules><rule name="r"><cond tag="a" op="eq" value="1"/><actions><publish topic="t"/></actions></rule></rules>');
+    const m: RulesModel = parse('<rules><rule name="r"><cond expr="TAG(&quot;a&quot;)"/><actions><publish topic="t"/></actions></rule></rules>');
     expect(serialize(m)).toContain('name="r"');
     expect(validate(m)).toEqual([]);
     expect(() => parse('<bad')).toThrow(RulesParseError);
@@ -400,6 +504,7 @@ describe('rules editor component API', () => {
     const { root, api } = setup();
     api.setModel({ rules: [] });
     expect(api.getXml()).toBe('<rules>\n</rules>\n');
+    expect(root.querySelector('.re-empty')).toBeTruthy();
     api.destroy();
     expect(root.children.length).toBe(0);
     expect(root.classList.contains('re-root')).toBe(false);

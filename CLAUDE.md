@@ -1,15 +1,18 @@
 # rules-editor — repo guide
 
 Framework-free editor for octaview Edge Hub `rules.xml`, plus the
-parse/serialize/validate core. Vanilla TypeScript, **zero runtime dependencies**,
-self-injecting scoped styles. Consumed by the octaview website and edge-hub.
+parse/serialize/validate core and the formula language. Vanilla TypeScript,
+**zero runtime dependencies**, self-injecting scoped styles. Consumed by the
+octaview website and edge-hub.
 
 ## Layout
 - `src/` — source of truth.
   - `gui.ts` — the `initRulesEditor` component **and** the re-exports of the core
-    (this is the public surface).
-  - `model.ts` — types + constants. `serialize.ts` — model → xml.
-    `parse.ts` — xml → model + `validate`.
+    (this is the public surface). Renders a rule rail and, for the selected
+    rule, three sheets: Variables, When, Then.
+  - `model.ts` — types + constants. `formula.ts` — the formula language:
+    tokenizer, parser, printer, static checks, function registry.
+    `serialize.ts` — model → xml. `parse.ts` — xml → model + `validate`.
   - `index.ts` — barrel (`export * from './gui.js'`), the package entry.
   - `*.test.ts` — vitest specs (jsdom).
 - `dist/` — built ESM + `.d.ts`, **committed** so git-tag installs need no build.
@@ -18,7 +21,8 @@ self-injecting scoped styles. Consumed by the octaview website and edge-hub.
 - After editing `src/`, run `npm run build` and **commit the updated `dist/`**.
 - `npm test` (vitest + jsdom) · `npm run typecheck`.
 - Keep the API in `gui.ts`; `index.ts` just re-exports it. One import for
-  consumers: `initRulesEditor`, `parse`, `serialize`, `validate`, model types.
+  consumers: `initRulesEditor`, `parse`, `serialize`, `validate`, the formula
+  functions, model types.
 
 ## Conventions
 - **No runtime dependencies** — keep it that way.
@@ -27,11 +31,19 @@ self-injecting scoped styles. Consumed by the octaview website and edge-hub.
 - Styles inject once as `#octaview-rules-editor-styles`, scoped under `.re-root`,
   themeable via host CSS custom properties (`--accent`, `--ink`, `--font-body`, …)
   with fallbacks. Class names are `re-*`.
+- The condition form the editor writes is `<cond expr="…"/>`. The 0.2 form
+  `<cond tag op value/>` and nested `<and>`/`<or>` groups are read-only input:
+  `parse()` turns them into formula rows, and `serialize()` never writes them.
+- A new formula function is one line in `FUNCTIONS` in `formula.ts`. The
+  gateway must implement it before it does anything at runtime.
+- `schema/rules.xsd` and `src/xsd.test.ts` must stay in lockstep with
+  `parse()`/`validate()`: every new rule gets a fixture in `VALID`, `INVALID`,
+  `APP_LEVEL`, or `XSD_STRICTER`.
 - The `rules.xml` schema must stay in sync with the octaview docs:
   https://octaview.ai/en/docs/edge-hub/rules
 
 ## Release
-1. Bump `version` in `package.json`.
+1. Bump `version` in `package.json` and in `schema/rules.xsd` (`xs:schema version`).
 2. `npm run build` (updates `dist/`).
 3. Commit, `git tag -a vX.Y.Z -m vX.Y.Z`, `git push --follow-tags`.
 4. Consumers install the release tarball (CI-safe, HTTPS, no SSH):

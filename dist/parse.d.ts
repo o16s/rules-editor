@@ -5,9 +5,8 @@ export declare class RulesParseError extends Error {
 export declare function parse(xml: string): RulesModel;
 /**
  * A validation message plus where it belongs, so an editor can point at the
- * input that needs fixing. `rule` is an index into `model.rules`; `path` is
- * the chain of child indexes from that rule's top-level condition down to the
- * element at fault (`[]` is the top-level condition itself).
+ * input that needs fixing. `rule` is an index into `model.rules`; `variable`,
+ * `condition` and `action` are indexes into the rule's lists.
  */
 export interface ValidationIssue {
     /** Human-readable message — the text `validate()` returns. */
@@ -15,9 +14,11 @@ export interface ValidationIssue {
     /** Index in `model.rules`, absent for a whole-file issue. */
     rule?: number;
     /** The input at fault, absent when the issue is about the rule as a whole. */
-    field?: 'name' | 'cooldown' | 'condition' | 'tag' | 'value' | 'topic' | 'source' | 'summary';
-    /** Child indexes from the rule's top-level condition, for a condition issue. */
-    path?: number[];
+    field?: 'name' | 'cooldown' | 'variable' | 'formula' | 'condition' | 'expr' | 'description' | 'topic' | 'payload' | 'source' | 'summary' | 'first_step' | 'cause';
+    /** Index in `rule.variables`, for a variable issue. */
+    variable?: number;
+    /** Index in `rule.conditions`, for a condition row issue. */
+    condition?: number;
     /** Index in `rule.actions`, for a publish issue. */
     action?: number;
 }

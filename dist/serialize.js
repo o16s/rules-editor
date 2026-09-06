@@ -1,7 +1,6 @@
-import { isGroup, VALUELESS_OPS } from './model.js';
 // Serialize a rules model to the Edge Hub rules.xml schema. Output mirrors the
 // documented style: double-quoted attributes, single-quoted when the value
-// contains a double quote (e.g. JSON payloads), always XML-safe.
+// contains a double quote (e.g. JSON payloads and formulas), always XML-safe.
 const INDENT = '  ';
 /** Escape for a double-quoted attribute value. */
 function escDouble(v) {
@@ -25,20 +24,17 @@ function attr(name, value) {
     }
     return `${name}="${escDouble(value)}"`;
 }
+function variableLine(v, depth) {
+    const parts = [attr('name', v.name), attr('formula', v.formula)];
+    if (v.description)
+        parts.push(attr('description', v.description));
+    return `${INDENT.repeat(depth)}<var ${parts.join(' ')}/>`;
+}
 function condLine(c, depth) {
-    const pad = INDENT.repeat(depth);
-    if (isGroup(c)) {
-        const inner = c.children.map((child) => condLine(child, depth + 1)).join('\n');
-        return `${pad}<${c.kind}>\n${inner}\n${pad}</${c.kind}>`;
-    }
-    const parts = [];
-    if (c.device)
-        parts.push(attr('device', c.device));
-    parts.push(attr('tag', c.tag));
-    parts.push(attr('op', c.op));
-    if (!VALUELESS_OPS.includes(c.op) && c.value !== undefined)
-        parts.push(attr('value', c.value));
-    return `${pad}<cond ${parts.join(' ')}/>`;
+    const parts = [attr('expr', c.expr)];
+    if (c.description)
+        parts.push(attr('description', c.description));
+    return `${INDENT.repeat(depth)}<cond ${parts.join(' ')}/>`;
 }
 function publishLine(p, depth) {
     const pad = INDENT.repeat(depth);
@@ -53,17 +49,32 @@ function ruleBlock(rule) {
         head.push(attr('cooldown', rule.cooldown));
     if (rule.edge && rule.edge !== 'none')
         head.push(attr('edge', rule.edge));
+    const pad2 = INDENT.repeat(2);
     const body = [];
-    if (rule.condition)
-        body.push(condLine(rule.condition, 2));
+    if (rule.variables.length) {
+        const vars = rule.variables.map((v) => variableLine(v, 3)).join('\n');
+        body.push(`${pad2}<variables>\n${vars}\n${pad2}</variables>`);
+    }
+    if (rule.conditions.length === 1) {
+        body.push(condLine(rule.conditions[0], 2));
+    }
+    else if (rule.conditions.length > 1) {
+        const kind = rule.match === 'all' ? 'and' : 'or';
+        const rows = rule.conditions.map((c) => condLine(c, 3)).join('\n');
+        body.push(`${pad2}<${kind}>\n${rows}\n${pad2}</${kind}>`);
+    }
     if (rule.actions.length) {
         const pubs = rule.actions.map((p) => publishLine(p, 3)).join('\n');
-        body.push(`${INDENT.repeat(2)}<actions>\n${pubs}\n${INDENT.repeat(2)}</actions>`);
+        body.push(`${pad2}<actions>\n${pubs}\n${pad2}</actions>`);
     }
     if (rule.incident) {
         const i = rule.incident;
-        const inc = `${attr('source', i.source)} ${attr('severity', i.severity)} ${attr('summary', i.summary)}`;
-        body.push(`${INDENT.repeat(2)}<incident ${inc}/>`);
+        const parts = [attr('source', i.source), attr('severity', i.severity), attr('summary', i.summary)];
+        if (i.firstStep)
+            parts.push(attr('first_step', i.firstStep));
+        if (i.cause)
+            parts.push(attr('cause', i.cause));
+        body.push(`${pad2}<incident ${parts.join(' ')}/>`);
     }
     const open = `${INDENT}<rule ${head.join(' ')}>`;
     return `${open}\n${body.join('\n')}\n${INDENT}</rule>`;
