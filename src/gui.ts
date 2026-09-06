@@ -309,21 +309,23 @@ const MEDIUM = `
   .re-root .re-rail-select { display:block; }
 `;
 const NARROW = `
-  .re-root .re-cell input, .re-root .re-cell select, .re-root .re-name, .re-root .re-cool input, .re-root .re-filter input, .re-root .re-xml textarea { font-size:16px; }
-  .re-root .re-when-title select { font-size:16px; }
+  .re-root .re-name, .re-root .re-cool input, .re-root .re-filter input, .re-root .re-xml textarea, .re-root .re-rail-select { font-size:16px; }
+  .re-root .re-cell select, .re-root .re-when-title select { font-size:16px; }
+  .re-root .re-bar input { font-size:16px; }
+  .re-root .re-cell input { pointer-events:none; }
   .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
   .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; }
-  .re-root .re-btn, .re-root .re-btn-primary { min-height:44px; }
+  .re-root .re-btn, .re-root .re-btn-primary, .re-root .re-tab { min-height:44px; }
   .re-root .re-info { min-width:32px; min-height:32px; font-size:15px; }
   .re-root .re-help, .re-root .re-msg { font-size:13px; }
-  .re-root .re-sheet-head { display:none; }
-  .re-root .re-row { display:block; position:relative; padding:8px 10px 8px 10px; }
-  .re-root .re-row.re-row-add { display:grid; padding:0; }
-  .re-root .re-row > .re-gutter { display:inline-block; background:none; border:none; padding:0 0 4px; text-align:left; }
-  .re-root .re-row > .re-cell { display:block; border-right:none; padding:2px 0 6px; }
-  .re-root .re-row > .re-cell::before { content:attr(data-label); display:block; font-size:12px; line-height:16px; color:var(--re-muted); margin-bottom:2px; }
-  .re-root .re-cell-formula input { top:20px; }
-  .re-root .re-row > .re-remove { position:absolute; top:4px; right:4px; }
+  .re-root .re-tabs { display:flex; }
+  .re-root .re-sheet-vars .re-sheet-head, .re-root .re-sheet-vars .re-row { grid-template-columns:30px 110px 200px 90px 180px 30px; min-width:640px; }
+  .re-root .re-sheet-when .re-sheet-head, .re-root .re-sheet-when .re-row { grid-template-columns:30px 200px 90px 180px 30px; min-width:530px; }
+  .re-root .re-sheet-then .re-sheet-head, .re-root .re-sheet-then .re-row { grid-template-columns:30px 150px 80px 200px 180px 30px; min-width:670px; }
+  .re-root .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
+  .re-root .re-formula-view, .re-root .re-cell input, .re-root .re-cell-result, .re-root .re-cell-field { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .re-root .re-formula-view { min-height:36px; line-height:22px; }
+  .re-root .re-cell > .re-msg { display:none; }
 `;
 /**
  * Below this the pane padding and the When heading are the last things that
@@ -373,6 +375,7 @@ const STYLES = `
 }
 .re-root *, .re-root *::before, .re-root *::after { box-sizing: border-box; }
 .re-root button, .re-root input, .re-root select, .re-root textarea { font-family: inherit; }
+.re-root button, .re-root .re-cell, .re-root .re-rail-row { -webkit-tap-highlight-color: transparent; }
 .re-top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 15px; border-bottom:1px solid var(--re-line); background:var(--re-paper); }
 .re-title { font-size:14px; font-weight:600; }
 .re-top-actions { display:flex; align-items:center; gap:8px; }
@@ -430,19 +433,36 @@ const STYLES = `
 .re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
 .re-info:hover, .re-info[aria-expanded="true"] { color:var(--re-accent); }
 .re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
-.re-sheet { border:1px solid var(--re-line); border-radius:4px; overflow:hidden; }
+/* Sheets scroll sideways inside their frame, like a spreadsheet; the page never does. */
+.re-sheet { border:1px solid var(--re-line); border-radius:4px; overflow-x:auto; overflow-y:hidden; }
 .re-sheet-block.is-invalid > .re-sheet { border-color:var(--re-critical); }
+.re-tabs { display:none; gap:4px; border-bottom:1px solid var(--re-grid); }
+.re-tab { flex:1; background:none; border:none; border-bottom:2px solid transparent; padding:8px 4px; font-size:13px; color:var(--re-muted); cursor:pointer; }
+.re-tab[aria-selected="true"] { color:var(--re-ink); border-bottom-color:var(--re-reading); font-weight:500; }
+.re-tab-count { color:var(--re-muted); margin-left:5px; font-weight:400; }
 .re-sheet-head, .re-row { display:grid; align-items:stretch; }
-.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(0,1fr) 100px 220px 30px; }
-.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(0,1fr) 110px 280px 30px; }
-.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(0,1fr) 220px 30px; }
+.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(200px,1fr) 100px 220px 30px; min-width:704px; }
+.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(200px,1fr) 110px 280px 30px; min-width:650px; }
+.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(200px,1fr) 220px 30px; min-width:764px; }
 .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
 .re-sheet-head { background:var(--re-head); border-bottom:1px solid #e4e0d9; }
 .re-sheet-head > span { font-size:12px; color:var(--re-muted); padding:6px 9px; border-right:1px solid var(--re-grid); }
 .re-sheet-head > span:last-child { border-right:none; }
 .re-row { border-bottom:1px solid var(--re-grid); }
 .re-row:last-child { border-bottom:none; }
-.re-gutter { font-size:12px; color:var(--re-muted); padding:7px 8px; text-align:center; background:var(--re-head); border-right:1px solid var(--re-grid); }
+/* Row numbers stay frozen on the left while the sheet scrolls. */
+.re-gutter, .re-gutter-head { position:sticky; left:0; z-index:1; background:var(--re-head); }
+.re-gutter { font-size:12px; color:var(--re-muted); padding:7px 8px; text-align:center; border-right:1px solid var(--re-grid); }
+.re-cell.is-selected { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
+.re-bar { display:none; position:sticky; bottom:0; z-index:2; background:var(--re-paper); border-top:1px solid var(--re-line); padding:8px 12px 10px; box-shadow:0 -2px 8px rgba(0,0,0,.06); }
+.re-bar.is-open { display:block; }
+.re-bar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:var(--re-muted); margin-bottom:6px; min-height:20px; }
+.re-bar-line { display:flex; align-items:center; gap:8px; }
+.re-bar input { flex:1; min-width:0; border:1px solid var(--re-line); border-radius:3px; padding:8px 10px; font-size:14px; color:var(--re-ink); background:var(--re-surface); }
+.re-bar input[readonly] { background:var(--re-result); color:var(--re-reading); }
+.re-bar-btn { flex:none; min-width:44px; min-height:44px; border:1px solid var(--re-line); border-radius:3px; background:var(--re-surface); font-size:18px; color:var(--re-ink); cursor:pointer; }
+.re-bar-btn.re-bar-ok { background:var(--re-reading); color:#fff; border-color:var(--re-reading); }
+.re-bar > .re-msg { padding:6px 0 0; background:none; }
 .re-cell { position:relative; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
 .re-cell input, .re-cell select { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
 .re-cell select { height:auto; }
@@ -508,8 +528,27 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
   let selected = 0;
   let filter = '';
-  /** data-loc of the input to focus after the next render. */
+  /** data-loc of the input to focus (or, when narrow, the cell to select) after the next render. */
   let focusNext: string | null = null;
+
+  // ---- narrow mode: one sheet at a time, tap a cell, edit in the bar ----
+  /** True when the editor is at most 560px wide: the Google Sheets phone model. */
+  let narrow = false;
+  type SheetName = 'vars' | 'when' | 'then';
+  let activeSheet: SheetName = 'vars';
+  /** What the formula bar needs to know about a tapped cell. */
+  interface CellInfo {
+    /** Reads like a name box for the cell's own content: "temp_rate · Formula". */
+    address: string;
+    /** The in-cell input the bar mirrors; absent for a read-only cell. */
+    input?: HTMLInputElement;
+    /** Removes the cell's row. */
+    remove?: () => void;
+  }
+  const cellInfo = new WeakMap<HTMLElement, CellInfo>();
+  let selectedCell: HTMLElement | null = null;
+  /** The value the selected cell had when it was tapped, for Cancel. */
+  let selectedOriginal = '';
 
   /** Validation messages, with any initial parse error surfaced first. */
   const computeErrors = (): string[] => {
@@ -645,10 +684,11 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return view;
   }
 
-  /** A cell; `loc` lets the marking pass find it. */
-  function cell(cls: string, label: string, loc: Loc | null, children: Array<Node | string>): HTMLElement {
+  /** A cell; `loc` lets the marking pass find it, `info` lets the bar edit it. */
+  function cell(cls: string, label: string, loc: Loc | null, children: Array<Node | string>, info: Partial<CellInfo> = {}): HTMLElement {
     const c = el('div', { class: `re-cell ${cls}`, 'data-label': label }, children);
     if (loc) c.dataset.loc = locKey(loc);
+    cellInfo.set(c, { address: info.address ?? label, input: info.input, remove: info.remove });
     return c;
   }
 
@@ -660,7 +700,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   function formulaCell(
     value: string,
     onInput: (v: string, input: HTMLInputElement) => void,
-    o: { label: string; column: string; loc: Loc; thenField?: boolean; placeholder?: string }
+    o: { label: string; column: string; loc: Loc; thenField?: boolean; placeholder?: string; address?: string; remove?: () => void }
   ): HTMLElement {
     const literal = (v: string) => Boolean(o.thenField) && !isFormula(v);
     let view = formulaView(value, literal(value));
@@ -671,11 +711,11 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       view = next;
       onInput(v, input);
     }, { label: o.label, placeholder: o.placeholder, prose: Boolean(o.thenField) });
-    return cell('re-cell-formula', o.column, o.loc, [view, input]);
+    return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, remove: o.remove });
   }
 
-  const resultCell = (label: string, value: string | null | undefined): HTMLElement =>
-    cell('re-cell-result', label, null, value ? [value] : []);
+  const resultCell = (label: string, value: string | null | undefined, info: Partial<CellInfo> = {}): HTMLElement =>
+    cell('re-cell-result', label, null, value ? [value] : [], info);
 
   const removeBtn = (title: string, fn: () => void) =>
     el('button', { class: 're-remove', type: 'button', title, 'aria-label': title, onclick: fn }, [icon(ICON_TRASH)]);
@@ -693,7 +733,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 
   function sheetHead(cols: string[], titles: string[] = []): HTMLElement {
     return el('div', { class: 're-sheet-head' }, [
-      el('span'),
+      el('span', { class: 're-gutter-head' }),
       ...cols.map((c, i) => el('span', titles[i] ? { title: titles[i] } : {}, [c])),
       el('span'),
     ]);
@@ -827,10 +867,35 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     head.dataset.loc = locKey({ rule: index, field: 'name' });
     pane.append(head);
 
-    const body = el('div', { class: 're-pane-body' }, [renderVariables(rule, index), renderWhen(rule, index), renderThen(rule, index)]);
+    const tabs = el('div', { class: 're-tabs', role: 'tablist', 'aria-label': 'Sheets' });
+    const sheets: Array<[SheetName, string, number]> = [
+      ['vars', 'Variables', rule.variables.length],
+      ['when', 'When', rule.conditions.length],
+      ['then', 'Then', thenRows(rule).length],
+    ];
+    for (const [key, label, count] of sheets) {
+      tabs.append(el('button', {
+        class: 're-tab',
+        type: 'button',
+        role: 'tab',
+        'data-sheet': key,
+        'aria-selected': String(key === activeSheet),
+        onclick: () => { activeSheet = key; clearSelection(); applySheetVisibility(); },
+      }, [label, el('span', { class: 're-tab-count' }, [String(count)])]));
+    }
+    const blocks: Array<[SheetName, HTMLElement]> = [['vars', renderVariables(rule, index)], ['when', renderWhen(rule, index)], ['then', renderThen(rule, index)]];
+    for (const [key, block] of blocks) block.dataset.sheet = key;
+    const body = el('div', { class: 're-pane-body' }, [tabs, ...blocks.map(([, b]) => b)]);
     // An issue with no single field (no actions and no incident) lands on the body.
     body.dataset.loc = locKey({ rule: index });
     pane.append(body);
+    applySheetVisibility();
+  }
+
+  /** In narrow mode only the active sheet shows; wider, all three stack. */
+  function applySheetVisibility(): void {
+    for (const b of Array.from(pane.querySelectorAll<HTMLElement>('.re-sheet-block'))) b.hidden = narrow && b.dataset.sheet !== activeSheet;
+    for (const t of Array.from(pane.querySelectorAll<HTMLElement>('.re-tab'))) t.setAttribute('aria-selected', String(t.dataset.sheet === activeSheet));
   }
 
   function renderVariables(rule: Rule, index: number): HTMLElement {
@@ -852,19 +917,17 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
 
   function variableRow(v: Variable, i: number, rule: Rule, index: number): HTMLElement {
-    const result = resultCell('Formula result', opts.monitor?.({ rule: index, kind: 'variable', name: v.name }));
-    const nameCell = cell('', 'Name', { rule: index, field: 'variable', variable: i }, [
-      textInput(v.name, (val) => { v.name = val; }, { label: `Name of variable ${i + 1}`, placeholder: 'name' }),
-    ]);
+    const remove = () => { rule.variables.splice(i, 1); render(); };
+    const who = v.name || `Row ${i + 1}`;
+    const nameInput = textInput(v.name, (val) => { v.name = val; }, { label: `Name of variable ${i + 1}`, placeholder: 'name' });
+    const descInput = textInput(v.description ?? '', (val) => { if (val) v.description = val; else delete v.description; }, { label: `Description of variable ${i + 1}`, prose: true });
     return el('div', { class: 're-row' }, [
       gutter(i + 1),
-      nameCell,
-      formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")' }),
-      result,
-      cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [
-        textInput(v.description ?? '', (val) => { if (val) v.description = val; else delete v.description; }, { label: `Description of variable ${i + 1}`, prose: true }),
-      ]),
-      removeBtn('Delete variable', () => { rule.variables.splice(i, 1); render(); }),
+      cell('', 'Name', { rule: index, field: 'variable', variable: i }, [nameInput], { address: `${who} · Name`, input: nameInput, remove }),
+      formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")', address: `${who} · Formula`, remove }),
+      resultCell('Formula result', opts.monitor?.({ rule: index, kind: 'variable', name: v.name }), { address: `${who} · Formula result`, remove }),
+      cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
+      removeBtn('Delete variable', remove),
     ]);
   }
 
@@ -888,14 +951,15 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
 
   function conditionRow(c: Cond, i: number, rule: Rule, index: number): HTMLElement {
+    const remove = () => { rule.conditions.splice(i, 1); render(); };
+    const who = `Row ${i + 1}`;
+    const descInput = textInput(c.description ?? '', (val) => { if (val) c.description = val; else delete c.description; }, { label: `Description of condition ${i + 1}`, prose: true });
     return el('div', { class: 're-row' }, [
       gutter(i + 1),
-      formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50' }),
-      resultCell('Condition result', opts.monitor?.({ rule: index, kind: 'condition', index: i })),
-      cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [
-        textInput(c.description ?? '', (val) => { if (val) c.description = val; else delete c.description; }, { label: `Description of condition ${i + 1}`, prose: true }),
-      ]),
-      removeBtn('Delete condition', () => { rule.conditions.splice(i, 1); render(); }),
+      formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50', address: `${who} · Condition`, remove }),
+      resultCell('Condition result', opts.monitor?.({ rule: index, kind: 'condition', index: i }), { address: `${who} · Condition result`, remove }),
+      cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
+      removeBtn('Delete condition', remove),
     ]);
   }
 
@@ -930,27 +994,30 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     const current = row.kind === 'publish' ? 'publish' : rule.incident!.severity;
     const action = selectInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`);
     const value = thenGet(rule, row);
-    let result = resultCell('Formula result', previewThen(value, rule));
     const loc: Loc = row.kind === 'publish'
       ? { rule: index, field: THEN_ISSUE_FIELD[row.field], action: row.index }
       : { rule: index, field: THEN_ISSUE_FIELD[row.field] };
     const placeholder = row.field === 'topic' ? 'camera/record' : row.field === 'payload' ? '{}' : row.field === 'summary' ? 'Eight words, lead with the fix' : '';
+    const remove = () => {
+      if (row.kind === 'publish') rule.actions.splice(row.index, 1);
+      else rule.incident = null;
+      render();
+    };
+    const who = THEN_LABEL[row.field];
+    const resultInfo: Partial<CellInfo> = { address: `${who} · Formula result`, remove };
+    let result = resultCell('Formula result', previewThen(value, rule), resultInfo);
     return el('div', { class: 're-row' }, [
       gutter(i + 1),
-      cell('', 'Action', null, [action]),
-      cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]]),
+      cell('', 'Action', null, [action], { address: `${who} · Action`, remove }),
+      cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
       formulaCell(value, (v) => {
         thenSet(rule, row, v);
-        const next = resultCell('Formula result', previewThen(v, rule));
+        const next = resultCell('Formula result', previewThen(v, rule), resultInfo);
         result.replaceWith(next);
         result = next;
-      }, { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder }),
+      }, { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder, address: `${who} · Formula`, remove }),
       result,
-      removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', () => {
-        if (row.kind === 'publish') rule.actions.splice(row.index, 1);
-        else rule.incident = null;
-        render();
-      }),
+      removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', remove),
     ]);
   }
 
@@ -974,15 +1041,134 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     render();
   }
 
+  // ---- cell selection and the formula bar (narrow mode) ----
+  const barAddress = el('span', { class: 're-bar-address' });
+  const barDelete = el('button', { class: 're-link re-danger', type: 'button', onclick: () => {
+    const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
+    clearSelection();
+    info?.remove?.();
+  } }, ['Delete row']);
+  const barInput = el('input', {
+    type: 'text',
+    'aria-label': 'Cell content',
+    oninput: () => {
+      const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
+      if (!info?.input) return;
+      // Route through the in-cell input so the model, the coloured view, the
+      // validation marks and onChange all run exactly as on desktop.
+      info.input.value = barInput.value;
+      info.input.dispatchEvent(new Event('input'));
+      updateBarMessage();
+    },
+    onkeydown: (e) => { if ((e as KeyboardEvent).key === 'Enter') clearSelection(); },
+  });
+  const barCancel = el('button', { class: 're-bar-btn', type: 'button', 'aria-label': 'Cancel', title: 'Cancel', onclick: () => {
+    const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
+    if (info?.input && info.input.value !== selectedOriginal) {
+      info.input.value = selectedOriginal;
+      info.input.dispatchEvent(new Event('input'));
+    }
+    clearSelection();
+  } }, ['✕']);
+  const barOk = el('button', { class: 're-bar-btn re-bar-ok', type: 'button', 'aria-label': 'Done', title: 'Done', onclick: () => clearSelection() }, ['✓']);
+  const barMsg = el('p', { class: 're-msg', hidden: true });
+  const bar = el('div', { class: 're-bar', 'aria-label': 'Formula bar' }, [
+    el('div', { class: 're-bar-head' }, [barAddress, barDelete]),
+    el('div', { class: 're-bar-line' }, [barInput, barCancel, barOk]),
+    barMsg,
+  ]);
+
+  function selectCell(c: HTMLElement): void {
+    if (selectedCell && selectedCell !== c) selectedCell.classList.remove('is-selected');
+    selectedCell = c;
+    c.classList.add('is-selected');
+    const info = cellInfo.get(c);
+    selectedOriginal = info?.input ? info.input.value : (c.textContent ?? '');
+    updateBar();
+  }
+
+  function clearSelection(): void {
+    selectedCell?.classList.remove('is-selected');
+    selectedCell = null;
+    bar.classList.remove('is-open');
+  }
+
+  function updateBar(): void {
+    const c = selectedCell;
+    const info = c ? cellInfo.get(c) : undefined;
+    if (!narrow || !c || !info) { bar.classList.remove('is-open'); return; }
+    barAddress.textContent = info.address;
+    barDelete.hidden = !info.remove;
+    if (info.input) {
+      barInput.readOnly = false;
+      barInput.value = info.input.value;
+      barInput.placeholder = info.input.placeholder;
+      // Same keyboard behaviour as the cell: identifiers off, prose on.
+      for (const a of ['autocapitalize', 'autocorrect', 'spellcheck']) {
+        const v = info.input.getAttribute(a);
+        if (v === null) barInput.removeAttribute(a);
+        else barInput.setAttribute(a, v);
+      }
+      barOk.hidden = false;
+      barCancel.hidden = false;
+    } else {
+      barInput.readOnly = true;
+      barInput.value = c.textContent?.trim() ?? '';
+      barInput.placeholder = '';
+      barOk.hidden = true;
+      barCancel.hidden = true;
+    }
+    updateBarMessage();
+    bar.classList.add('is-open');
+  }
+
+  /** The selected cell's validation message, shown in the bar where the keyboard cannot hide it. */
+  function updateBarMessage(): void {
+    const msg = selectedCell?.querySelector(':scope > .re-msg')?.textContent ?? '';
+    barMsg.textContent = msg;
+    barMsg.hidden = !msg;
+  }
+
+  // A tap on a cell selects it; on a choice cell the native picker opens instead.
+  pane.addEventListener('click', (e) => {
+    if (!narrow) return;
+    const c = (e.target as HTMLElement).closest<HTMLElement>('.re-cell');
+    if (!c) { if (!(e.target as HTMLElement).closest('button, select, input')) clearSelection(); return; }
+    if (c.querySelector('select')) return;
+    selectCell(c);
+  });
+
+  function setNarrow(v: boolean): void {
+    if (v === narrow) return;
+    narrow = v;
+    root.classList.toggle('is-narrow', v);
+    applySheetVisibility();
+    if (v) updateBar();
+    else clearSelection();
+  }
+  const measure = (): void => setNarrow(root.clientWidth > 0 && root.clientWidth <= 560);
+  const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+  resizeObserver?.observe(root);
+
   // ---- render ----
   function render(): void {
+    measure();
+    selectedCell = null;
+    bar.classList.remove('is-open');
     renderRail();
     renderPane();
     refresh();
     if (focusNext) {
-      const target = pane.querySelector<HTMLElement>(`[data-loc="${focusNext}"] input`);
+      const target = pane.querySelector<HTMLElement>(`[data-loc="${focusNext}"]`);
       focusNext = null;
-      target?.focus();
+      if (!target) return;
+      if (narrow && target.classList.contains('re-cell')) {
+        const sheet = target.closest<HTMLElement>('.re-sheet-block')?.dataset.sheet as SheetName | undefined;
+        if (sheet) { activeSheet = sheet; applySheetVisibility(); }
+        selectCell(target);
+      } else {
+        target.querySelector<HTMLElement>('input')?.focus();
+      }
     }
   }
 
@@ -1061,7 +1247,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     ]),
   ]);
 
-  root.replaceChildren(top, status, xmlPanel, el('div', { class: 're-body' }, [rail, pane]));
+  root.replaceChildren(top, status, xmlPanel, el('div', { class: 're-body' }, [rail, pane]), bar);
   render();
 
   return {
@@ -1069,7 +1255,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     getXml: () => serialize(model),
     getErrors: () => computeErrors(),
     setModel: (m: RulesModel) => { parseError = null; model = clone(m); selected = 0; render(); },
-    destroy: () => { root.replaceChildren(); root.classList.remove('re-root'); },
+    destroy: () => { resizeObserver?.disconnect(); root.replaceChildren(); root.classList.remove('re-root', 'is-narrow'); },
   };
 }
 

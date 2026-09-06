@@ -370,27 +370,34 @@ describe('rules editor component (jsdom)', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
-    expect(blocks.join('')).toMatch(/\.re-cell input[^{]*\{[^}]*font-size:\s*16px/);
+    expect(blocks.join('')).toMatch(/\.re-bar input[^{]*\{[^}]*font-size:\s*16px/);
+    expect(blocks.join('')).toMatch(/\.re-cell select[^{]*\{[^}]*font-size:\s*16px/);
   });
 
   it('gives the small controls a touch-sized target when narrow', () => {
     const block = narrowBlocks(sheet()).join('');
-    for (const sel of ['.re-remove', '.re-link', '.re-btn-primary']) {
+    for (const sel of ['.re-remove', '.re-link', '.re-btn-primary', '.re-tab']) {
       const rule = new RegExp(`\\${sel}[^{]*\\{[^}]*min-height:\\s*(\\d+)px`).exec(block);
       expect(rule, `${sel} has no min-height when narrow`).not.toBeNull();
       expect(Number(rule![1]), sel).toBeGreaterThanOrEqual(44);
     }
   });
 
-  it('stacks each sheet row into a labelled card below 560px', () => {
+  it('keeps the sheet a sheet: sideways scroll in the frame, frozen row numbers', () => {
     const css = sheet();
+    expect(css).toMatch(/\.re-sheet\s*\{[^}]*overflow-x:\s*auto/);
+    expect(css).toMatch(/\.re-gutter, \.re-gutter-head\s*\{[^}]*position:\s*sticky;\s*left:\s*0/);
+    // rows never squeeze below a usable width; the sheet scrolls instead
+    expect(css).toMatch(/\.re-sheet-vars \.re-row\s*\{[^}]*min-width:\s*\d+px/);
     const narrow = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*560px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
     expect(narrow.length).toBe(2);
     const block = narrow.join('');
-    expect(block).toMatch(/\.re-sheet-head\s*\{[^}]*display:\s*none/);
-    expect(block).toMatch(/\.re-row\s*\{[^}]*display:\s*block/);
-    expect(block).toMatch(/\.re-cell::before\s*\{[^}]*content:\s*attr\(data-label\)/);
-    // every cell carries the column name the card shows
+    // no card layout: the grid header stays, rows stay grids, cells are tapped not typed into
+    expect(block).not.toMatch(/\.re-sheet-head\s*\{[^}]*display:\s*none/);
+    expect(block).not.toMatch(/::before/);
+    expect(block).toMatch(/\.re-cell input\s*\{[^}]*pointer-events:\s*none/);
+    expect(block).toMatch(/\.re-formula-view[^{]*\{[^}]*white-space:\s*nowrap/);
+    // every cell carries its column name for the bar's address
     const { root } = setup();
     const labels = new Set(Array.from(root.querySelectorAll('.re-cell')).map((c) => c.getAttribute('data-label')));
     expect([...labels].sort()).toEqual(['Action', 'Condition', 'Condition result', 'Description', 'Field', 'Formula', 'Formula result', 'Name']);
@@ -426,6 +433,138 @@ describe('rules editor component (jsdom)', () => {
     setup();
     setup();
     expect(document.querySelectorAll('#octaview-rules-editor-styles').length).toBe(1);
+  });
+});
+
+describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
+  beforeEach(() => (document.body.innerHTML = ''));
+
+  /** jsdom has no layout: fake the container width before mounting. */
+  function narrowSetup(opts?: Parameters<typeof initRulesEditor>[1], width = 320) {
+    const root = document.createElement('div');
+    Object.defineProperty(root, 'clientWidth', { value: width, configurable: true });
+    document.body.append(root);
+    const api = initRulesEditor(root, opts);
+    return { root, api };
+  }
+  const visibleBlocks = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>('.re-sheet-block')).filter((b) => !b.hidden);
+  const bar = (root: HTMLElement) => root.querySelector('.re-bar') as HTMLElement;
+  const barInput = (root: HTMLElement) => root.querySelector('.re-bar input') as HTMLInputElement;
+  const tab = (root: HTMLElement, name: string) => Array.from(root.querySelectorAll<HTMLButtonElement>('.re-tab')).find((t) => t.textContent?.startsWith(name))!;
+
+  it('sets is-narrow from the container width, and not when wide', () => {
+    expect(narrowSetup().root.classList.contains('is-narrow')).toBe(true);
+    expect(narrowSetup(undefined, 1180).root.classList.contains('is-narrow')).toBe(false);
+    expect(setup().root.classList.contains('is-narrow')).toBe(false);
+  });
+
+  it('shows one sheet at a time, switched by tabs with counts', () => {
+    const { root } = narrowSetup();
+    const tabs = root.querySelectorAll('.re-tab');
+    expect(tabs.length).toBe(3);
+    expect(Array.from(tabs).map((t) => t.textContent)).toEqual(['Variables10', 'When5', 'Then6']);
+    expect(visibleBlocks(root).map((b) => b.dataset.sheet)).toEqual(['vars']);
+    expect(tab(root, 'Variables').getAttribute('aria-selected')).toBe('true');
+    tab(root, 'When').click();
+    expect(visibleBlocks(root).map((b) => b.dataset.sheet)).toEqual(['when']);
+    expect(tab(root, 'When').getAttribute('aria-selected')).toBe('true');
+    expect(tab(root, 'Variables').getAttribute('aria-selected')).toBe('false');
+    // the choice survives a rule change
+    (root.querySelectorAll('.re-rail-row')[1] as HTMLElement).click();
+    expect(visibleBlocks(root).map((b) => b.dataset.sheet)).toEqual(['when']);
+    // wide: every sheet shows and the tabs are inert
+    const wide = setup().root;
+    expect(visibleBlocks(wide).length).toBe(3);
+  });
+
+  it('tapping a formula cell selects it and opens the bar with its address and content', () => {
+    const { root } = narrowSetup();
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+    const cellEl = inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement;
+    cellEl.click();
+    expect(cellEl.classList.contains('is-selected')).toBe(true);
+    expect(bar(root).classList.contains('is-open')).toBe(true);
+    expect(root.querySelector('.re-bar-address')?.textContent).toBe('alarm_active · Formula');
+    expect(barInput(root).value).toBe('TAG("plc1", "AlarmActive")');
+    expect(barInput(root).readOnly).toBe(false);
+    expect(barInput(root).getAttribute('autocapitalize')).toBe('off');
+    // the keyboard does not open on tap: nothing inside the cell has focus
+    expect(cellEl.contains(document.activeElement)).toBe(false);
+  });
+
+  it('typing in the bar edits the cell; the cross restores, the tick keeps', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
+    const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
+    cellEl.click();
+    type(barInput(root), 'temp > 60');
+    expect(api.getXml()).toContain('expr="temp &gt; 60"');
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp > 60');
+    button(root, 'Cancel').click();
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+    expect(cellEl.classList.contains('is-selected')).toBe(false);
+    cellEl.click();
+    type(barInput(root), 'temp > 70');
+    button(root, 'Done').click();
+    expect(api.getXml()).toContain('expr="temp &gt; 70"');
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+  });
+
+  it('shows the cell validation message in the bar while editing', () => {
+    const { root } = narrowSetup({ initialModel: wrap() });
+    (inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement).click();
+    type(barInput(root), 'temp >');
+    const msg = bar(root).querySelector('.re-msg') as HTMLElement;
+    expect(msg.hidden).toBe(false);
+    expect(msg.textContent).toMatch(/column 7/);
+    type(barInput(root), 'temp > 1');
+    expect(msg.hidden).toBe(true);
+  });
+
+  it('a result cell opens the bar read-only, without Done or Cancel', () => {
+    const { root } = narrowSetup({ monitor: (ref) => (ref.kind === 'variable' ? '48.2 °C' : undefined) });
+    (root.querySelector('.re-sheet-vars .re-cell-result') as HTMLElement).click();
+    expect(barInput(root).readOnly).toBe(true);
+    expect(barInput(root).value).toBe('48.2 °C');
+    expect(button(root, 'Done').hidden).toBe(true);
+    expect(button(root, 'Cancel').hidden).toBe(true);
+    expect(button(root, 'Delete row').hidden).toBe(false);
+  });
+
+  it('a choice cell keeps its native picker and does not open the bar', () => {
+    const { root } = narrowSetup();
+    tab(root, 'Then').click();
+    (root.querySelector('.re-sheet-then .re-cell') as HTMLElement).click();
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+  });
+
+  it('Delete row in the bar removes the selected row', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap({ variables: [{ name: 'a', formula: '1' }, { name: 'b', formula: '2' }], conditions: [{ expr: 'a = 1' }] }) });
+    (inputByLabel(root, 'Name of variable 2').closest('.re-cell') as HTMLElement).click();
+    expect(root.querySelector('.re-bar-address')?.textContent).toBe('b · Name');
+    button(root, 'Delete row').click();
+    expect(api.getModel().rules[0].variables.map((v) => v.name)).toEqual(['a']);
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+  });
+
+  it('Add selects the new row in the bar instead of focusing a hidden input', () => {
+    const { root } = narrowSetup({ initialModel: wrap() });
+    tab(root, 'When').click();
+    (root.querySelector('.re-sheet-when .re-add') as HTMLButtonElement).click();
+    expect(visibleBlocks(root).map((b) => b.dataset.sheet)).toEqual(['when']);
+    expect(root.querySelector('.re-bar-address')?.textContent).toBe('Row 2 · Condition');
+    expect(bar(root).classList.contains('is-open')).toBe(true);
+  });
+
+  it('tapping outside a cell closes the bar; wide mode never opens it', () => {
+    const { root } = narrowSetup();
+    (inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement).click();
+    expect(bar(root).classList.contains('is-open')).toBe(true);
+    (root.querySelector('.re-sheet-title') as HTMLElement).click();
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+    const wide = setup().root;
+    (inputByLabel(wide, 'Formula of variable 1').closest('.re-cell') as HTMLElement).click();
+    expect(bar(wide).classList.contains('is-open')).toBe(false);
   });
 });
 

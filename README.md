@@ -95,9 +95,16 @@ editor.destroy();    // tear down
 The editor works down to 320px wide. It adapts to **its own container**, not
 just to the window, so it also reflows when embedded in a narrow column on a
 wide screen. Below 900px the rule rail folds into a select above the sheets.
-Below 560px each sheet row becomes a stacked card with the column name over
-every cell, the controls grow to 16px, and the small ones get a 44px touch
-target.
+
+Below 560px the editor follows the phone model of Google Sheets. The sheet
+stays a sheet: columns keep their widths, the sheet scrolls sideways inside
+its frame, and the row numbers stay frozen on the left. Tabs show one sheet
+at a time (Variables, When, Then). A tap selects a cell. A formula bar at the
+bottom of the editor shows the cell's address and content; you edit there,
+and confirm with the tick or cancel with the cross. The bar also offers
+"Delete row" and shows the cell's validation message. Choice cells (Action,
+match, trigger) open the native picker in place. Every control a finger can
+focus is 16px or larger, and the small ones have a 44px touch target.
 
 Two things are the host page's job, because a component cannot do them:
 
