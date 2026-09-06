@@ -1,0 +1,74 @@
+// The Then sheet shows one row per field of an action: topic and payload of
+// each publish, then source, title, first step and cause of the alarm. These
+// helpers map a row to the model and back, and preview a Then formula.
+
+import type { Rule } from '../model.js';
+import type { ValidationIssue } from '../parse.js';
+import { isFormula, parseFormula, type Ast } from '../formula.js';
+
+export type ThenField = 'topic' | 'payload' | 'source' | 'summary' | 'firstStep' | 'cause';
+export type ThenRow = { kind: 'publish'; index: number; field: 'topic' | 'payload' } | { kind: 'incident'; field: 'source' | 'summary' | 'firstStep' | 'cause' };
+
+export const THEN_LABEL: Record<ThenField, string> = { topic: 'topic', payload: 'payload', source: 'source', summary: 'title', firstStep: 'first step', cause: 'cause' };
+/** The `field` name in a ValidationIssue for each Then field. */
+export const THEN_ISSUE_FIELD: Record<ThenField, ValidationIssue['field']> = {
+  topic: 'topic', payload: 'payload', source: 'source', summary: 'summary', firstStep: 'first_step', cause: 'cause',
+};
+
+export function thenRows(rule: Rule): ThenRow[] {
+  const rows: ThenRow[] = [];
+  rule.actions.forEach((_, index) => rows.push({ kind: 'publish', index, field: 'topic' }, { kind: 'publish', index, field: 'payload' }));
+  if (rule.incident) rows.push({ kind: 'incident', field: 'source' }, { kind: 'incident', field: 'summary' }, { kind: 'incident', field: 'firstStep' }, { kind: 'incident', field: 'cause' });
+  return rows;
+}
+
+export function thenGet(rule: Rule, row: ThenRow): string {
+  if (row.kind === 'publish') return rule.actions[row.index][row.field] ?? '';
+  return rule.incident?.[row.field] ?? '';
+}
+
+export function thenSet(rule: Rule, row: ThenRow, value: string): void {
+  if (row.kind === 'publish') {
+    const a = rule.actions[row.index];
+    if (row.field === 'topic') a.topic = value;
+    else if (value) a.payload = value;
+    else delete a.payload;
+    return;
+  }
+  const inc = rule.incident!;
+  if (row.field === 'source' || row.field === 'summary') inc[row.field] = value;
+  else if (value) inc[row.field] = value;
+  else delete inc[row.field];
+}
+
+/**
+ * What a Then field shows as its result: literal text as is; a formula folded
+ * as far as constants go, with condition.description read from the first
+ * condition as a preview. Anything that needs live data gives null.
+ */
+export function previewThen(text: string, rule: Rule): string | null {
+  if (!isFormula(text)) return text;
+  let ast: Ast;
+  try {
+    ast = parseFormula(text);
+  } catch {
+    return null;
+  }
+  const fold = (n: Ast): string | null => {
+    switch (n.kind) {
+      case 'string': return n.value;
+      case 'number': return n.raw;
+      case 'bool': return n.value ? 'true' : 'false';
+      case 'duration': return n.raw;
+      case 'context': return n.name === 'condition.description' ? rule.conditions[0]?.description ?? null : null;
+      case 'binary': {
+        if (n.op !== '&') return null;
+        const l = fold(n.left);
+        const r = fold(n.right);
+        return l === null || r === null ? null : l + r;
+      }
+      default: return null;
+    }
+  };
+  return fold(ast);
+}

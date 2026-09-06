@@ -8,8 +8,17 @@ octaview website and edge-hub.
 ## Layout
 - `src/` — source of truth.
   - `gui.ts` — the `initRulesEditor` component **and** the re-exports of the core
-    (this is the public surface). Renders a rule rail and, for the selected
-    rule, three sheets: Variables, When, Then.
+    (this is the public surface). It owns the options and handle types, the
+    shared state, validation marking and the render cycle, and wires the parts.
+  - `gui/` — the parts of the editor, each a factory that takes its
+    dependencies: `rail.ts` (the rule list), `sheets.ts` (Variables, When and
+    Then for the selected rule), `cells.ts` (text and formula cells with commit
+    semantics), `bar.ts` (cell selection and the formula bar of the phone
+    layout), `menu.ts` (the autocomplete menu), `xml-panel.ts` (view, copy,
+    download, import), `styles.ts` (the scoped stylesheet), `state.ts` (the
+    shared state object and small types), `dom.ts` (element builder, icons,
+    choice controls), `labels.ts` (options and help text), `then-rows.ts` (the
+    Then sheet's row model and preview), `example.ts` (the default file).
   - `model.ts` — types + constants. `formula.ts` — the formula language:
     tokenizer, parser, printer, static checks, function registry.
     `serialize.ts` — model → xml. `parse.ts` — xml → model + `validate`.
@@ -26,7 +35,7 @@ octaview website and edge-hub.
 - `npm run storybook` — dev server on `0.0.0.0:6100`, for working on the
   component (widths, themes, error states). `npm run build-storybook` for a
   static bundle in `storybook-static/` (gitignored).
-- Keep the API in `gui.ts`; `index.ts` just re-exports it. One import for
+- Keep the API in `gui.ts` (`gui/` is internal); `index.ts` just re-exports it. One import for
   consumers: `initRulesEditor`, `parse`, `serialize`, `validate`, the formula
   functions, model types.
 

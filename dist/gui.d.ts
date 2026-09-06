@@ -1,16 +1,8 @@
-import { type RulesModel } from './model.js';
-import { type Token } from './formula.js';
-import { type TagCatalog } from './catalog.js';
-/** What a `monitor` callback is asked for: one result cell. */
-export type MonitorRef = {
-    rule: number;
-} & ({
-    kind: 'variable';
-    name: string;
-} | {
-    kind: 'condition';
-    index: number;
-});
+import type { RulesModel } from './model.js';
+import type { Token } from './formula.js';
+import type { TagCatalog } from './catalog.js';
+import { type MonitorRef } from './gui/state.js';
+export type { MonitorRef };
 export interface RulesEditorOptions {
     /** Model to start from. Cloned on entry; the caller's object is not mutated. */
     initialModel?: RulesModel;
