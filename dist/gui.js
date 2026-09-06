@@ -285,13 +285,13 @@ const STYLES = `
   --re-text: var(--gray-700, #3b3934);
   --re-muted: var(--gray-500, #6a6660);
   --re-line: var(--gray-200, #ddd9d2);
-  --re-grid: #efece7;
-  --re-head: #f2efe9;
+  --re-grid: var(--grid, #efece7);
+  --re-head: var(--sheet-head, #f2efe9);
   --re-paper: var(--bg, #faf9f6);
   --re-surface: var(--surface, #ffffff);
-  --re-result: #f7f6f2;
-  --re-select: #efece5;
-  --re-reading: #3b5570;
+  --re-result: var(--sheet-result, #f7f6f2);
+  --re-select: var(--selected, #efece5);
+  --re-reading: var(--reading, #3b5570);
   --re-focus: #dfe5ee;
   --re-warn-wash: #fbf3e0;
   --re-warn: var(--warning, #8a5a00);

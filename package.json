@@ -33,7 +33,7 @@
     "build-storybook": "storybook build"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "devDependencies": {
     "@storybook/html-vite": "^10.6.0",

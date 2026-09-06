@@ -344,13 +344,19 @@ phone on the same network — useful, since the layout responds to the width of
 the **container** it is mounted in, not the browser window.
 
 Stories live in `stories/` and import `src/` directly, so editing the component
-hot-reloads without `npm run build`. Every story has three harness controls:
+hot-reloads without `npm run build`. Every story has four harness controls:
 
 | Control | What it is for |
 |---------|----------------|
-| `containerWidth` | Mount width (320 → 1024 px) — check the narrow layout without resizing anything. |
-| `theme` | Swap the host design tokens (`--accent`, `--ink`, `--font-body`, …), which are the entire theming surface. |
+| `containerWidth` | Mount width (320, 360, 560, 800, 1180 px, or fluid). 560 and below is the phone model, 900 and below folds the rail. |
+| `theme` | Swap the host design tokens (`--accent`, `--ink`, `--font-body`, `--grid`, `--sheet-head`, …), which are the entire theming surface. |
 | `showOutput` | Live `rules.xml` + validation messages beside the editor. |
+| `liveValues` | Feed the result columns from a fixed set of values, as a host would through `monitor`. |
+
+The stories cover the design at desktop, tablet and phone widths, the empty and
+invalid states, a v0.2 and a v0.3 file, 50 rules, and a dark theme. The play
+stories (`PhoneFormulaBar`, `PhoneInvalidFormula`, `ActionToAlarm`, `XmlPanel`)
+drive the editor and check the XML, so they double as browser tests.
 
 The mounted `RulesEditorHandle` is on `window.editor` in the preview frame, so
 `editor.getXml()` works from the browser console.
