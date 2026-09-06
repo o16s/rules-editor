@@ -1,7 +1,13 @@
 // Data model for the Edge Hub rules.xml schema (shared by tsend2mqtt and
 // iolinkmaster2mqtt). This is the single source of truth the serializer,
 // parser, validator, and GUI all operate on.
+//
+// v0.3: a rule holds named variables, a flat list of condition rows written
+// as formulas (see formula.ts), and the Then fields. The v0.2 leaf form
+// <cond tag op value> and nested <and>/<or> groups are still read by parse()
+// and turned into formula rows; serialize() always writes formula rows.
 
+/** Canonical comparison operators of the v0.2 leaf form, still read by parse(). */
 export const OPERATORS = ['eq', 'neq', 'lt', 'leq', 'gt', 'geq', 'changed'] as const;
 export type Op = (typeof OPERATORS)[number];
 
@@ -27,10 +33,17 @@ export const VALUELESS_OPS: readonly Op[] = ['changed'];
  * This must stay identical to the `goDuration` pattern in schema/rules.xsd;
  * src/xsd.test.ts fails when the two drift apart.
  */
-export const COOLDOWN_PATTERN = '0|(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|\u00b5s|\u03bcs|ms|s|m|h))+';
+export const COOLDOWN_PATTERN = '0|(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+';
 
 /** `COOLDOWN_PATTERN` anchored, for use in JS. */
 export const COOLDOWN_RE = new RegExp(`^(?:${COOLDOWN_PATTERN})$`);
+
+/**
+ * A variable name: a letter or underscore, then letters, digits, underscores.
+ * Must stay identical to the `identifier` pattern in schema/rules.xsd.
+ */
+export const VARIABLE_NAME_PATTERN = '[A-Za-z_][A-Za-z0-9_]*';
+export const VARIABLE_NAME_RE = new RegExp(`^(?:${VARIABLE_NAME_PATTERN})$`);
 
 export const SEVERITIES = ['critical', 'error', 'warning', 'info'] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -38,39 +51,51 @@ export type Severity = (typeof SEVERITIES)[number];
 export const EDGES = ['none', 'rising'] as const;
 export type Edge = (typeof EDGES)[number];
 
-/** A leaf condition: one field compared against a value. */
+/** How the condition rows combine: any → <or>, all → <and>. */
+export const MATCHES = ['any', 'all'] as const;
+export type Match = (typeof MATCHES)[number];
+
+/** A named formula, defined once per rule and used by name in conditions. */
+export interface Variable {
+  name: string;
+  /** Formula text without a leading `=`. */
+  formula: string;
+  description?: string;
+}
+
+/** One condition row: a formula that must be true. */
 export interface Cond {
-  kind: 'cond';
-  device?: string; // IO-Link only; omitted for tsend2mqtt (single PLC source)
-  tag: string;
-  op: Op;
-  value?: string; // omitted when op === 'changed'
+  /** Formula text without a leading `=`. */
+  expr: string;
+  /** Operator-facing meaning of the row; a Then field can quote it. */
+  description?: string;
 }
-
-/** An AND/OR logic group. */
-export interface Group {
-  kind: 'and' | 'or';
-  children: Condition[];
-}
-
-export type Condition = Cond | Group;
 
 export interface Publish {
+  /** Literal topic, or a formula when it starts with `=`. */
   topic: string;
-  payload?: string; // omitted → '{}' at runtime
+  /** Literal payload, or a formula when it starts with `=`; omitted → '{}' at runtime. */
+  payload?: string;
 }
 
 export interface Incident {
   source: string;
   severity: Severity;
+  /** The alarm title, at most LIMITS.maxSummary characters. */
   summary: string;
+  /** What the operator does first. */
+  firstStep?: string;
+  /** Why it fired and where the boundary of what we read sits. */
+  cause?: string;
 }
 
 export interface Rule {
   name: string;
   cooldown?: string; // Go duration, e.g. '30s'
   edge?: Edge; // default 'none'
-  condition: Condition | null;
+  variables: Variable[];
+  match: Match;
+  conditions: Cond[];
   actions: Publish[];
   incident: Incident | null;
 }
@@ -81,14 +106,15 @@ export interface RulesModel {
 
 export const LIMITS = {
   maxRules: 1000,
+  /** v0.2 group nesting, still enforced when reading old files. */
   maxDepth: 4,
+  /** Condition rows per rule, and children per v0.2 group. */
   maxChildren: 16,
   maxSummary: 120,
+  maxVariables: 64,
+  /** description, first_step, cause. */
+  maxText: 240,
 } as const;
-
-export function isGroup(c: Condition): c is Group {
-  return c.kind === 'and' || c.kind === 'or';
-}
 
 /** Resolve an operator token (possibly an alias) to its canonical form, or null. */
 export function canonicalOp(token: string): Op | null {

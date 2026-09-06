@@ -8,12 +8,26 @@
   https://octaview.ai/en/docs/edge-hub/rules/ and the constraints in
   src/model.ts (LIMITS) and validate() in src/parse.ts.
 
-  XSD 1.0 only. One rule stays an application-level check in validate()
-  because XSD 1.0 cannot express it: <cond value="..."> is required, and
-  must not be empty, for every op except "changed" (an attribute cannot
-  depend on another attribute). Everything else in validate() is enforced
-  here. The README lists the places where the XSD is stricter than the
-  editor.
+  Version 0.3 adds the formula language (src/formula.ts):
+    - <variables> with one <var name formula description/> per named formula,
+    - <cond expr="..." description="..."/> as the condition form the editor
+      writes; the 0.2 form <cond tag op value/> is still accepted as input,
+    - description on <and>/<or> groups,
+    - first_step and cause on <incident>,
+    - a Then attribute (topic, payload, source, summary, first_step, cause)
+      that starts with "=" is a formula; anything else is literal text.
+
+  XSD 1.0 only. These rules stay application-level checks in validate()
+  because XSD 1.0 cannot express them (an attribute cannot depend on another
+  attribute, and the schema cannot parse a formula):
+    - a <cond> carries either expr, or tag and op, never both and never neither,
+    - <cond value="..."> is required, and must not be empty, for every 0.2
+      op except "changed",
+    - a formula parses, its functions exist with the right argument count,
+      its variable names resolve inside the same rule, and variables do not
+      refer to each other in a cycle.
+  Everything else in validate() is enforced here. The README lists the places
+  where the XSD is stricter than the editor.
 
   Nesting depth (LIMITS.maxDepth = 4). XSD cannot count depth, so the
   condition content model is unrolled into four named groups,
@@ -21,12 +35,13 @@
   element N levels below <rule>: level 1 is the rule's top-level condition,
   and a group at level N holds children of level N+1. Level 4 allows only
   <cond>, so a fifth level has no matching type and is rejected. This is the
-  same counting validate() uses: the leaf <cond> counts as a level, so at
-  most three nested <and>/<or> groups fit above a leaf.
+  same counting parse() uses: the leaf <cond> counts as a level, so at most
+  three nested <and>/<or> groups fit above a leaf. The editor never writes
+  nested groups; it folds them into one AND()/OR() formula row on read.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            elementFormDefault="qualified"
-           version="0.2.0">
+           version="0.3.0">
 
   <xs:annotation>
     <xs:documentation>
@@ -43,6 +58,24 @@
     </xs:annotation>
     <xs:restriction base="xs:string">
       <xs:minLength value="1"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="identifier">
+    <xs:annotation>
+      <xs:documentation>A variable name: a letter or underscore, then letters, digits, or underscores (model.ts VARIABLE_NAME_PATTERN).</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z_][A-Za-z0-9_]*"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="text">
+    <xs:annotation>
+      <xs:documentation>Operator-facing text of at most 240 characters (LIMITS.maxText): descriptions, first_step, cause.</xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:maxLength value="240"/>
     </xs:restriction>
   </xs:simpleType>
 
@@ -70,7 +103,7 @@
 
   <xs:simpleType name="operator">
     <xs:annotation>
-      <xs:documentation>Comparison operator: the canonical names eq, neq, lt, leq, gt, geq, changed, or the aliases =, ==, !=, &lt;, &lt;=, &gt;, &gt;=.</xs:documentation>
+      <xs:documentation>Comparison operator of the 0.2 leaf form: the canonical names eq, neq, lt, leq, gt, geq, changed, or the aliases =, ==, !=, &lt;, &lt;=, &gt;, &gt;=.</xs:documentation>
     </xs:annotation>
     <xs:restriction base="xs:string">
       <!-- canonical operators (model.ts OPERATORS) -->
@@ -106,7 +139,7 @@
 
   <xs:simpleType name="summary">
     <xs:annotation>
-      <xs:documentation>Human-readable incident description, 1 to 120 characters (LIMITS.maxSummary).</xs:documentation>
+      <xs:documentation>The alarm title, 1 to 120 characters (LIMITS.maxSummary).</xs:documentation>
     </xs:annotation>
     <xs:restriction base="xs:string">
       <xs:minLength value="1"/>
@@ -114,30 +147,72 @@
     </xs:restriction>
   </xs:simpleType>
 
+  <!-- ===== variables =================================================== -->
+
+  <xs:complexType name="var">
+    <xs:annotation>
+      <xs:documentation>A named formula; conditions in the same rule use it by name.</xs:documentation>
+    </xs:annotation>
+    <xs:attribute name="name" type="identifier" use="required">
+      <xs:annotation>
+        <xs:documentation>The variable name, unique within the rule.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="formula" type="nonEmptyString" use="required">
+      <xs:annotation>
+        <xs:documentation>The formula, for example TAG("plc1", "AlarmActive") or RATE(temp, 30min).</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="description" type="text" use="optional">
+      <xs:annotation>
+        <xs:documentation>What the variable means, for the operator.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="variables">
+    <xs:annotation>
+      <xs:documentation>The rule's named formulas, up to 64 (LIMITS.maxVariables).</xs:documentation>
+    </xs:annotation>
+    <xs:sequence>
+      <xs:element name="var" type="var" minOccurs="0" maxOccurs="64"/>
+    </xs:sequence>
+  </xs:complexType>
+
   <!-- ===== leaf condition ============================================== -->
 
   <xs:complexType name="cond">
     <xs:annotation>
-      <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+      <xs:documentation>A condition row. Either a formula in expr, or the 0.2 form: one decoded field compared against a value.</xs:documentation>
     </xs:annotation>
+    <xs:attribute name="expr" type="nonEmptyString" use="optional">
+      <xs:annotation>
+        <xs:documentation>A formula that must be true, for example temp > 50 or AND(milk_temp > 3.6, door_changed).</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="description" type="text" use="optional">
+      <xs:annotation>
+        <xs:documentation>What the row means, for the operator; a Then field can quote it as condition.description.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
     <xs:attribute name="device" type="nonEmptyString" use="optional">
       <xs:annotation>
-        <xs:documentation>IO-Link only: the device name from config.yaml ports; tsend2mqtt has a single implicit PLC source and omits it.</xs:documentation>
+        <xs:documentation>0.2 form, IO-Link only: the device name from config.yaml ports; tsend2mqtt has a single implicit PLC source and omits it.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="tag" type="nonEmptyString" use="required">
+    <xs:attribute name="tag" type="nonEmptyString" use="optional">
       <xs:annotation>
-        <xs:documentation>Field name from the service's decoded output.</xs:documentation>
+        <xs:documentation>0.2 form: field name from the service's decoded output. Required when expr is absent.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="op" type="operator" use="required">
+    <xs:attribute name="op" type="operator" use="optional">
       <xs:annotation>
-        <xs:documentation>Comparison operator, canonical or alias.</xs:documentation>
+        <xs:documentation>0.2 form: comparison operator, canonical or alias. Required when expr is absent.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="value" type="xs:string" use="optional">
       <xs:annotation>
-        <xs:documentation>Comparison value, parsed to match the field's type; required for all operators except changed (application-level check, see validate()).</xs:documentation>
+        <xs:documentation>0.2 form: comparison value, parsed to match the field's type; required for all operators except changed (application-level check, see validate()).</xs:documentation>
       </xs:annotation>
     </xs:attribute>
   </xs:complexType>
@@ -149,7 +224,7 @@
     <xs:choice>
       <xs:element name="cond" type="cond">
         <xs:annotation>
-          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+          <xs:documentation>A single condition row.</xs:documentation>
         </xs:annotation>
       </xs:element>
       <xs:element name="and" type="groupLevel1">
@@ -170,6 +245,7 @@
       <xs:documentation>An and/or group at level 1; holds 1 to 16 level-2 conditions (LIMITS.maxChildren).</xs:documentation>
     </xs:annotation>
     <xs:group ref="conditionLevel2" minOccurs="1" maxOccurs="16"/>
+    <xs:attribute name="description" type="text" use="optional"/>
   </xs:complexType>
 
   <!-- Level 2: children of a level-1 group. -->
@@ -177,7 +253,7 @@
     <xs:choice>
       <xs:element name="cond" type="cond">
         <xs:annotation>
-          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+          <xs:documentation>A single condition row.</xs:documentation>
         </xs:annotation>
       </xs:element>
       <xs:element name="and" type="groupLevel2">
@@ -198,6 +274,7 @@
       <xs:documentation>An and/or group at level 2; holds 1 to 16 level-3 conditions.</xs:documentation>
     </xs:annotation>
     <xs:group ref="conditionLevel3" minOccurs="1" maxOccurs="16"/>
+    <xs:attribute name="description" type="text" use="optional"/>
   </xs:complexType>
 
   <!-- Level 3: children of a level-2 group. -->
@@ -205,7 +282,7 @@
     <xs:choice>
       <xs:element name="cond" type="cond">
         <xs:annotation>
-          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+          <xs:documentation>A single condition row.</xs:documentation>
         </xs:annotation>
       </xs:element>
       <xs:element name="and" type="groupLevel3">
@@ -226,6 +303,7 @@
       <xs:documentation>An and/or group at level 3, the deepest group; holds 1 to 16 level-4 conditions, which must be leaves.</xs:documentation>
     </xs:annotation>
     <xs:group ref="conditionLevel4" minOccurs="1" maxOccurs="16"/>
+    <xs:attribute name="description" type="text" use="optional"/>
   </xs:complexType>
 
   <!-- Level 4: children of a level-3 group. Leaves only: no group type
@@ -234,7 +312,7 @@
     <xs:choice>
       <xs:element name="cond" type="cond">
         <xs:annotation>
-          <xs:documentation>Leaf condition: compares a single decoded field against a value.</xs:documentation>
+          <xs:documentation>A single condition row.</xs:documentation>
         </xs:annotation>
       </xs:element>
     </xs:choice>
@@ -248,12 +326,12 @@
     </xs:annotation>
     <xs:attribute name="topic" type="nonEmptyString" use="required">
       <xs:annotation>
-        <xs:documentation>Absolute MQTT topic; no prefix is prepended.</xs:documentation>
+        <xs:documentation>Absolute MQTT topic; no prefix is prepended. A formula when it starts with "=".</xs:documentation>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="payload" type="xs:string" use="optional">
       <xs:annotation>
-        <xs:documentation>Message payload; {} is used when omitted.</xs:documentation>
+        <xs:documentation>Message payload; {} is used when omitted. A formula when it starts with "=".</xs:documentation>
       </xs:annotation>
     </xs:attribute>
   </xs:complexType>
@@ -273,7 +351,7 @@
 
   <xs:complexType name="incident">
     <xs:annotation>
-      <xs:documentation>Enables the trigger/resolve lifecycle for human-facing alerting on the incidents/ topic.</xs:documentation>
+      <xs:documentation>Enables the trigger/resolve lifecycle for human-facing alerting on the incidents/ topic. Every text attribute is a formula when it starts with "=".</xs:documentation>
     </xs:annotation>
     <xs:attribute name="source" type="nonEmptyString" use="required">
       <xs:annotation>
@@ -287,7 +365,17 @@
     </xs:attribute>
     <xs:attribute name="summary" type="summary" use="required">
       <xs:annotation>
-        <xs:documentation>Human-readable description, max 120 characters.</xs:documentation>
+        <xs:documentation>The alarm title, max 120 characters.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="first_step" type="text" use="optional">
+      <xs:annotation>
+        <xs:documentation>What the operator does first, max 240 characters.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="cause" type="text" use="optional">
+      <xs:annotation>
+        <xs:documentation>Why it fired and where the boundary of what we read sits, max 240 characters.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
   </xs:complexType>
@@ -296,9 +384,14 @@
 
   <xs:complexType name="rule">
     <xs:annotation>
-      <xs:documentation>One rule: exactly one top-level condition, then actions, an incident, or both.</xs:documentation>
+      <xs:documentation>One rule: optional variables, exactly one top-level condition, then actions, an incident, or both.</xs:documentation>
     </xs:annotation>
     <xs:sequence>
+      <xs:element name="variables" type="variables" minOccurs="0">
+        <xs:annotation>
+          <xs:documentation>Named formulas the conditions can use.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
       <xs:group ref="conditionLevel1"/>
       <!-- "at least one of actions, incident", in this order. -->
       <xs:choice>
@@ -348,6 +441,13 @@
           <xs:annotation>
             <xs:documentation>One rule; its name must be unique across the file.</xs:documentation>
           </xs:annotation>
+          <xs:unique name="uniqueVariableName">
+            <xs:annotation>
+              <xs:documentation>Variable names are unique within a rule.</xs:documentation>
+            </xs:annotation>
+            <xs:selector xpath="variables/var"/>
+            <xs:field xpath="@name"/>
+          </xs:unique>
         </xs:element>
       </xs:sequence>
     </xs:complexType>
