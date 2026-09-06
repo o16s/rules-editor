@@ -473,7 +473,8 @@ describe('rules editor component (jsdom)', () => {
     // One source of truth: the width classes the ResizeObserver sets. A media
     // query would apply phone styles to a wide editor on a phone, while the
     // behaviour (tabs, the bar) stayed in desktop mode.
-    expect(css).not.toMatch(/@media/);
+    // (a hover-capability query is fine: it is about the pointer, not the width)
+    expect(css).not.toMatch(/@media[^{]*(max|min)-width/);
     expect(css).not.toMatch(/@container/);
     expect(css).not.toMatch(/container-type/);
     const at = (width: number) => {
@@ -859,20 +860,51 @@ describe('TAG("…") autocomplete', () => {
     expect(api.getXml()).toContain(`expr='TAG("vibration1", "temperature")'`);
   });
 
-  it('a pointer pick keeps the cell focused; Escape closes only the menu', () => {
+  it('a pick is a click, so a touch drag scrolls the list; mousedown keeps the focus in the cell', () => {
     const { root } = setup({ initialModel: wrap(), catalog: CATALOG });
     const input = inputByLabel(root, 'Condition 1');
     typeAt(input, 'TAG("Al');
     const item = root.querySelector('.re-menu-item') as HTMLElement;
-    const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+    // the start of a touch must not pick, or a drag could never scroll
+    const pointer = new Event('pointerdown', { bubbles: true, cancelable: true });
+    item.dispatchEvent(pointer);
+    expect(pointer.defaultPrevented).toBe(false);
+    expect(input.value).toBe('TAG("Al');
+    // mousedown (also the compatibility event after a tap) is prevented so the input keeps focus
+    const down = new Event('mousedown', { bubbles: true, cancelable: true });
     item.dispatchEvent(down);
     expect(down.defaultPrevented).toBe(true);
+    item.click();
     expect(input.value).toBe('TAG("AlarmActive")');
     typeAt(input, 'TAG("AlarmActive") > TAG("');
     expect(menu(root).hidden).toBe(false);
     key(input, 'Escape');
     expect(menu(root).hidden).toBe(true);
     expect(input.value).toBe('TAG("AlarmActive") > TAG("'); // the draft survives
+  });
+
+  it('keeps the list DOM while the list is unchanged, so scrolling and highlighting stay calm', () => {
+    const { root } = setup({ initialModel: wrap(), catalog: CATALOG });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'TAG("');
+    const before = Array.from(root.querySelectorAll('.re-menu-item'));
+    key(input, 'ArrowDown');
+    const after = Array.from(root.querySelectorAll('.re-menu-item'));
+    expect(after).toEqual(before);
+    expect(after[1].classList.contains('is-active')).toBe(true);
+    expect(after[0].classList.contains('is-active')).toBe(false);
+    typeAt(input, 'TAG("vi');
+    expect(root.querySelectorAll('.re-menu-item').length).toBe(1);
+    // touch hygiene on the menu and the inputs
+    const css = document.getElementById('octaview-rules-editor-styles')!.textContent ?? '';
+    expect(css).toMatch(/\.re-menu\s*\{[^}]*overscroll-behavior:\s*contain/);
+    expect(css).toMatch(/\.re-menu\s*\{[^}]*touch-action:\s*pan-y/);
+    expect(css).toMatch(/@media \(hover: hover\)\s*\{[^@]*\.re-menu-item:hover/);
+    // every hover rule lives inside that block: none outside it
+    const hoverBlock = /@media \(hover: hover\)\s*\{([\s\S]*?)\n\}/.exec(css)![1];
+    const outside = css.replace(hoverBlock, '');
+    expect(outside).not.toMatch(/:hover/);
+    expect(input.getAttribute('autocomplete')).toBe('off');
   });
 
   it('does nothing without a catalog, and starts working after setCatalog', () => {

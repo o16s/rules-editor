@@ -409,11 +409,8 @@ const STYLES = `
 .re-title { font-size:14px; font-weight:600; }
 .re-top-actions { display:flex; align-items:center; gap:8px; }
 .re-btn { font-size:12.5px; color:var(--re-text); background:var(--re-surface); border:1px solid var(--re-line); border-radius:3px; padding:6px 11px; cursor:pointer; }
-.re-btn:hover { border-color:var(--re-muted); }
 .re-btn-primary { font-size:12.5px; font-weight:500; color:#fff; background:var(--re-accent); border:1px solid var(--re-accent-hover); border-radius:3px; padding:6px 13px; cursor:pointer; }
-.re-btn-primary:hover { background:var(--re-accent-hover); }
 .re-link { background:none; border:none; padding:0; margin:0; cursor:pointer; font-size:12px; color:var(--re-accent); }
-.re-link:hover { text-decoration:underline; }
 .re-link:disabled { color:var(--re-muted); cursor:not-allowed; text-decoration:none; }
 .re-link.re-danger { color:var(--re-critical); }
 .re-status { display:none; padding:8px 15px; font-size:12.5px; color:var(--re-warn); background:var(--re-warn-wash); border-bottom:1px solid var(--re-line); }
@@ -445,15 +442,14 @@ const STYLES = `
 .re-rail-issues:empty { display:none; }
 .re-rail-meta { font-size:11.5px; color:var(--re-muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .re-rail-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; visibility:hidden; }
-.re-rail-row:hover .re-rail-actions, .re-rail-row.is-selected .re-rail-actions, .re-rail-row:focus-within .re-rail-actions { visibility:visible; }
+.re-rail-row.is-selected .re-rail-actions, .re-rail-row:focus-within .re-rail-actions { visibility:visible; }
 .re-icon svg { width:13px; height:13px; display:block; }
 .re-icon-btn { background:none; border:none; padding:3px; cursor:pointer; color:var(--re-muted); border-radius:3px; }
-.re-icon-btn:hover { color:var(--re-ink); background:rgba(0,0,0,.05); }
 .re-pane { min-width:0; }
 .re-rail-select { display:none; width:100%; margin:12px 18px 0; width:calc(100% - 36px); font-size:13px; padding:6px 9px; border:1px solid var(--re-line); border-radius:3px; background:var(--re-surface); color:var(--re-ink); }
 .re-pane-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--re-grid); }
 .re-name { font-size:18px; font-weight:500; color:var(--re-ink); background:none; border:none; border-bottom:1px solid transparent; padding:0; min-width:0; flex:1 1 auto; }
-.re-name:hover, .re-name:focus { border-bottom-color:var(--re-line); outline:none; }
+.re-name:focus { border-bottom-color:var(--re-line); outline:none; }
 .re-pane-head.is-invalid .re-name { border-bottom-color:var(--re-critical); }
 .re-pane-body { padding:14px 18px 18px; display:flex; flex-direction:column; gap:16px; }
 .re-empty { color:var(--re-muted); padding:48px 28px; text-align:center; }
@@ -466,10 +462,10 @@ const STYLES = `
 .re-cell-pick .re-pick { display:flex; width:100%; justify-content:space-between; align-items:flex-start; padding:7px 9px; min-height:32px; }
 .re-cell-pick .re-pick-caret { padding-top:2px; }
 .re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
-.re-info:hover, .re-info[aria-expanded="true"] { color:var(--re-accent); }
+.re-info[aria-expanded="true"] { color:var(--re-accent); }
 .re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
-/* Sheets scroll sideways inside their frame, like a spreadsheet; the page never does. */
-.re-sheet { border:1px solid var(--re-line); border-radius:4px; overflow-x:auto; overflow-y:hidden; }
+/* Sheets scroll sideways inside their frame, like a spreadsheet; the page never does, and a sideways drag at the end does not bounce the page. */
+.re-sheet { border:1px solid var(--re-line); border-radius:4px; overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain; -webkit-overflow-scrolling:touch; }
 .re-sheet-block.is-invalid > .re-sheet { border-color:var(--re-critical); }
 .re-tabs { display:none; gap:4px; border-bottom:1px solid var(--re-grid); }
 .re-tab { flex:1; background:none; border:none; border-bottom:2px solid transparent; padding:8px 4px; font-size:13px; color:var(--re-muted); cursor:pointer; }
@@ -489,7 +485,7 @@ const STYLES = `
 .re-gutter, .re-gutter-head { position:sticky; left:0; z-index:1; background:var(--re-head); }
 .re-gutter { font-size:12px; color:var(--re-muted); padding:7px 8px; text-align:center; border-right:1px solid var(--re-grid); }
 .re-cell.is-selected { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
-.re-bar { display:none; position:sticky; bottom:0; z-index:2; background:var(--re-paper); border-top:1px solid var(--re-line); padding:8px 12px 10px; box-shadow:0 -2px 8px rgba(0,0,0,.06); }
+.re-bar { display:none; position:sticky; bottom:0; z-index:2; background:var(--re-paper); border-top:1px solid var(--re-line); padding:8px 12px calc(10px + env(safe-area-inset-bottom, 0px)); box-shadow:0 -2px 8px rgba(0,0,0,.06); transform:translate3d(0,0,0); }
 .re-bar.is-open { display:block; }
 .re-bar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:var(--re-muted); margin-bottom:6px; min-height:20px; }
 .re-bar-line { display:flex; align-items:center; gap:8px; }
@@ -498,14 +494,32 @@ const STYLES = `
 .re-bar-btn { flex:none; min-width:44px; min-height:44px; border:1px solid var(--re-line); border-radius:3px; background:var(--re-surface); font-size:18px; color:var(--re-ink); cursor:pointer; }
 .re-bar-btn.re-bar-ok { background:var(--re-reading); color:#fff; border-color:var(--re-reading); }
 .re-bar > .re-msg { padding:6px 0 0; background:none; }
-.re-menu { position:fixed; z-index:20; min-width:260px; max-width:min(480px, 96vw); max-height:240px; overflow-y:auto; background:var(--re-surface); border:1px solid var(--re-line); border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,.12); font-size:13px; }
+/* The menu scrolls on its own: a drag inside it never scrolls the page (overscroll-behavior) and only pans vertically (touch-action). */
+.re-menu { position:fixed; z-index:20; min-width:260px; max-width:min(480px, 96vw); max-height:240px; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch; background:var(--re-surface); border:1px solid var(--re-line); border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,.12); font-size:13px; }
 .re-menu.re-menu-inline { position:static; max-width:none; max-height:200px; margin-bottom:6px; box-shadow:none; }
-.re-menu-item { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:7px 10px; cursor:pointer; }
-.re-menu-item.is-active, .re-menu-item:hover { background:var(--re-select); }
+.re-menu-item { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:7px 10px; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+.re-menu-item.is-active { background:var(--re-select); }
+.re-menu-item:active { background:var(--re-focus); }
 .re-menu-main { color:var(--re-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .re-menu-meta { color:var(--re-reading); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .re-menu-item.is-stale .re-menu-meta { color:var(--re-warn); }
 .re-menu.re-menu-inline .re-menu-item { min-height:44px; align-items:center; }
+/* Hover styles only where a pointer can hover: on a touchscreen a hover state sticks after the tap. */
+@media (hover: hover) {
+  .re-menu-item:hover { background:var(--re-select); }
+  .re-btn:hover { border-color:var(--re-muted); }
+  .re-btn-primary:hover { background:var(--re-accent-hover); }
+  .re-link:hover { text-decoration:underline; }
+  .re-icon-btn:hover { color:var(--re-ink); background:rgba(0,0,0,.05); }
+  .re-remove:hover { color:var(--re-critical); }
+  .re-add:hover { color:var(--re-ink); background:var(--re-paper); }
+  .re-info:hover { color:var(--re-accent); }
+  .re-name:hover { border-bottom-color:var(--re-line); }
+  .re-rail-row:hover .re-rail-actions { visibility:visible; }
+}
+/* Touch feedback: iOS shows no active state unless one is styled. */
+.re-btn:active, .re-btn-primary:active, .re-tab:active, .re-add:active, .re-icon-btn:active, .re-bar-btn:active { filter:brightness(0.94); }
+.re-tab, .re-rail-row, .re-gutter, .re-sheet-head, .re-pick, .re-bar-btn { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
 .re-cell { position:relative; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
 .re-cell input { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
 .re-cell input:focus { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
@@ -529,10 +543,9 @@ const STYLES = `
 .re-msg { grid-column:1 / -1; margin:0; padding:4px 9px 6px 39px; font-size:12px; line-height:1.45; color:var(--re-warn); background:var(--re-warn-wash); }
 .re-pane-head > .re-msg, .re-sheet-block > .re-msg { padding:6px 9px; border-radius:3px; margin-top:6px; }
 .re-remove { background:none; border:none; cursor:pointer; color:var(--re-muted); display:flex; align-items:center; justify-content:center; padding:0; }
-.re-remove:hover { color:var(--re-critical); }
 /* Sticky, so Add stays in view while the sheet is scrolled sideways. */
 .re-add { grid-column:2; justify-self:start; position:sticky; left:30px; text-align:left; background:none; border:none; padding:7px 9px; font-size:13px; color:var(--re-muted); cursor:text; }
-.re-add:hover, .re-add:focus { color:var(--re-ink); outline:none; background:var(--re-paper); }
+.re-add:focus { color:var(--re-ink); outline:none; background:var(--re-paper); }
 .re-add:disabled { cursor:not-allowed; color:var(--re-muted); background:none; }
 .re-cool { display:flex; align-items:center; gap:7px; background:var(--re-paper); padding:8px 12px; border-top:1px solid var(--re-grid); font-size:12px; color:var(--re-muted); }
 .re-cool input { width:6em; font-size:12.5px; color:var(--re-ink); background:var(--re-surface); border:1px solid var(--re-line); border-radius:3px; padding:3px 8px; }
@@ -732,7 +745,8 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     o: { placeholder?: string; prose?: boolean; label: string; onDraft?: (v: string) => void; formula?: boolean }
   ): HTMLInputElement {
     let committed = value;
-    const input = el('input', { type: 'text', value, placeholder: o.placeholder ?? '', 'aria-label': o.label });
+    // autocomplete=off: no browser autofill strip over the sheet on a phone.
+    const input = el('input', { type: 'text', value, placeholder: o.placeholder ?? '', 'aria-label': o.label, autocomplete: 'off' });
     const commit = (): void => {
       closeMenu();
       if (input.value === committed) return;
@@ -781,35 +795,56 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     placeMenu();
   }
 
+  /** A key for the current list, so an unchanged list keeps its DOM (and its scroll position). */
+  let menuKeyOf = '';
+
   function drawMenu(): void {
-    menu.replaceChildren(
-      ...menuItems.map((choice, i) => {
-        const main = choice.kind === 'device' ? choice.device : choice.entry.tag;
-        const meta: string[] = [];
-        if (choice.kind === 'device') {
-          if (choice.entry.description) meta.push(choice.entry.description);
-          meta.push(`${choice.entry.tags.length} tag${choice.entry.tags.length === 1 ? '' : 's'}`);
-        } else {
-          if (choice.entry.value !== undefined) meta.push(`${choice.entry.value}${choice.entry.unit ? ` ${choice.entry.unit}` : ''}`);
-          else if (choice.entry.unit) meta.push(choice.entry.unit);
-          if (choice.entry.stale) meta.push('stale');
-        }
-        const item = el('div', {
-          class: `re-menu-item${i === menuIndex ? ' is-active' : ''}${choice.kind === 'tag' && choice.entry.stale ? ' is-stale' : ''}`,
-          role: 'option',
-          'aria-selected': String(i === menuIndex),
-          // pointerdown, not click: the input must keep its focus and caret.
-          onpointerdown: (e) => { e.preventDefault(); pickMenu(i); },
-        }, [
-          el('span', { class: 're-menu-main' }, [main]),
-          el('span', { class: 're-menu-meta' }, [meta.join(' · ')]),
-        ]);
-        if (choice.kind === 'tag' && choice.entry.description) item.title = choice.entry.description;
-        return item;
-      })
-    );
+    const key = menuItems.map((c) => (c.kind === 'device' ? `d:${c.device}` : `t:${c.device ?? ''}/${c.entry.tag}/${c.entry.value ?? ''}/${c.entry.stale ? 1 : 0}`)).join('\n');
+    if (key !== menuKeyOf || menu.children.length !== menuItems.length) {
+      menuKeyOf = key;
+      menu.replaceChildren(
+        ...menuItems.map((choice, i) => {
+          const main = choice.kind === 'device' ? choice.device : choice.entry.tag;
+          const meta: string[] = [];
+          if (choice.kind === 'device') {
+            if (choice.entry.description) meta.push(choice.entry.description);
+            meta.push(`${choice.entry.tags.length} tag${choice.entry.tags.length === 1 ? '' : 's'}`);
+          } else {
+            if (choice.entry.value !== undefined) meta.push(`${choice.entry.value}${choice.entry.unit ? ` ${choice.entry.unit}` : ''}`);
+            else if (choice.entry.unit) meta.push(choice.entry.unit);
+            if (choice.entry.stale) meta.push('stale');
+          }
+          const item = el('div', {
+            class: `re-menu-item${choice.kind === 'tag' && choice.entry.stale ? ' is-stale' : ''}`,
+            role: 'option',
+            // mousedown is prevented so the input keeps its focus and caret. On a
+            // touchscreen that is the compatibility event after a tap, so a drag
+            // still scrolls the list; the pick itself waits for the click.
+            onmousedown: (e) => e.preventDefault(),
+            onclick: () => pickMenu(i),
+          }, [
+            el('span', { class: 're-menu-main' }, [main]),
+            el('span', { class: 're-menu-meta' }, [meta.join(' · ')]),
+          ]);
+          if (choice.kind === 'tag' && choice.entry.description) item.title = choice.entry.description;
+          return item;
+        })
+      );
+      menu.scrollTop = 0;
+    }
+    Array.from(menu.children).forEach((item, i) => {
+      item.classList.toggle('is-active', i === menuIndex);
+      item.setAttribute('aria-selected', String(i === menuIndex));
+    });
     menu.hidden = false;
-    menu.querySelector<HTMLElement>('.re-menu-item.is-active')?.scrollIntoView?.({ block: 'nearest' });
+    // Keep the active row in view by scrolling the menu only, never the page.
+    const active = menu.children[menuIndex] as HTMLElement | undefined;
+    if (active) {
+      const top = active.offsetTop;
+      const bottom = top + active.offsetHeight;
+      if (top < menu.scrollTop) menu.scrollTop = top;
+      else if (bottom > menu.scrollTop + menu.clientHeight) menu.scrollTop = bottom - menu.clientHeight;
+    }
   }
 
   function placeMenu(): void {
@@ -861,7 +896,22 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     menu.hidden = true;
     menuFor = null;
     menuCtx = null;
+    menuKeyOf = '';
   }
+
+  // A floating menu follows its cell when the page scrolls or resizes, and
+  // closes when the cell is no longer being edited.
+  let menuFrame = 0;
+  const followMenu = (): void => {
+    if (menu.hidden || !menuFor || menuFor === barInput) return;
+    cancelAnimationFrame(menuFrame);
+    menuFrame = requestAnimationFrame(() => {
+      if (document.activeElement !== menuFor) closeMenu();
+      else placeMenu();
+    });
+  };
+  window.addEventListener('scroll', followMenu, { capture: true, passive: true });
+  window.addEventListener('resize', followMenu, { passive: true });
 
   function selectInput(value: string, options: Opt[], onChange: (v: string) => void, label: string): HTMLSelectElement {
     const sel = el('select', { 'aria-label': label, onchange: (e) => onChange((e.target as HTMLSelectElement).value) });
@@ -1288,6 +1338,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   const barInput = el('input', {
     type: 'text',
     'aria-label': 'Cell content',
+    autocomplete: 'off',
+    // The phone keyboard's action key reads "done" and commits, like the tick.
+    enterkeyhint: 'done',
     oninput: () => {
       const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
       if (!info?.input) return;
@@ -1367,19 +1420,32 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
    * so the bar is lifted by however much of it the keyboard covers.
    */
   const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+  let barLift = 0;
   function placeBar(): void {
-    bar.style.transform = '';
     const open = bar.classList.contains('is-open');
     let covered = 0;
     if (open && viewport) {
-      covered = Math.max(0, Math.round(bar.getBoundingClientRect().bottom - (viewport.offsetTop + viewport.height)));
-      if (covered > 0) bar.style.transform = `translateY(-${covered}px)`;
+      const rect = bar.getBoundingClientRect();
+      // Measure where the bar would sit without the lift it already has.
+      covered = Math.max(0, Math.round(rect.bottom + barLift - (viewport.offsetTop + viewport.height)));
+    }
+    // Only move for a real change: the keyboard animation fires many events.
+    if (covered !== barLift) {
+      barLift = covered;
+      bar.style.transform = covered > 0 ? `translate3d(0, -${covered}px, 0)` : '';
     }
     // Room under the last row, so it can scroll above the bar (and the keyboard).
-    pane.style.paddingBottom = open ? `${bar.offsetHeight + covered}px` : '';
+    const room = open ? `${bar.offsetHeight + covered}px` : '';
+    if (pane.style.paddingBottom !== room) pane.style.paddingBottom = room;
   }
-  viewport?.addEventListener('resize', placeBar);
-  viewport?.addEventListener('scroll', placeBar);
+  // One measurement per frame, however often the viewport reports.
+  let barFrame = 0;
+  const placeBarSoon = (): void => {
+    cancelAnimationFrame(barFrame);
+    barFrame = requestAnimationFrame(placeBar);
+  };
+  viewport?.addEventListener('resize', placeBarSoon);
+  viewport?.addEventListener('scroll', placeBarSoon);
 
   function updateBar(): void {
     const c = selectedCell;
@@ -1619,8 +1685,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     },
     destroy: () => {
       resizeObserver?.disconnect();
-      viewport?.removeEventListener('resize', placeBar);
-      viewport?.removeEventListener('scroll', placeBar);
+      viewport?.removeEventListener('resize', placeBarSoon);
+      viewport?.removeEventListener('scroll', placeBarSoon);
+      window.removeEventListener('scroll', followMenu, { capture: true });
+      window.removeEventListener('resize', followMenu);
       root.replaceChildren();
       root.classList.remove('re-root', ...WIDTH_CLASSES.map(([cls]) => cls));
     },
