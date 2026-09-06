@@ -6,7 +6,7 @@ import { LIMITS, type Cond, type Edge, type Match, type Rule, type Severity, typ
 import { el, pickInput, selectInput } from './dom.js';
 import { exampleModel } from './example.js';
 import { ACTION_OPTIONS, EDGE_OPTIONS, HELP, MATCH_OPTIONS } from './labels.js';
-import { previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD, THEN_LABEL, type ThenRow } from './then-rows.js';
+import { isGroupHead, previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD, THEN_LABEL, THEN_PROSE, type ThenRow } from './then-rows.js';
 import { locKey, type EditorState, type Loc, type SheetName } from './state.js';
 import type { Bar } from './bar.js';
 import type { Cells } from './cells.js';
@@ -205,7 +205,6 @@ export function createSheets(deps: SheetsDeps): Sheets {
 
   function thenRow(row: ThenRow, i: number, rule: Rule, index: number): HTMLElement {
     const current = row.kind === 'publish' ? 'publish' : rule.incident!.severity;
-    const action = pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`);
     const value = thenGet(rule, row);
     const loc: Loc = row.kind === 'publish'
       ? { rule: index, field: THEN_ISSUE_FIELD[row.field], action: row.index }
@@ -220,11 +219,16 @@ export function createSheets(deps: SheetsDeps): Sheets {
     const result = resultCell('Formula result', previewThen(value, rule), { address: `${who} · Formula result`, remove });
     // Recomputed on every refresh: the preview also reads condition 1's description.
     previews.add(() => { result.textContent = previewThen(thenGet(rule, row), rule) ?? ''; });
+    // One Action cell per action, like a merged cell: the first row holds the
+    // choice, the rows under it continue the cell.
+    const action = isGroupHead(row)
+      ? cell('re-cell-pick', 'Action', null, [pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`)], { address: `${who} · Action`, remove })
+      : el('div', { class: 're-cell-merged', 'aria-hidden': 'true' });
     return el('div', { class: 're-row' }, [
       gutter(i + 1),
-      cell('re-cell-pick', 'Action', null, [action], { address: `${who} · Action`, remove }),
+      action,
       cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
-      formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder, address: `${who} · Formula`, remove }),
+      formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove }),
       result,
       removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', remove),
     ]);

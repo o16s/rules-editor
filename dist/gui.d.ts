@@ -14,9 +14,10 @@ export interface RulesEditorOptions {
      */
     initialXml?: string;
     /**
-     * Called once on mount and after every committed edit: a text cell commits
-     * on Enter, Tab, or when it loses focus; choices, Add, Delete and Import
-     * commit at once. Keystrokes inside a cell do not fire it.
+     * Called once on mount and after every committed edit that changes the file
+     * or its issues: a text cell commits on Enter, Tab, or when it loses focus;
+     * choices, Add, Delete and Import commit at once. Keystrokes inside a cell
+     * do not fire it, and neither does a change of the selected rule.
      */
     onChange?: (state: {
         model: RulesModel;

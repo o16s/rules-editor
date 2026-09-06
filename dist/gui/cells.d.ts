@@ -24,6 +24,8 @@ export interface FormulaOptions {
     loc: Loc;
     /** Literal text unless the value starts with "=". */
     thenField?: boolean;
+    /** Free text: the phone keyboard keeps autocorrect. Off for names, topics and payloads. */
+    prose?: boolean;
     placeholder?: string;
     address?: string;
     remove?: () => void;

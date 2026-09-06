@@ -122,10 +122,43 @@ describe('rules editor component (jsdom)', () => {
     const fields = rows.map((r) => r.querySelector('.re-cell-field')?.textContent);
     expect(fields).toEqual(['topic', 'payload', 'source', 'title', 'first step', 'cause']);
     expect(rows[0].querySelector('.re-cell-result')?.textContent).toBe('camera/record');
+    // one Action choice per action, on its first row; the rows under it continue the cell
     expect(rows[0].querySelector('select')?.value).toBe('publish');
-    expect(rows[3].querySelector('select')?.value).toBe('critical');
+    expect(rows[2].querySelector('select')?.value).toBe('critical');
+    expect(rows.map((r) => Boolean(r.querySelector('.re-cell-merged')))).toEqual([false, true, false, true, true, true]);
+    expect(rows[1].querySelector('select')).toBeNull();
     // cause = condition.description & "…" previews with the first condition's description
     expect(rows[5].querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
+  });
+
+  it('keeps the phone keyboard off names, topics and payloads in the Then sheet; prose keeps it', () => {
+    const { root } = setup();
+    const off = (label: string) => inputByLabel(root, label).getAttribute('autocapitalize') === 'off';
+    expect(off('topic of row 1')).toBe(true);
+    expect(off('payload of row 2')).toBe(true);
+    expect(off('source of row 3')).toBe(true);
+    expect(off('title of row 4')).toBe(false);
+    expect(off('cause of row 6')).toBe(false);
+  });
+
+  it('does not fire onChange for a change of the selected rule', () => {
+    let changes = 0;
+    const { root } = setup({ onChange: () => changes++ });
+    expect(changes).toBe(1);
+    (root.querySelectorAll<HTMLElement>('.re-rail-row')[2]).click();
+    (root.querySelectorAll<HTMLElement>('.re-rail-row')[0]).click();
+    expect(changes).toBe(1);
+    type(inputByLabel(root, 'Condition 1'), 'temp > 61');
+    expect(changes).toBe(2);
+  });
+
+  it('the XML panel does not overwrite a pasted file that is not imported yet', () => {
+    const { root } = setup({ initialModel: wrap() });
+    button(root, 'XML').click();
+    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+    ta.value = '<rules/>';
+    type(inputByLabel(root, 'Condition 1'), 'temp > 61');
+    expect(ta.value).toBe('<rules/>');
   });
 
   it('fills result cells from the monitor callback, and shows a dash without one', () => {
@@ -663,6 +696,18 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(cellEl.contains(document.activeElement)).toBe(false);
   });
 
+  it('tapping the selected cell again keeps the value Cancel goes back to', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
+    const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
+    cellEl.click();
+    draft(barInput(root), 'temp > 99');
+    cellEl.click();
+    expect(barInput(root).value).toBe('temp > 99');
+    button(root, 'Cancel').click();
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp > 50');
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
+  });
+
   it('the bar holds a draft; the cross discards it, the tick or Enter commits it', () => {
     const { root, api } = narrowSetup({ initialModel: wrap() });
     const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
@@ -933,6 +978,17 @@ describe('TAG("…") autocomplete', () => {
     const outside = css.replace(hoverBlock, '');
     expect(outside).not.toMatch(/:hover/);
     expect(input.getAttribute('autocomplete')).toBe('off');
+  });
+
+  it('a complete name has nothing to pick: Enter commits it even while a longer name is listed', () => {
+    const { root, api } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: 'TAG("t")' }, { name: 'temp_rate', formula: 'RATE(temp, 30min)' }] }) });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'temp');
+    expect(items(root)).toEqual(['temp', 'temp_rate']);
+    key(input, 'Enter');
+    expect(menu(root).hidden).toBe(true);
+    expect(input.value).toBe('temp');
+    expect(api.getXml()).toContain('expr="temp"');
   });
 
   it('completes the rule\'s variables and the functions in a bare name; Tab accepts; TAG chains into the device list', () => {

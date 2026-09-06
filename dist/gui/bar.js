@@ -76,7 +76,12 @@ export function createBar(deps) {
         message,
     ]);
     function select(c) {
-        if (selectedCell && selectedCell !== c) {
+        // The same cell again: keep the value Cancel goes back to.
+        if (selectedCell === c) {
+            update();
+            return;
+        }
+        if (selectedCell) {
             // Moving on commits the draft, as in a spreadsheet.
             commit();
             selectedCell.classList.remove('is-selected');
@@ -181,7 +186,7 @@ export function createBar(deps) {
                 clear();
             return;
         }
-        if (c.querySelector('select'))
+        if (c.querySelector('select') || c.classList.contains('re-cell-merged'))
             return;
         select(c);
     });

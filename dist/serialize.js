@@ -2,18 +2,26 @@
 // documented style: double-quoted attributes, single-quoted when the value
 // contains a double quote (e.g. JSON payloads and formulas), always XML-safe.
 const INDENT = '  ';
-/** Escape for a double-quoted attribute value. */
-function escDouble(v) {
+/**
+ * Escape the characters every attribute value needs. Line breaks and tabs
+ * become character references: a parser turns a literal one into a space
+ * (attribute-value normalization), so a two-line cause would come back as one.
+ */
+function escText(v) {
     return v
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/\n/g, '&#10;')
+        .replace(/\r/g, '&#13;')
+        .replace(/\t/g, '&#9;');
+}
+/** Escape for a double-quoted attribute value. */
+function escDouble(v) {
+    return escText(v).replace(/"/g, '&quot;');
 }
 /** Escape for a single-quoted attribute value (quotes kept literal). */
-function escSingle(v) {
-    return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+const escSingle = escText;
 /**
  * Render `name="value"`, preferring single quotes when the value contains a
  * double quote but no single quote (keeps JSON payloads readable, as in docs).

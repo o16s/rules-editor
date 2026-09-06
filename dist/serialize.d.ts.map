@@ -1,1 +1,1 @@
-{"version":3,"file":"serialize.d.ts","sourceRoot":"","sources":["../src/serialize.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAuB,UAAU,EAAY,MAAM,YAAY,CAAC;AAsF5E,wBAAgB,SAAS,CAAC,KAAK,EAAE,UAAU,GAAG,MAAM,CAInD"}
+{"version":3,"file":"serialize.d.ts","sourceRoot":"","sources":["../src/serialize.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAuB,UAAU,EAAY,MAAM,YAAY,CAAC;AA+F5E,wBAAgB,SAAS,CAAC,KAAK,EAAE,UAAU,GAAG,MAAM,CAInD"}

@@ -31,8 +31,8 @@ const NARROW = `
   .re-root .re-info { min-width:32px; min-height:32px; font-size:15px; }
   .re-root .re-help, .re-root .re-msg { font-size:13px; }
   .re-root .re-tabs { display:flex; }
-  .re-root .re-sheet-vars .re-sheet-head, .re-root .re-sheet-vars .re-row { grid-template-columns:30px 110px 200px 90px 180px 30px; min-width:640px; }
-  .re-root .re-sheet-when .re-sheet-head, .re-root .re-sheet-when .re-row { grid-template-columns:30px 200px 90px 180px 30px; min-width:530px; }
+  .re-root .re-sheet-vars .re-sheet-head, .re-root .re-sheet-vars .re-row { grid-template-columns:30px 110px 190px 90px 220px 30px; min-width:670px; }
+  .re-root .re-sheet-when .re-sheet-head, .re-root .re-sheet-when .re-row { grid-template-columns:30px 190px 90px 220px 30px; min-width:560px; }
   .re-root .re-sheet-then .re-sheet-head, .re-root .re-sheet-then .re-row { grid-template-columns:30px 150px 80px 200px 180px 30px; min-width:670px; }
   .re-root .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
   .re-root .re-formula-view, .re-root .re-cell input, .re-root .re-cell-result, .re-root .re-cell-field { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -141,6 +141,8 @@ const STYLES = `
 .re-when-title .re-pick { font-size:15px; }
 .re-cell-pick .re-pick { display:flex; width:100%; justify-content:space-between; align-items:flex-start; padding:7px 9px; min-height:32px; }
 .re-cell-pick .re-pick-caret { padding-top:2px; }
+/* The rows of one action share its Action cell: the continuation rows paint over the grid line above them. */
+.re-cell-merged { position:relative; margin-top:-1px; border-right:1px solid var(--re-grid); background:var(--re-surface); }
 .re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
 .re-info[aria-expanded="true"] { color:var(--re-accent); }
 .re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
@@ -152,8 +154,9 @@ const STYLES = `
 .re-tab[aria-selected="true"] { color:var(--re-ink); border-bottom-color:var(--re-reading); font-weight:500; }
 .re-tab-count { color:var(--re-muted); margin-left:5px; font-weight:400; }
 .re-sheet-head, .re-row { display:grid; align-items:stretch; }
-.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(200px,1fr) 100px 220px 30px; min-width:704px; }
-.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(200px,1fr) 110px 280px 30px; min-width:650px; }
+/* The formula column stops at 300px; the description takes what is left, because it holds sentences. */
+.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(220px,300px) 100px minmax(220px,1fr) 30px; min-width:724px; }
+.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(220px,300px) 110px minmax(220px,1fr) 30px; min-width:710px; }
 .re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(200px,1fr) 220px 30px; min-width:764px; }
 .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
 .re-sheet-head { background:var(--re-head); border-bottom:1px solid #e4e0d9; }

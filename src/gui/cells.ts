@@ -33,6 +33,8 @@ export interface FormulaOptions {
   loc: Loc;
   /** Literal text unless the value starts with "=". */
   thenField?: boolean;
+  /** Free text: the phone keyboard keeps autocorrect. Off for names, topics and payloads. */
+  prose?: boolean;
   placeholder?: string;
   address?: string;
   remove?: () => void;
@@ -131,7 +133,7 @@ export function createCells(deps: CellsDeps): Cells {
     }, {
       label: o.label,
       placeholder: o.placeholder,
-      prose: Boolean(o.thenField),
+      prose: o.prose ?? false,
       formula: true,
       onDraft: (raw) => {
         const v = strip(raw);

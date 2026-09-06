@@ -89,8 +89,12 @@ function pane(title: string): { wrap: HTMLElement; body: HTMLElement } {
   return { wrap, body };
 }
 
+/** The editor of the previous render, torn down before the next: its window listeners would otherwise stay. */
+let mounted: RulesEditorHandle | null = null;
+
 export function renderHarness(args: HarnessArgs): HTMLElement {
   const { containerWidth, theme, showOutput, liveValues: live, catalog, ...editorOpts } = args;
+  mounted?.destroy();
 
   const page = document.createElement('div');
   page.style.cssText =
@@ -125,6 +129,7 @@ export function renderHarness(args: HarnessArgs): HTMLElement {
     },
   });
   window.editor = handle;
+  mounted = handle;
 
   page.append(host);
   if (showOutput) {

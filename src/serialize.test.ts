@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize } from './serialize.js';
+import { parse } from './parse.js';
 import type { RulesModel, Rule } from './model.js';
 
 const wrap = (rule: Partial<Rule>): RulesModel => ({
@@ -86,6 +87,12 @@ describe('serialize', () => {
     );
     const full = serialize(wrap({ conditions: [{ expr: 'a' }], incident: { ...base, firstStep: 'Look.', cause: '=condition.description & "."' } }));
     expect(full).toContain(`<incident source="plc1" severity="critical" summary="Machine alarm active" first_step="Look." cause='=condition.description &amp; "."'/>`);
+  });
+
+  it('keeps line breaks and tabs in an attribute as character references', () => {
+    const xml = serialize(wrap({ conditions: [{ expr: 'a' }], incident: { source: 's', severity: 'error', summary: 'x', cause: 'Stop.\nThen\tcheck.' } }));
+    expect(xml).toContain('cause="Stop.&#10;Then&#9;check."');
+    expect(parse(xml).rules[0].incident?.cause).toBe('Stop.\nThen\tcheck.');
   });
 
   it('escapes XML metacharacters in attribute values', () => {

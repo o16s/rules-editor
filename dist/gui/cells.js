@@ -90,7 +90,7 @@ export function createCells(deps) {
         }, {
             label: o.label,
             placeholder: o.placeholder,
-            prose: Boolean(o.thenField),
+            prose: o.prose ?? false,
             formula: true,
             onDraft: (raw) => {
                 const v = strip(raw);

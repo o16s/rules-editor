@@ -15,6 +15,12 @@ export const THEN_ISSUE_FIELD: Record<ThenField, ValidationIssue['field']> = {
   topic: 'topic', payload: 'payload', source: 'source', summary: 'summary', firstStep: 'first_step', cause: 'cause',
 };
 
+/** Free-text fields: title, first step and cause. Topic, payload and source are names. */
+export const THEN_PROSE: ReadonlySet<ThenField> = new Set<ThenField>(['summary', 'firstStep', 'cause']);
+
+/** True for the first row of an action: the one that carries the Action choice. */
+export const isGroupHead = (row: ThenRow): boolean => row.field === 'topic' || row.field === 'source';
+
 export function thenRows(rule: Rule): ThenRow[] {
   const rows: ThenRow[] = [];
   rule.actions.forEach((_, index) => rows.push({ kind: 'publish', index, field: 'topic' }, { kind: 'publish', index, field: 'payload' }));

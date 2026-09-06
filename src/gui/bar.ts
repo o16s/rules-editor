@@ -110,7 +110,9 @@ export function createBar(deps: BarDeps): Bar {
   ]);
 
   function select(c: HTMLElement): void {
-    if (selectedCell && selectedCell !== c) {
+    // The same cell again: keep the value Cancel goes back to.
+    if (selectedCell === c) { update(); return; }
+    if (selectedCell) {
       // Moving on commits the draft, as in a spreadsheet.
       commit();
       selectedCell.classList.remove('is-selected');
@@ -207,7 +209,7 @@ export function createBar(deps: BarDeps): Bar {
     if (!state.narrow) return;
     const c = (e.target as HTMLElement).closest<HTMLElement>('.re-cell');
     if (!c) { if (!(e.target as HTMLElement).closest('button, select, input')) clear(); return; }
-    if (c.querySelector('select')) return;
+    if (c.querySelector('select') || c.classList.contains('re-cell-merged')) return;
     select(c);
   });
 

@@ -50,9 +50,10 @@ export interface RulesEditorOptions {
    */
   initialXml?: string;
   /**
-   * Called once on mount and after every committed edit: a text cell commits
-   * on Enter, Tab, or when it loses focus; choices, Add, Delete and Import
-   * commit at once. Keystrokes inside a cell do not fire it.
+   * Called once on mount and after every committed edit that changes the file
+   * or its issues: a text cell commits on Enter, Tab, or when it loses focus;
+   * choices, Add, Delete and Import commit at once. Keystrokes inside a cell
+   * do not fire it, and neither does a change of the selected rule.
    */
   onChange?: (state: { model: RulesModel; xml: string; errors: string[] }) => void;
   /**
@@ -137,6 +138,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return state.parseError ? [state.parseError, ...errs] : errs;
   };
 
+  /** The xml and issues last given to onChange, so a selection change does not repeat them. */
+  let lastNotified: string | null = null;
+
   const status = el('div', { class: 're-status', role: 'alert' });
   const pane = el('section', { class: 're-pane' });
   const xmlPanel = createXmlPanel({
@@ -171,6 +175,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     xmlPanel.sync(xml);
     xmlPanel.gate(errs.length);
     // onChange still carries the xml while invalid, so a host can autosave a draft.
+    const notified = `${xml}\u0000${errs.join('\n')}`;
+    if (notified === lastNotified) return;
+    lastNotified = notified;
     opts.onChange?.({ model: clone(state.model), xml, errors: errs });
   }
 
@@ -270,10 +277,11 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
 
   function beginRender(): void {
-    measure();
     // A draft in the bar survives a structural change (Add, Delete) by being
-    // committed first. Its own refresh is skipped: endRender runs one.
+    // committed first. Its own refresh is skipped: endRender runs one. The
+    // width check is inside the batch too: crossing 560px also commits.
     state.batching = true;
+    measure();
     bar.commit();
     state.batching = false;
     bar.reset();
