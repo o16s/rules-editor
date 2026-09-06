@@ -144,7 +144,9 @@ export function createCells(deps: CellsDeps): Cells {
       },
     });
     if (o.thenField) menu.markThenInput(input);
-    return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, formula: true, remove: o.remove });
+    // The body holds the view and the input over it; a message can follow below, uncovered.
+    const body = el('div', { class: 're-cell-body' }, [view, input]);
+    return cell('re-cell-formula', o.column, o.loc, [body], { address: o.address, input, formula: true, remove: o.remove });
   }
 
   const resultCell = (label: string, value: string | null | undefined, info: Partial<CellInfo> = {}): HTMLElement =>

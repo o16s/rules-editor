@@ -240,7 +240,7 @@ cell; on a phone it sits inside the formula bar, above the input.
 
 | Kind | Where |
 |---|---|
-| A cell's own problem (bad formula, unknown name, reserved name, over-long text, bad cooldown) | the cell takes the amber wash `#fbf3e0`, and the message appears as text under its row |
+| A cell's own problem (bad formula, unknown name, reserved name, over-long text, bad cooldown) | the cell takes the amber wash `#fbf3e0`, and the message appears as a hint line inside the cell, under its value, without the `Rule "…":` prefix |
 | A whole-sheet problem (no condition rows, too many rows or variables) | the sheet border turns red and the message sits under the sheet |
 | A whole-rule problem (no action and no alarm) | under the pane body |
 | A whole-file problem (parse error, too many rules) | the status line under the top bar |

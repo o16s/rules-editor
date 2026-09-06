@@ -99,6 +99,15 @@ export interface RulesEditorHandle {
 /** Editors mounted so far, for unique ids (tabs and their panels). */
 let instances = 0;
 
+/**
+ * A message shown on its own field: the rule it names is the one on screen,
+ * so the `Rule "x": ` prefix goes and the rest starts with a capital.
+ */
+export function shortMessage(message: string): string {
+  const rest = message.replace(/^(Rule "[^"]*"|Unnamed rule): /, '');
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 const parseErrorText = (e: unknown): string => (e instanceof RulesParseError ? e.message : 'Could not parse XML.');
 
 export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}): RulesEditorHandle {
@@ -199,13 +208,13 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       const messages = byLoc.get(loc);
       node.classList.toggle('is-invalid', messages !== undefined);
       // The message is text on the page, not a tooltip: touch has no hover.
-      // A cell's message goes under its row, across every column, so a narrow
-      // column never has to fit a sentence.
+      // A cell's message goes inside the cell, under its value, like a hint
+      // under a form field; the row grows with it and the grid stays whole.
       const shown = messageFor(node);
       if (messages) {
         node.title = messages.join(' ');
-        const p = shown ?? messageHost(node).appendChild(el('p', { class: 're-msg', 'data-for': loc }));
-        p.textContent = messages.join(' ');
+        const p = shown ?? node.appendChild(el('p', { class: 're-msg', 'data-for': loc }));
+        p.textContent = messages.map(shortMessage).join(' ');
       } else {
         node.removeAttribute('title');
         shown?.remove();
@@ -213,14 +222,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     }
   }
 
-  /** Where a node's message goes: under a cell's row, else inside the node. */
-  const messageHost = (node: HTMLElement): HTMLElement =>
-    node.classList.contains('re-cell') ? node.parentElement ?? node : node;
-
   /** The message element shown for a marked node, or null. */
   function messageFor(node: HTMLElement): HTMLElement | null {
     const loc = node.dataset.loc ?? '';
-    const found = Array.from(messageHost(node).children).find(
+    const found = Array.from(node.children).find(
       (c) => c.classList.contains('re-msg') && (c as HTMLElement).dataset.for === loc
     );
     return (found as HTMLElement | undefined) ?? null;

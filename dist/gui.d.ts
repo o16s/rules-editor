@@ -62,6 +62,11 @@ export interface RulesEditorHandle {
     /** Tear down the editor (empties the container). */
     destroy(): void;
 }
+/**
+ * A message shown on its own field: the rule it names is the one on screen,
+ * so the `Rule "x": ` prefix goes and the rest starts with a capital.
+ */
+export declare function shortMessage(message: string): string;
 export declare function initRulesEditor(root: HTMLElement, opts?: RulesEditorOptions): RulesEditorHandle;
 export type { Token };
 export { serialize } from './serialize.js';
