@@ -357,7 +357,7 @@ const NARROW = `
   .re-root .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
   .re-root .re-formula-view, .re-root .re-cell input, .re-root .re-cell-result, .re-root .re-cell-field { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .re-root .re-formula-view { min-height:36px; line-height:22px; }
-  .re-root .re-cell > .re-msg { display:none; }
+  .re-root .re-row > .re-msg { display:none; }
 `;
 /**
  * Below this the pane padding and the When heading are the last things that
@@ -527,7 +527,6 @@ const STYLES = `
 .re-cell.is-invalid { background:var(--re-warn-wash); }
 .re-cell.is-invalid .re-formula-view { background:var(--re-warn-wash); }
 .re-msg { grid-column:1 / -1; margin:0; padding:4px 9px 6px 39px; font-size:12px; line-height:1.45; color:var(--re-warn); background:var(--re-warn-wash); }
-.re-cell > .re-msg { padding-left:9px; }
 .re-pane-head > .re-msg, .re-sheet-block > .re-msg { padding:6px 9px; border-radius:3px; margin-top:6px; }
 .re-remove { background:none; border:none; cursor:pointer; color:var(--re-muted); display:flex; align-items:center; justify-content:center; padding:0; }
 .re-remove:hover { color:var(--re-critical); }
@@ -659,19 +658,30 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       else byLoc.set(key, [issue.message]);
     }
     for (const node of Array.from(pane.querySelectorAll<HTMLElement>('[data-loc]'))) {
-      const messages = byLoc.get(node.dataset.loc ?? '');
+      const loc = node.dataset.loc ?? '';
+      const messages = byLoc.get(loc);
       node.classList.toggle('is-invalid', messages !== undefined);
       // The message is text on the page, not a tooltip: touch has no hover.
-      const shown = node.querySelector(':scope > .re-msg');
+      // A cell's message goes under its row, across every column, so a narrow
+      // column never has to fit a sentence.
+      const host = node.classList.contains('re-cell') ? node.parentElement ?? node : node;
+      const shown = messageFor(node);
       if (messages) {
         node.title = messages.join(' ');
-        const p = shown ?? node.appendChild(el('p', { class: 're-msg' }));
+        const p = shown ?? host.appendChild(el('p', { class: 're-msg', 'data-for': loc }));
         p.textContent = messages.join(' ');
       } else {
         node.removeAttribute('title');
         shown?.remove();
       }
     }
+  }
+
+  /** The message element shown for a marked node, or null. */
+  function messageFor(node: HTMLElement): HTMLElement | null {
+    const host = node.classList.contains('re-cell') ? node.parentElement ?? node : node;
+    const loc = node.dataset.loc ?? '';
+    return Array.from(host.children).find((c) => c.classList.contains('re-msg') && (c as HTMLElement).dataset.for === loc) as HTMLElement | undefined ?? null;
   }
 
   /** Issue counts and names in the rail, without re-rendering it. */
@@ -1404,7 +1414,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 
   /** The selected cell's validation message, shown in the bar where the keyboard cannot hide it. */
   function updateBarMessage(): void {
-    const msg = selectedCell?.querySelector(':scope > .re-msg')?.textContent ?? '';
+    const msg = (selectedCell && messageFor(selectedCell)?.textContent) || '';
     barMsg.textContent = msg;
     barMsg.hidden = !msg;
   }

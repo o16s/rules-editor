@@ -361,13 +361,16 @@ describe('rules editor component (jsdom)', () => {
     const cellEl = input.closest('.re-cell') as HTMLElement;
     type(input, 'temp >');
     expect(cellEl.classList.contains('is-invalid')).toBe(true);
-    const msg = cellEl.querySelector('.re-msg') as HTMLElement;
+    // the message sits under the row, across every column, not inside the cell
+    const row = cellEl.parentElement as HTMLElement;
+    const msg = row.querySelector(':scope > .re-msg') as HTMLElement;
     expect(msg.textContent).toMatch(/column 7/);
     expect(msg.hidden).toBe(false);
+    expect(cellEl.querySelector('.re-msg')).toBeNull();
     expect(root.querySelector('.re-rail-issues')?.textContent).toBe('1 issue');
     type(input, 'temp > 1');
     expect(cellEl.classList.contains('is-invalid')).toBe(false);
-    expect(cellEl.querySelector('.re-msg')).toBeNull();
+    expect(row.querySelector('.re-msg')).toBeNull();
     expect(root.querySelector('.re-rail-issues')?.textContent).toBe('');
   });
 
@@ -544,7 +547,7 @@ describe('rules editor component (jsdom)', () => {
 
   it('shows the error as text, not only as a hover tooltip', () => {
     const { root } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: '' }] }) });
-    const field = inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement;
+    const field = inputByLabel(root, 'Formula of variable 1').closest('.re-row') as HTMLElement;
     const msg = field.querySelector('.re-msg') as HTMLElement;
     expect(msg, 'no visible message under the field').toBeTruthy();
     expect(msg.textContent).toMatch(/no formula/);
