@@ -332,26 +332,42 @@ describe('rules editor component (jsdom)', () => {
     setup();
     return document.getElementById('octaview-rules-editor-styles')!.textContent ?? '';
   };
+  /** The rules scoped to one width class, as "selector {declarations}" strings. */
+  const rulesFor = (css: string, cls: string): string =>
+    [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter(([, sel]) => sel.includes(`.re-root.${cls}`))
+      .map(([, sel, body]) => `${sel.trim()} {${body}}`)
+      .join('\n');
   /** The declarations that apply only when the editor is narrow. */
-  const narrowBlocks = (css: string): string[] =>
-    [...css.matchAll(/@(?:media|container)[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+  const narrowBlocks = (css: string): string[] => ['is-medium', 'is-narrow', 'is-tight'].map((cls) => rulesFor(css, cls));
 
-  it('adapts to its container, not only to the viewport', () => {
+  it('keys the responsive layout off its own width, never the viewport', () => {
     const css = sheet();
-    // The editor is embedded, so it can be narrow inside a wide window.
-    expect(css).toMatch(/container-type:\s*inline-size/);
-    expect(css).toMatch(/@container\s/);
-    // Kept alongside a viewport query so it still adapts without container support.
-    expect(css).toMatch(/@media\s*\(max-width/);
+    // One source of truth: the width classes the ResizeObserver sets. A media
+    // query would apply phone styles to a wide editor on a phone, while the
+    // behaviour (tabs, the bar) stayed in desktop mode.
+    expect(css).not.toMatch(/@media/);
+    expect(css).not.toMatch(/@container/);
+    expect(css).not.toMatch(/container-type/);
+    const at = (width: number) => {
+      const root = document.createElement('div');
+      Object.defineProperty(root, 'clientWidth', { value: width, configurable: true });
+      document.body.append(root);
+      initRulesEditor(root);
+      return ['is-medium', 'is-narrow', 'is-tight'].filter((c) => root.classList.contains(c));
+    };
+    expect(at(1180)).toEqual([]);
+    expect(at(900)).toEqual(['is-medium']);
+    expect(at(800)).toEqual(['is-medium']);
+    expect(at(560)).toEqual(['is-medium', 'is-narrow']);
+    expect(at(320)).toEqual(['is-medium', 'is-narrow', 'is-tight']);
   });
 
-  it('folds the rail into a select below 900px', () => {
-    const css = sheet();
-    const medium = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*900px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
-    expect(medium.length).toBe(2);
-    expect(medium.join('')).toMatch(/\.re-rail\s*\{[^}]*display:\s*none/);
-    expect(medium.join('')).toMatch(/\.re-rail-select\s*\{[^}]*display:\s*block/);
-    expect(medium.join('')).toMatch(/\.re-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  it('folds the rail into a select at 900px and below', () => {
+    const medium = rulesFor(sheet(), 'is-medium');
+    expect(medium).toMatch(/\.re-rail\s*\{[^}]*display:\s*none/);
+    expect(medium).toMatch(/\.re-rail-select\s*\{[^}]*display:\s*block/);
+    expect(medium).toMatch(/\.re-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   });
 
   it('lifts every text control to 16px when narrow, so iOS does not zoom on focus', () => {
@@ -389,9 +405,8 @@ describe('rules editor component (jsdom)', () => {
     expect(css).toMatch(/\.re-gutter, \.re-gutter-head\s*\{[^}]*position:\s*sticky;\s*left:\s*0/);
     // rows never squeeze below a usable width; the sheet scrolls instead
     expect(css).toMatch(/\.re-sheet-vars \.re-row\s*\{[^}]*min-width:\s*\d+px/);
-    const narrow = [...css.matchAll(/@(?:media|container)[^{]*max-width:\s*560px[^{]*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
-    expect(narrow.length).toBe(2);
-    const block = narrow.join('');
+    const block = rulesFor(css, 'is-narrow');
+    expect(block).not.toBe('');
     // no card layout: the grid header stays, rows stay grids, cells are tapped not typed into
     expect(block).not.toMatch(/\.re-sheet-head\s*\{[^}]*display:\s*none/);
     expect(block).not.toMatch(/::before/);

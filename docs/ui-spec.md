@@ -337,10 +337,12 @@ look finished.
 
 ### 8.4 Responsive to its container, not the viewport
 
-The editor declares `container-type: inline-size` and ships every responsive
-rule twice, as `@media` and as `@container`. Any new breakpoint must be emitted
-both ways. Behaviour that CSS cannot express (tabs, the bar) keys off an
-`is-narrow` class set from the container width by a `ResizeObserver`.
+The editor measures its own container with a `ResizeObserver` and sets
+`is-medium`, `is-narrow` and `is-tight` on its root. Every responsive rule is
+scoped to one of those classes. There is no `@media` and no `@container`
+query: a viewport query would style a wide editor on a phone as a phone while
+the behaviour (tabs, the bar) stayed in desktop mode. A host that fixes the
+editor wider than the viewport gets the wide layout and a sideways scroll.
 
 | Width | Behaviour |
 |---|---|

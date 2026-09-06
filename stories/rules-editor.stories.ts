@@ -21,7 +21,12 @@ export default meta;
 
 type Story = StoryObj<HarnessArgs>;
 
-/** The design handoff at desktop width: the rail, and the Variables, When and Then sheets with live values. */
+/** Follows the width of the window. Open this one on a phone: the editor measures its own container and switches layout by itself. */
+export const Responsive: Story = {
+  args: { containerWidth: 'fluid', showOutput: false },
+};
+
+/** The design handoff at desktop width: the rail, and the Variables, When and Then sheets with live values. Fixed at 1180px, so on a phone it scrolls sideways by design. */
 export const Desktop: Story = {
   args: { containerWidth: '1180px', showOutput: false },
 };
@@ -68,7 +73,8 @@ export const PhoneInvalidFormula: Story = {
   globals: { viewport: { value: 'mobile2', isRotated: false } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('tab', { name: /When/ }));
+    // The tabs appear once the ResizeObserver has measured the container.
+    await userEvent.click(await canvas.findByRole('tab', { name: /When/ }));
     const cell = canvas.getByLabelText('Condition 2').closest('.re-cell') as HTMLElement;
     await userEvent.click(cell);
     const bar = canvas.getByLabelText('Cell content') as HTMLInputElement;

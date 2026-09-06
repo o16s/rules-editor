@@ -92,9 +92,13 @@ editor.destroy();    // tear down
 
 ### Small screens
 
-The editor works down to 320px wide. It adapts to **its own container**, not
-just to the window, so it also reflows when embedded in a narrow column on a
-wide screen. Below 900px the rule rail folds into a select above the sheets.
+The editor works down to 320px wide. It measures **its own container** with a
+`ResizeObserver` and sets `is-medium` (900px or less), `is-narrow` (560px or
+less) and `is-tight` (430px or less) on its root. Every responsive style keys
+off those classes; there is no media query. So it reflows when embedded in a
+narrow column on a wide screen, and a host that fixes it wider than a phone
+gets the wide layout with a sideways scroll, by design. Below 900px the rule
+rail folds into a select above the sheets.
 
 Below 560px the editor follows the phone model of Google Sheets. The sheet
 stays a sheet: columns keep their widths, the sheet scrolls sideways inside

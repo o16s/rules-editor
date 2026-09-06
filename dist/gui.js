@@ -227,11 +227,14 @@ function previewThen(text, rule) {
 // ---- scoped styles -------------------------------------------------------
 const STYLE_ID = 'octaview-rules-editor-styles';
 /**
- * Declarations that apply when the editor is narrow. Emitted twice, once for a
- * narrow window and once for a narrow container: the editor is embedded, so it
- * can sit in a small column on a wide screen, which a viewport query misses.
- * Below 900px the rail folds into a select above the sheets. Below 560px each
- * sheet row becomes a stacked card with the column name over every cell,
+ * Declarations that apply when the editor is narrow. The width that counts is
+ * the editor's own container, measured by a ResizeObserver, which sets
+ * `is-medium` (900px or less), `is-narrow` (560px or less) and `is-tight`
+ * (430px or less) on the root. The CSS keys off those classes only: no media
+ * or container query, so the styles and the behaviour (tabs, the formula bar)
+ * can never disagree about the width. Below 900px the rail folds into a
+ * select above the sheets. Below 560px the phone model applies: one sheet per
+ * tab, the sheet scrolls sideways, cells are tapped and edited in the bar,
  * controls go to 16px because iOS Safari zooms the page when a focused field
  * is smaller, and the small controls get a 44px target (WCAG 2.5.8 asks 24px).
  */
@@ -269,14 +272,11 @@ const TIGHT = `
   .re-root .re-cool { flex-wrap:wrap; }
   .re-root .re-top { flex-wrap:wrap; gap:8px; }
 `;
-const NARROW_BLOCKS = `
-@media (max-width:900px) {${MEDIUM}}
-@container re (max-width:900px) {${MEDIUM}}
-@media (max-width:560px) {${NARROW}}
-@container re (max-width:560px) {${NARROW}}
-@media (max-width:430px) {${TIGHT}}
-@container re (max-width:430px) {${TIGHT}}
-`;
+/** Scope a block's `.re-root` rules to one width class. */
+const scoped = (cls, block) => block.replace(/\.re-root /g, `.re-root.${cls} `);
+const NARROW_BLOCKS = `${scoped('is-medium', MEDIUM)}${scoped('is-narrow', NARROW)}${scoped('is-tight', TIGHT)}`;
+/** Width classes, widest first; `measure()` sets them from the container width. */
+const WIDTH_CLASSES = [['is-medium', 900], ['is-narrow', 560], ['is-tight', 430]];
 const STYLES = `
 .re-root {
   --re-accent: var(--accent, #b8460f);
@@ -302,8 +302,6 @@ const STYLES = `
   --re-font: var(--font-body, "Helvetica Neue", Helvetica, Arial, sans-serif);
   font-family: var(--re-font); color: var(--re-ink); font-size: 13px; line-height: 1.45;
   background: var(--re-surface); border: 1px solid var(--re-line); border-radius: 4px; overflow: hidden;
-  /* The editor is embedded, so it can be narrow inside a wide window. */
-  container-type: inline-size; container-name: re;
 }
 .re-root *, .re-root *::before, .re-root *::after { box-sizing: border-box; }
 .re-root button, .re-root input, .re-root select, .re-root textarea { font-family: inherit; }
@@ -1066,14 +1064,21 @@ export function initRulesEditor(root, opts = {}) {
         if (v === narrow)
             return;
         narrow = v;
-        root.classList.toggle('is-narrow', v);
         applySheetVisibility();
         if (v)
             updateBar();
         else
             clearSelection();
     }
-    const measure = () => setNarrow(root.clientWidth > 0 && root.clientWidth <= 560);
+    /** Read the container width and set the width classes; 0 (not in the DOM yet) changes nothing. */
+    const measure = () => {
+        const width = root.clientWidth;
+        if (width <= 0)
+            return;
+        for (const [cls, max] of WIDTH_CLASSES)
+            root.classList.toggle(cls, width <= max);
+        setNarrow(width <= 560);
+    };
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     resizeObserver?.observe(root);
     // ---- render ----
@@ -1179,7 +1184,7 @@ export function initRulesEditor(root, opts = {}) {
         getXml: () => serialize(model),
         getErrors: () => computeErrors(),
         setModel: (m) => { parseError = null; model = clone(m); selected = 0; render(); },
-        destroy: () => { resizeObserver?.disconnect(); root.replaceChildren(); root.classList.remove('re-root', 'is-narrow'); },
+        destroy: () => { resizeObserver?.disconnect(); root.replaceChildren(); root.classList.remove('re-root', ...WIDTH_CLASSES.map(([cls]) => cls)); },
     };
 }
 // ---- re-exports: one entry for the editor + the core ---------------------
