@@ -29,8 +29,20 @@ import {
 } from './model.js';
 import { serialize } from './serialize.js';
 import { parse, validateIssues, RulesParseError, type ValidationIssue } from './parse.js';
-import { formulaTokens, isFormula, parseFormula, type Ast, type Token } from './formula.js';
-import { applyTagChoice, tagChoices, tagContext, type TagCatalog, type TagChoice, type TagContext } from './catalog.js';
+import { FUNCTIONS, formulaTokens, isFormula, parseFormula, type Ast, type Token } from './formula.js';
+import {
+  applyNameChoice,
+  applyTagChoice,
+  nameChoices,
+  nameContext,
+  tagChoices,
+  tagContext,
+  type NameChoice,
+  type NameContext,
+  type TagCatalog,
+  type TagChoice,
+  type TagContext,
+} from './catalog.js';
 
 /** What a `monitor` callback is asked for: one result cell. */
 export type MonitorRef = { rule: number } & ({ kind: 'variable'; name: string } | { kind: 'condition'; index: number });
@@ -769,53 +781,98 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return o.prose ? input : identifierAttrs(input);
   }
 
-  // ---- TAG("…") autocomplete ----
-  // One menu for the whole editor. On a desktop it floats under the cell being
+  // ---- formula autocomplete ----
+  // One menu for the whole editor. Inside a TAG("…") string it offers devices,
+  // then tags, from the host's catalog. In a bare name it offers the rule's
+  // variables and the functions. On a desktop it floats under the cell being
   // typed into (position: fixed, so the sheet's own scrolling never clips it);
   // on a phone it sits inside the bar, above the input.
+  type MenuChoice = TagChoice | NameChoice;
+  type MenuState = { mode: 'tag'; ctx: TagContext } | { mode: 'name'; ctx: NameContext };
   const menu = el('div', { class: 're-menu', role: 'listbox', hidden: true });
   let menuFor: HTMLInputElement | null = null;
-  let menuItems: TagChoice[] = [];
+  let menuItems: MenuChoice[] = [];
   let menuIndex = 0;
-  let menuCtx: TagContext | null = null;
+  let menuState: MenuState | null = null;
+  /** Then-field inputs: text unless the value starts with "=", so names complete only in a formula. */
+  const thenInputs = new WeakSet<HTMLInputElement>();
 
   /** Open, refresh or close the menu for the caret position in `input`. */
   function maybeMenu(input: HTMLInputElement): void {
     // On a phone the bar is the only place to type; a cell input never anchors the menu.
     if (narrow && input !== barInput) return;
+    const text = input.value;
+    const caret = input.selectionStart ?? text.length;
     const catalog = resolveCatalog();
-    const ctx = catalog ? tagContext(input.value, input.selectionStart ?? input.value.length) : null;
-    const items = catalog && ctx ? tagChoices(catalog, ctx).slice(0, 40) : [];
-    if (!ctx || items.length === 0) { closeMenu(); return; }
+    let state: MenuState | null = null;
+    let items: MenuChoice[] = [];
+    const tagCtx = tagContext(text, caret);
+    if (tagCtx) {
+      if (catalog) { state = { mode: 'tag', ctx: tagCtx }; items = tagChoices(catalog, tagCtx); }
+    } else if (isFormulaInput(input)) {
+      const nameCtx = nameContext(text, caret);
+      if (nameCtx) {
+        const rule = model.rules[selected];
+        const variables = (rule?.variables ?? []).map((v) => ({
+          name: v.name,
+          description: v.description,
+          value: monitor?.({ rule: selected, kind: 'variable', name: v.name }),
+        }));
+        state = { mode: 'name', ctx: nameCtx };
+        items = nameChoices(nameCtx, variables, FUNCTIONS);
+      }
+    }
+    if (!state || items.length === 0) { closeMenu(); return; }
     menuFor = input;
-    menuCtx = ctx;
-    menuItems = items;
+    menuState = state;
+    menuItems = items.slice(0, 40);
     menuIndex = 0;
     drawMenu();
     placeMenu();
   }
 
+  /** True when `input` holds a formula right now (a Then field only when it starts with "="). */
+  function isFormulaInput(input: HTMLInputElement): boolean {
+    const cellInput = input === barInput ? (selectedCell ? cellInfo.get(selectedCell)?.input : undefined) : input;
+    if (!cellInput) return false;
+    return thenInputs.has(cellInput) ? isFormula(input.value) : true;
+  }
+
   /** A key for the current list, so an unchanged list keeps its DOM (and its scroll position). */
   let menuKeyOf = '';
 
+  /** What a row shows: the name, the muted detail, and a tooltip. */
+  function describeChoice(choice: MenuChoice): { main: string; meta: string[]; title?: string; stale?: boolean; key: string } {
+    switch (choice.kind) {
+      case 'device':
+        return {
+          main: choice.device,
+          meta: [...(choice.entry.description ? [choice.entry.description] : []), `${choice.entry.tags.length} tag${choice.entry.tags.length === 1 ? '' : 's'}`],
+          key: `d:${choice.device}`,
+        };
+      case 'tag': {
+        const meta: string[] = [];
+        if (choice.entry.value !== undefined) meta.push(`${choice.entry.value}${choice.entry.unit ? ` ${choice.entry.unit}` : ''}`);
+        else if (choice.entry.unit) meta.push(choice.entry.unit);
+        if (choice.entry.stale) meta.push('stale');
+        return { main: choice.entry.tag, meta, title: choice.entry.description, stale: choice.entry.stale, key: `t:${choice.device ?? ''}/${choice.entry.tag}/${choice.entry.value ?? ''}/${choice.entry.stale ? 1 : 0}` };
+      }
+      case 'variable':
+        return { main: choice.name, meta: choice.value !== undefined ? [choice.value] : [], title: choice.description, key: `v:${choice.name}/${choice.value ?? ''}` };
+      case 'function':
+        return { main: `${choice.entry.name}(`, meta: [choice.entry.signature], title: choice.entry.doc, key: `f:${choice.entry.name}` };
+    }
+  }
+
   function drawMenu(): void {
-    const key = menuItems.map((c) => (c.kind === 'device' ? `d:${c.device}` : `t:${c.device ?? ''}/${c.entry.tag}/${c.entry.value ?? ''}/${c.entry.stale ? 1 : 0}`)).join('\n');
+    const rows = menuItems.map(describeChoice);
+    const key = rows.map((r) => r.key).join('\n');
     if (key !== menuKeyOf || menu.children.length !== menuItems.length) {
       menuKeyOf = key;
       menu.replaceChildren(
-        ...menuItems.map((choice, i) => {
-          const main = choice.kind === 'device' ? choice.device : choice.entry.tag;
-          const meta: string[] = [];
-          if (choice.kind === 'device') {
-            if (choice.entry.description) meta.push(choice.entry.description);
-            meta.push(`${choice.entry.tags.length} tag${choice.entry.tags.length === 1 ? '' : 's'}`);
-          } else {
-            if (choice.entry.value !== undefined) meta.push(`${choice.entry.value}${choice.entry.unit ? ` ${choice.entry.unit}` : ''}`);
-            else if (choice.entry.unit) meta.push(choice.entry.unit);
-            if (choice.entry.stale) meta.push('stale');
-          }
+        ...rows.map(({ main, meta, title, stale }, i) => {
           const item = el('div', {
-            class: `re-menu-item${choice.kind === 'tag' && choice.entry.stale ? ' is-stale' : ''}`,
+            class: `re-menu-item${stale ? ' is-stale' : ''}`,
             role: 'option',
             // mousedown is prevented so the input keeps its focus and caret. On a
             // touchscreen that is the compatibility event after a tap, so a drag
@@ -826,7 +883,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
             el('span', { class: 're-menu-main' }, [main]),
             el('span', { class: 're-menu-meta' }, [meta.join(' · ')]),
           ]);
-          if (choice.kind === 'tag' && choice.entry.description) item.title = choice.entry.description;
+          if (title) item.title = title;
           return item;
         })
       );
@@ -868,12 +925,19 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 
   function pickMenu(i: number): void {
     const input = menuFor;
-    const ctx = menuCtx;
+    const state = menuState;
     const choice = menuItems[i];
-    if (!input || !ctx || !choice) return;
-    const r = applyTagChoice(input.value, ctx, choice);
+    if (!input || !state || !choice) return;
+    const r = state.mode === 'tag' && (choice.kind === 'device' || choice.kind === 'tag')
+      ? applyTagChoice(input.value, state.ctx, choice)
+      : state.mode === 'name' && (choice.kind === 'variable' || choice.kind === 'function')
+        ? applyNameChoice(input.value, state.ctx, choice)
+        : null;
+    if (!r) return;
     input.value = r.text;
     input.setSelectionRange(r.caret, r.caret);
+    // The input event redraws the view and, when there is a next step, reopens the menu.
+    closeMenu();
     input.dispatchEvent(new Event('input'));
     if (!r.more) closeMenu();
   }
@@ -895,7 +959,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   function closeMenu(): void {
     menu.hidden = true;
     menuFor = null;
-    menuCtx = null;
+    menuState = null;
     menuKeyOf = '';
   }
 
@@ -989,6 +1053,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
         view = next;
       },
     });
+    if (o.thenField) thenInputs.add(input);
     return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, formula: true, remove: o.remove });
   }
 
@@ -1719,8 +1784,8 @@ export {
   quoteString,
 } from './formula.js';
 export type { Ast, BinaryOp, FormulaType, FunctionSpec, FormulaRefs, TagRef, TokenKind } from './formula.js';
-export { tagContext, tagChoices, applyTagChoice } from './catalog.js';
-export type { TagCatalog, DeviceEntry, TagEntry, TagContext, TagChoice } from './catalog.js';
+export { tagContext, tagChoices, applyTagChoice, nameContext, nameChoices, applyNameChoice } from './catalog.js';
+export type { TagCatalog, DeviceEntry, TagEntry, TagContext, TagChoice, NameContext, NameChoice } from './catalog.js';
 export {
   OPERATORS,
   SEVERITIES,

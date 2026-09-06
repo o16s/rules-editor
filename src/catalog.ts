@@ -1,6 +1,9 @@
-// The tag catalog a host can supply, and the pure logic behind the TAG(...)
-// autocomplete: where the caret is inside a TAG call, which choices fit, and
-// what the text becomes when one is picked. No DOM here; gui.ts draws the menu.
+// The tag catalog a host can supply, and the pure logic behind the formula
+// autocomplete: where the caret is (inside a TAG call, or in a bare name),
+// which choices fit, and what the text becomes when one is picked. No DOM
+// here; gui.ts draws the menu.
+
+import type { FunctionSpec } from './formula.js';
 
 /** One field a device exposes. `value` and `stale` are live data the host may bind. */
 export interface TagEntry {
@@ -125,6 +128,98 @@ export function tagChoices(catalog: TagCatalog, ctx: TagContext): TagChoice[] {
 }
 
 const quote = (s: string): string => `"${s.replace(/"/g, '""')}"`;
+
+// ---- names: variables and functions ---------------------------------------
+
+/** The caret sits at the end of a bare name being typed, outside any string. */
+export interface NameContext {
+  prefix: string;
+  /** The whole word: `text.slice(start, end)`. */
+  start: number;
+  end: number;
+}
+
+export interface VariableChoice {
+  kind: 'variable';
+  name: string;
+  description?: string;
+  /** The live value, when the host has one. */
+  value?: string;
+}
+export interface FunctionChoice {
+  kind: 'function';
+  entry: FunctionSpec;
+}
+export type NameChoice = VariableChoice | FunctionChoice;
+
+/** Where the caret is, when it is inside a bare name (a variable or function being typed). */
+export function nameContext(text: string, caret: number): NameContext | null {
+  let inString = false;
+  for (let i = 0; i < caret; i++) {
+    if (text[i] !== '"') continue;
+    if (inString && text[i + 1] === '"' && i + 1 < caret) { i++; continue; }
+    inString = !inString;
+  }
+  if (inString) return null;
+  let start = caret;
+  while (start > 0 && isIdentChar(text[start - 1])) start--;
+  if (start === caret || !isIdentStart(text[start])) return null;
+  if (start > 0 && text[start - 1] === '.') return null; // condition.description
+  let end = caret;
+  while (end < text.length && isIdentChar(text[end])) end++;
+  return { prefix: text.slice(start, caret), start, end };
+}
+
+/**
+ * Variables and functions that fit the typed prefix, variables first, best
+ * matches first. Nothing when the only match is what is already typed.
+ */
+export function nameChoices(
+  ctx: NameContext,
+  variables: Array<{ name: string; description?: string; value?: string }>,
+  functions: readonly FunctionSpec[]
+): NameChoice[] {
+  const p = ctx.prefix.toLowerCase();
+  const rank = (name: string): number => {
+    const n = name.toLowerCase();
+    return n.startsWith(p) ? 0 : n.includes(p) ? 1 : -1;
+  };
+  const out: Array<{ rank: number; choice: NameChoice }> = [];
+  for (const v of variables) {
+    if (!v.name) continue;
+    const r = rank(v.name);
+    if (r >= 0) out.push({ rank: r, choice: { kind: 'variable', name: v.name, description: v.description, value: v.value } });
+  }
+  // Functions match by prefix only: a substring match ("te" in RATE) is noise.
+  for (const f of functions) {
+    if (f.name.toLowerCase().startsWith(p)) out.push({ rank: 2, choice: { kind: 'function', entry: f } });
+  }
+  const choices = out.sort((a, b) => a.rank - b.rank).map((o) => o.choice);
+  if (choices.length === 1) {
+    const only = choices[0];
+    const typed = ctx.prefix;
+    if ((only.kind === 'variable' && only.name === typed) || (only.kind === 'function' && only.entry.name === typed.toUpperCase())) return [];
+  }
+  return choices;
+}
+
+/**
+ * The text after picking a name. A variable replaces the word. A function
+ * replaces it with `NAME(`; TAG opens its first string too, so the device
+ * list can follow (`more`).
+ */
+export function applyNameChoice(text: string, ctx: NameContext, choice: NameChoice): { text: string; caret: number; more: boolean } {
+  const before = text.slice(0, ctx.start);
+  const after = text.slice(ctx.end);
+  if (choice.kind === 'variable') {
+    return { text: before + choice.name + after, caret: before.length + choice.name.length, more: false };
+  }
+  const name = choice.entry.name;
+  const opens = /^\s*\(/.test(after);
+  const inserted = opens ? name : name === 'TAG' ? `${name}("` : `${name}(`;
+  const caret = before.length + inserted.length + (opens ? (/^\s*\(/.exec(after)?.[0].length ?? 0) : 0);
+  return { text: before + inserted + after, caret, more: name === 'TAG' && !opens };
+}
 
 /**
  * The text after picking a choice: a device becomes `"device", "` with the

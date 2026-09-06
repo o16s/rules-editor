@@ -76,8 +76,8 @@ export { parse, validate, validateIssues, RulesParseError } from './parse.js';
 export type { ValidationIssue } from './parse.js';
 export { FUNCTIONS, RESERVED_NAMES, CONTEXT_NAMES, FormulaError, parseFormula, printFormula, formulaTokens, formulaRefs, inferType, checkFunctions, functionSpec, legacyCondToFormula, isFormula, formulaBody, quoteString, } from './formula.js';
 export type { Ast, BinaryOp, FormulaType, FunctionSpec, FormulaRefs, TagRef, TokenKind } from './formula.js';
-export { tagContext, tagChoices, applyTagChoice } from './catalog.js';
-export type { TagCatalog, DeviceEntry, TagEntry, TagContext, TagChoice } from './catalog.js';
+export { tagContext, tagChoices, applyTagChoice, nameContext, nameChoices, applyNameChoice } from './catalog.js';
+export type { TagCatalog, DeviceEntry, TagEntry, TagContext, TagChoice, NameContext, NameChoice } from './catalog.js';
 export { OPERATORS, SEVERITIES, EDGES, MATCHES, VALUELESS_OPS, OP_ALIASES, LIMITS, COOLDOWN_PATTERN, COOLDOWN_RE, VARIABLE_NAME_PATTERN, VARIABLE_NAME_RE, canonicalOp, } from './model.js';
 export type { Op, Severity, Edge, Match, Variable, Cond, Publish, Incident, Rule, RulesModel, } from './model.js';
 //# sourceMappingURL=gui.d.ts.map

@@ -92,16 +92,29 @@ export const PhoneInvalidFormula: Story = {
   },
 };
 
-/** Type TAG(" in a formula cell: the catalog offers devices, then the tags of the chosen device, with live readings. */
+/** Type in a formula cell: a bare name offers the rule's variables and the functions (Tab accepts); TAG(" offers devices, then the tags of the chosen device, with live readings. */
 export const Autocomplete: Story = {
   args: { containerWidth: '1180px', showOutput: false },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    const menu = canvasElement.querySelector('.re-menu') as HTMLElement;
+    // a condition over a variable: "te" → temp, temp_rate; Tab takes the first
+    await userEvent.click(canvasElement.querySelector('.re-sheet-when .re-add') as HTMLElement);
+    const cond = canvas.getByLabelText('Condition 6') as HTMLInputElement;
+    await userEvent.click(cond);
+    await userEvent.type(cond, 'te');
+    await expect(menu).toBeVisible();
+    await expect(menu).toHaveTextContent('temp_rate');
+    await userEvent.keyboard('{Tab}');
+    await expect(cond).toHaveValue('temp');
+    await userEvent.type(cond, ' > 55');
+    await userEvent.keyboard('{Enter}');
+    await expect(window.editor!.getXml()).toContain('expr="temp &gt; 55"');
+    // a variable formula: TAG(" → devices → tags
     await userEvent.click(canvasElement.querySelector('.re-sheet-vars .re-add') as HTMLElement);
     const input = canvas.getByLabelText('Formula of variable 11') as HTMLInputElement;
     await userEvent.click(input);
     await userEvent.type(input, 'RATE(TAG("vi');
-    const menu = canvasElement.querySelector('.re-menu') as HTMLElement;
     await expect(menu).toBeVisible();
     await expect(menu).toHaveTextContent('vibration1');
     await userEvent.keyboard('{Enter}');

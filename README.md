@@ -128,8 +128,16 @@ const catalog: TagCatalog = {
 Typing `TAG("` lists the devices and the implicit device's tags, filtered as
 you type. Picking a device writes `TAG("vibration1", "` and lists that device's
 tags, each with its `value` and `unit` and marked `stale` when set. Picking a
-tag closes the call. Arrow keys, Enter and Tab pick; Escape closes the menu
-only. On a phone the menu appears inside the formula bar.
+tag closes the call.
+
+Typing a bare name in any formula cell lists the rule's **variables** (with
+their live value from `monitor`) and then the **functions** (with their
+signature). Picking a variable completes the name; picking a function writes
+`NAME(`, and `TAG` goes straight on to the device list. This needs no catalog.
+In a Then field it applies once the field starts with `=`.
+
+Arrow keys move, Enter and Tab pick, Escape closes the menu and keeps what you
+typed. On a phone the menu appears inside the formula bar.
 
 **Live values** feed the result columns through `monitor`, and the menu
 through the catalog's `value` fields. When they change, call `refreshValues()`

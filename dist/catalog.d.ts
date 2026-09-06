@@ -1,3 +1,4 @@
+import type { FunctionSpec } from './formula.js';
 /** One field a device exposes. `value` and `stale` are live data the host may bind. */
 export interface TagEntry {
     tag: string;
@@ -46,6 +47,46 @@ export type TagChoice = {
 export declare function tagContext(text: string, caret: number): TagContext | null;
 /** The catalog entries that fit the context, best matches first. */
 export declare function tagChoices(catalog: TagCatalog, ctx: TagContext): TagChoice[];
+/** The caret sits at the end of a bare name being typed, outside any string. */
+export interface NameContext {
+    prefix: string;
+    /** The whole word: `text.slice(start, end)`. */
+    start: number;
+    end: number;
+}
+export interface VariableChoice {
+    kind: 'variable';
+    name: string;
+    description?: string;
+    /** The live value, when the host has one. */
+    value?: string;
+}
+export interface FunctionChoice {
+    kind: 'function';
+    entry: FunctionSpec;
+}
+export type NameChoice = VariableChoice | FunctionChoice;
+/** Where the caret is, when it is inside a bare name (a variable or function being typed). */
+export declare function nameContext(text: string, caret: number): NameContext | null;
+/**
+ * Variables and functions that fit the typed prefix, variables first, best
+ * matches first. Nothing when the only match is what is already typed.
+ */
+export declare function nameChoices(ctx: NameContext, variables: Array<{
+    name: string;
+    description?: string;
+    value?: string;
+}>, functions: readonly FunctionSpec[]): NameChoice[];
+/**
+ * The text after picking a name. A variable replaces the word. A function
+ * replaces it with `NAME(`; TAG opens its first string too, so the device
+ * list can follow (`more`).
+ */
+export declare function applyNameChoice(text: string, ctx: NameContext, choice: NameChoice): {
+    text: string;
+    caret: number;
+    more: boolean;
+};
 /**
  * The text after picking a choice: a device becomes `"device", "` with the
  * caret ready for the tag; a tag becomes `"tag"` and closes the call when

@@ -907,6 +907,49 @@ describe('TAG("…") autocomplete', () => {
     expect(input.getAttribute('autocomplete')).toBe('off');
   });
 
+  it('completes the rule\'s variables and the functions in a bare name; Tab accepts; TAG chains into the device list', () => {
+    const { root, api } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: 'TAG("t")', description: 'Housing' }, { name: 'temp_rate', formula: 'RATE(temp, 30min)' }] }), catalog: CATALOG, monitor: (ref) => (ref.kind === 'variable' && ref.name === 'temp' ? '48.2 °C' : undefined) });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'te');
+    expect(items(root)).toEqual(['temp', 'temp_rate']);
+    expect(root.querySelector('.re-menu-item .re-menu-meta')?.textContent).toBe('48.2 °C');
+    expect((root.querySelector('.re-menu-item') as HTMLElement).title).toBe('Housing');
+    key(input, 'ArrowDown');
+    key(input, 'Tab');
+    expect(input.value).toBe('temp_rate');
+    expect(input.selectionStart).toBe(9);
+    expect(menu(root).hidden).toBe(true);
+    // a function opens its call
+    typeAt(input, 'temp_rate > ra');
+    expect(items(root)).toEqual(['temp_rate', 'RATE(']);
+    key(input, 'ArrowDown');
+    key(input, 'Enter');
+    expect(input.value).toBe('temp_rate > RATE(');
+    // TAG opens its string and hands over to the device list
+    typeAt(input, 'temp_rate > RATE(ta');
+    expect(items(root)).toEqual(['TAG(']);
+    key(input, 'Tab');
+    expect(input.value).toBe('temp_rate > RATE(TAG("');
+    expect(items(root)).toEqual(['AlarmActive', 'StatusWord', 'vibration1', 'bulk1']);
+    // nothing is committed until Enter outside the menu
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
+  });
+
+  it('completes names in a Then field only once it is a formula, and never in the Variables name column', () => {
+    const { root } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: 'TAG("t")' }] }) });
+    typeAt(inputByLabel(root, 'topic of row 1'), 'te');
+    expect(menu(root).hidden).toBe(true);
+    typeAt(inputByLabel(root, 'topic of row 1'), '=te');
+    expect(items(root)).toEqual(['temp']);
+    inputByLabel(root, 'topic of row 1').dispatchEvent(new Event('blur')); // focus moves on: the menu closes
+    expect(menu(root).hidden).toBe(true);
+    typeAt(inputByLabel(root, 'Name of variable 1'), 'te');
+    expect(menu(root).hidden).toBe(true);
+    // works without any catalog, since variables and functions come from the rule and the language
+    typeAt(inputByLabel(root, 'Formula of variable 1'), 'CHA');
+    expect(items(root)).toEqual(['CHANGED(']);
+  });
+
   it('does nothing without a catalog, and starts working after setCatalog', () => {
     const { root, api } = setup({ initialModel: wrap() });
     const input = inputByLabel(root, 'Condition 1');
@@ -923,6 +966,8 @@ describe('TAG("…") autocomplete', () => {
   it('stays closed outside a TAG string and in non-formula cells', () => {
     const { root } = setup({ initialModel: wrap(), catalog: CATALOG });
     typeAt(inputByLabel(root, 'Condition 1'), 'temp > TAG(');
+    expect(menu(root).hidden).toBe(true);
+    typeAt(inputByLabel(root, 'Condition 1'), 'temp > 5');
     expect(menu(root).hidden).toBe(true);
     typeAt(inputByLabel(root, 'Description of condition 1'), 'TAG("');
     expect(menu(root).hidden).toBe(true);
