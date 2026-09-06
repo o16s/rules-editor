@@ -43,8 +43,10 @@ export interface RulesEditorHandle {
     getXml(): string;
     /** Validation messages for the current model (empty = valid). */
     getErrors(): string[];
-    /** Replace the model and re-render. */
+    /** Replace the model and re-render. The selected rule is kept when it still exists. */
     setModel(model: RulesModel): void;
+    /** Re-read `monitor` for every result cell, without a re-render. Call it when live values change. */
+    refreshValues(): void;
     /** Tear down the editor (empties the container). */
     destroy(): void;
 }

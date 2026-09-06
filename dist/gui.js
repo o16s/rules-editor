@@ -17,9 +17,11 @@
 // design tokens (--accent, --ink, --font-body, …) with fallbacks.
 import { LIMITS, SEVERITIES, } from './model.js';
 import { serialize } from './serialize.js';
-import { parse, validate, validateIssues, RulesParseError } from './parse.js';
+import { parse, validateIssues, RulesParseError } from './parse.js';
 import { formulaTokens, isFormula, parseFormula } from './formula.js';
 const clone = (v) => JSON.parse(JSON.stringify(v));
+/** Editors mounted so far, for unique ids (tabs and their panels). */
+let instances = 0;
 const locKey = (l) => `${l.rule ?? ''}|${l.field ?? ''}|${l.variable ?? ''}|${l.condition ?? ''}|${l.action ?? ''}`;
 function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
@@ -303,6 +305,8 @@ const STYLES = `
   --re-font: var(--font-body, "Helvetica Neue", Helvetica, Arial, sans-serif);
   font-family: var(--re-font); color: var(--re-ink); font-size: 13px; line-height: 1.45;
   background: var(--re-surface); border: 1px solid var(--re-line); border-radius: 4px; overflow: hidden;
+  /* Taps act at once: no double-tap-to-zoom delay on cells. Pinch zoom stays. */
+  touch-action: manipulation;
 }
 .re-root *, .re-root *::before, .re-root *::after { box-sizing: border-box; }
 .re-root button, .re-root input, .re-root select, .re-root textarea { font-family: inherit; }
@@ -473,9 +477,17 @@ export function initRulesEditor(root, opts = {}) {
     let selectedCell = null;
     /** The value the selected cell had when it was tapped, for Cancel. */
     let selectedOriginal = '';
+    const uid = ++instances;
+    /** Result cells of the current pane and how to re-read them from `monitor`. */
+    const liveCells = new Map();
+    /** Then result cells of the current pane and how to recompute their preview. */
+    const previews = new Set();
+    /** True while a structural change is in progress: commits then skip their own refresh. */
+    let batching = false;
+    let xmlTextarea = null;
     /** Validation messages, with any initial parse error surfaced first. */
-    const computeErrors = () => {
-        const errs = validate(model);
+    const computeErrors = (issues = validateIssues(model)) => {
+        const errs = issues.map((i) => i.message);
         return parseError ? [parseError, ...errs] : errs;
     };
     const status = el('div', { class: 're-status', role: 'alert' });
@@ -484,10 +496,12 @@ export function initRulesEditor(root, opts = {}) {
     const pane = el('section', { class: 're-pane' });
     const copyBtn = el('button', { class: 're-link', type: 'button', onclick: () => copyXml(copyBtn) }, ['Copy XML']);
     const exportBtn = el('button', { class: 're-link', type: 'button', onclick: () => download() }, ['Download rules.xml']);
-    // ---- validation + change notification (cheap; runs on every change) ----
+    // ---- validation + change notification (runs once per committed change) ----
     function refresh() {
-        const errs = computeErrors();
+        if (batching)
+            return;
         const issues = validateIssues(model);
+        const errs = computeErrors(issues);
         status.replaceChildren();
         const fileLevel = issues.filter((i) => i.rule === undefined).map((i) => i.message);
         if (parseError)
@@ -496,6 +510,11 @@ export function initRulesEditor(root, opts = {}) {
         status.textContent = fileLevel.join(' ');
         markFields(issues);
         markRail(issues);
+        for (const update of previews)
+            update();
+        // The XML panel follows the model while it is open and not being edited.
+        if (xmlTextarea && !xmlPanel.hidden && document.activeElement !== xmlTextarea)
+            xmlTextarea.value = serialize(model);
         const gate = (btn) => {
             btn.disabled = errs.length > 0;
             if (errs.length)
@@ -686,6 +705,17 @@ export function initRulesEditor(root, opts = {}) {
         return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, remove: o.remove });
     }
     const resultCell = (label, value, info = {}) => cell('re-cell-result', label, null, value ? [value] : [], info);
+    /** A result cell fed by `monitor`; `refreshValues()` re-reads it in place. */
+    function liveCell(label, ref, info) {
+        const read = () => opts.monitor?.(ref);
+        const c = resultCell(label, read(), info);
+        liveCells.set(c, read);
+        return c;
+    }
+    function refreshValues() {
+        for (const [c, read] of liveCells)
+            c.textContent = read() ?? '';
+    }
     const removeBtn = (title, fn) => el('button', { class: 're-remove', type: 'button', title, 'aria-label': title, onclick: fn }, [icon(ICON_TRASH)]);
     const gutter = (n) => el('span', { class: 're-gutter' }, [String(n)]);
     function addRow(n, label, fn, disabledWhy) {
@@ -767,9 +797,15 @@ export function initRulesEditor(root, opts = {}) {
             row.hidden = q !== '' && !(rule?.name ?? '').toLowerCase().includes(q);
         }
     }
+    /** Show another rule. The rail is not rebuilt: its rows only change class. */
     function selectRule(index) {
+        if (index === selected || !model.rules[index])
+            return;
         selected = index;
-        render();
+        for (const row of Array.from(rail.querySelectorAll('.re-rail-row'))) {
+            row.classList.toggle('is-selected', Number(row.dataset.rule) === index);
+        }
+        renderSelected();
     }
     function duplicateRule(index) {
         const copy = clone(model.rules[index]);
@@ -791,6 +827,8 @@ export function initRulesEditor(root, opts = {}) {
     // ---- pane: the selected rule as three sheets ----
     function renderPane() {
         pane.replaceChildren();
+        liveCells.clear();
+        previews.clear();
         const railSelect = selectInput(String(selected), model.rules.map((r, i) => ({ value: String(i), label: r.name || 'unnamed' })), (v) => selectRule(Number(v)), 'Rule');
         railSelect.className = 're-rail-select';
         if (model.rules.length === 0) {
@@ -825,14 +863,20 @@ export function initRulesEditor(root, opts = {}) {
                 class: 're-tab',
                 type: 'button',
                 role: 'tab',
+                id: `re-${uid}-tab-${key}`,
+                'aria-controls': `re-${uid}-sheet-${key}`,
                 'data-sheet': key,
                 'aria-selected': String(key === activeSheet),
                 onclick: () => { activeSheet = key; clearSelection(); applySheetVisibility(); },
             }, [label, el('span', { class: 're-tab-count' }, [String(count)])]));
         }
         const blocks = [['vars', renderVariables(rule, index)], ['when', renderWhen(rule, index)], ['then', renderThen(rule, index)]];
-        for (const [key, block] of blocks)
+        for (const [key, block] of blocks) {
             block.dataset.sheet = key;
+            block.id = `re-${uid}-sheet-${key}`;
+            block.setAttribute('role', 'tabpanel');
+            block.setAttribute('aria-labelledby', `re-${uid}-tab-${key}`);
+        }
         const body = el('div', { class: 're-pane-body' }, [tabs, ...blocks.map(([, b]) => b)]);
         // An issue with no single field (no actions and no incident) lands on the body.
         body.dataset.loc = locKey({ rule: index });
@@ -875,7 +919,7 @@ export function initRulesEditor(root, opts = {}) {
             gutter(i + 1),
             cell('', 'Name', { rule: index, field: 'variable', variable: i }, [nameInput], { address: `${who} · Name`, input: nameInput, remove }),
             formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")', address: `${who} · Formula`, remove }),
-            resultCell('Formula result', opts.monitor?.({ rule: index, kind: 'variable', name: v.name }), { address: `${who} · Formula result`, remove }),
+            liveCell('Formula result', { rule: index, kind: 'variable', name: v.name }, { address: `${who} · Formula result`, remove }),
             cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
             removeBtn('Delete variable', remove),
         ]);
@@ -911,7 +955,7 @@ export function initRulesEditor(root, opts = {}) {
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
             formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50', address: `${who} · Condition`, remove }),
-            resultCell('Condition result', opts.monitor?.({ rule: index, kind: 'condition', index: i }), { address: `${who} · Condition result`, remove }),
+            liveCell('Condition result', { rule: index, kind: 'condition', index: i }, { address: `${who} · Condition result`, remove }),
             cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
             removeBtn('Delete condition', remove),
         ]);
@@ -954,18 +998,14 @@ export function initRulesEditor(root, opts = {}) {
             render();
         };
         const who = THEN_LABEL[row.field];
-        const resultInfo = { address: `${who} · Formula result`, remove };
-        let result = resultCell('Formula result', previewThen(value, rule), resultInfo);
+        const result = resultCell('Formula result', previewThen(value, rule), { address: `${who} · Formula result`, remove });
+        // Recomputed on every refresh: the preview also reads condition 1's description.
+        previews.add(() => { result.textContent = previewThen(thenGet(rule, row), rule) ?? ''; });
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
             cell('re-cell-pick', 'Action', null, [action], { address: `${who} · Action`, remove }),
             cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
-            formulaCell(value, (v) => {
-                thenSet(rule, row, v);
-                const next = resultCell('Formula result', previewThen(v, rule), resultInfo);
-                result.replaceWith(next);
-                result = next;
-            }, { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder, address: `${who} · Formula`, remove }),
+            formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder, address: `${who} · Formula`, remove }),
             result,
             removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', remove),
         ]);
@@ -1011,8 +1051,13 @@ export function initRulesEditor(root, opts = {}) {
             info.input.value = barInput.value;
             info.input.dispatchEvent(new Event('input'));
         },
-        onkeydown: (e) => { if (e.key === 'Enter')
-            done(); },
+        onkeydown: (e) => {
+            const k = e.key;
+            if (k === 'Enter')
+                done();
+            else if (k === 'Escape')
+                barCancel.click();
+        },
     });
     /** Commit the selected cell's draft (a no-op when nothing changed). */
     function commitSelected() {
@@ -1025,6 +1070,8 @@ export function initRulesEditor(root, opts = {}) {
         if (selectedCell?.classList.contains('is-invalid')) {
             selectedOriginal = barInput.value;
             updateBarMessage();
+            // Stay in the bar so the fix can be typed at once.
+            barInput.focus();
             return;
         }
         clearSelection(false);
@@ -1063,7 +1110,28 @@ export function initRulesEditor(root, opts = {}) {
         selectedCell?.classList.remove('is-selected');
         selectedCell = null;
         bar.classList.remove('is-open');
+        placeBar();
     }
+    /**
+     * Keep the bar above the on-screen keyboard. iOS shrinks the visual viewport
+     * under the keyboard but not the layout viewport a sticky element sticks to,
+     * so the bar is lifted by however much of it the keyboard covers.
+     */
+    const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+    function placeBar() {
+        bar.style.transform = '';
+        const open = bar.classList.contains('is-open');
+        let covered = 0;
+        if (open && viewport) {
+            covered = Math.max(0, Math.round(bar.getBoundingClientRect().bottom - (viewport.offsetTop + viewport.height)));
+            if (covered > 0)
+                bar.style.transform = `translateY(-${covered}px)`;
+        }
+        // Room under the last row, so it can scroll above the bar (and the keyboard).
+        pane.style.paddingBottom = open ? `${bar.offsetHeight + covered}px` : '';
+    }
+    viewport?.addEventListener('resize', placeBar);
+    viewport?.addEventListener('scroll', placeBar);
     function updateBar() {
         const c = selectedCell;
         const info = c ? cellInfo.get(c) : undefined;
@@ -1097,6 +1165,7 @@ export function initRulesEditor(root, opts = {}) {
         }
         updateBarMessage();
         bar.classList.add('is-open');
+        placeBar();
     }
     /** The selected cell's validation message, shown in the bar where the keyboard cannot hide it. */
     function updateBarMessage() {
@@ -1133,6 +1202,11 @@ export function initRulesEditor(root, opts = {}) {
         if (v === narrow)
             return;
         narrow = v;
+        // A cell being typed into when the width crosses the line commits first,
+        // so its draft is not stranded in an input that is about to be locked.
+        const active = document.activeElement;
+        if (v && active instanceof HTMLInputElement && active.closest('.re-cell') && pane.contains(active))
+            active.blur();
         lockCells();
         applySheetVisibility();
         if (v)
@@ -1152,13 +1226,29 @@ export function initRulesEditor(root, opts = {}) {
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     resizeObserver?.observe(root);
     // ---- render ----
+    /** Rebuild everything: the rail and the pane. For structural changes. */
     function render() {
+        beginRender();
+        renderRail();
+        endRender();
+    }
+    /** Rebuild the pane only; the rail keeps its rows. For a change of selection. */
+    function renderSelected() {
+        beginRender();
+        endRender();
+    }
+    function beginRender() {
         measure();
-        // A draft in the bar survives a structural change (Add, Delete) by being committed first.
+        // A draft in the bar survives a structural change (Add, Delete) by being
+        // committed first. Its own refresh is skipped: endRender runs one.
+        batching = true;
         commitSelected();
+        batching = false;
         selectedCell = null;
         bar.classList.remove('is-open');
-        renderRail();
+        placeBar();
+    }
+    function endRender() {
         renderPane();
         lockCells();
         refresh();
@@ -1187,6 +1277,7 @@ export function initRulesEditor(root, opts = {}) {
         const ta = el('textarea', { rows: 14, 'aria-label': 'rules.xml', spellcheck: false });
         ta.value = serialize(model);
         identifierAttrs(ta);
+        xmlTextarea = ta;
         const msg = el('div', { class: 're-xml-msg' });
         const file = el('input', { type: 'file', accept: '.xml,text/xml,application/xml', 'aria-label': 'Open a rules.xml file' });
         file.addEventListener('change', async () => {
@@ -1222,20 +1313,28 @@ export function initRulesEditor(root, opts = {}) {
     }
     function download() {
         const blob = new Blob([serialize(model)], { type: 'application/xml' });
-        const a = el('a', { href: URL.createObjectURL(blob), download: 'rules.xml' });
+        const url = URL.createObjectURL(blob);
+        const a = el('a', { href: url, download: 'rules.xml' });
         document.body.append(a);
         a.click();
         a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     async function copyXml(btn) {
+        const old = btn.textContent;
+        const say = (text) => { btn.textContent = text; setTimeout(() => (btn.textContent = old), 1600); };
         try {
             await navigator.clipboard.writeText(serialize(model));
-            const old = btn.textContent;
-            btn.textContent = 'Copied';
-            setTimeout(() => (btn.textContent = old), 1200);
+            say('Copied');
         }
         catch {
-            /* clipboard unavailable */
+            // No clipboard permission (plain http on a gateway, or a locked-down
+            // iframe): hand the text over selected, so one keystroke copies it.
+            if (xmlTextarea) {
+                xmlTextarea.focus();
+                xmlTextarea.select();
+            }
+            say('Selected, press copy');
         }
     }
     // ---- top bar + layout ----
@@ -1258,8 +1357,21 @@ export function initRulesEditor(root, opts = {}) {
         getModel: () => clone(model),
         getXml: () => serialize(model),
         getErrors: () => computeErrors(),
-        setModel: (m) => { parseError = null; model = clone(m); selected = 0; render(); },
-        destroy: () => { resizeObserver?.disconnect(); root.replaceChildren(); root.classList.remove('re-root', ...WIDTH_CLASSES.map(([cls]) => cls)); },
+        setModel: (m) => {
+            parseError = null;
+            model = clone(m);
+            if (selected >= model.rules.length)
+                selected = 0;
+            render();
+        },
+        refreshValues,
+        destroy: () => {
+            resizeObserver?.disconnect();
+            viewport?.removeEventListener('resize', placeBar);
+            viewport?.removeEventListener('scroll', placeBar);
+            root.replaceChildren();
+            root.classList.remove('re-root', ...WIDTH_CLASSES.map(([cls]) => cls));
+        },
     };
 }
 // ---- re-exports: one entry for the editor + the core ---------------------

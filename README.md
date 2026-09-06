@@ -84,11 +84,16 @@ editor.destroy();    // tear down
 | `initialXml` | `string` | Parsed internally. A **malformed** file does not throw: the editor opens empty and the parse error is surfaced through `onChange`'s `errors` (and the status line). Takes precedence over `initialModel`. A v0.2 file opens as formula rows. |
 | `initialModel` | `RulesModel` | Start from a model instead of XML. Cloned; your object is not mutated. |
 | `onChange` | `(s: { model, xml, errors }) => void` | Fires on mount and after every committed edit. A text cell commits on Enter, Tab, or when it loses focus; Escape restores it. Choices, Add, Delete and Import commit at once. Keystrokes inside a cell do not fire it. |
-| `monitor` | `(ref: MonitorRef) => string \| undefined` | Live values for the "Formula result" and "Condition result" cells. `ref` is `{ rule, kind: 'variable', name }` or `{ rule, kind: 'condition', index }`. Return `undefined` for a cell with no value. Called on every render. |
+| `monitor` | `(ref: MonitorRef) => string \| undefined` | Live values for the "Formula result" and "Condition result" cells. `ref` is `{ rule, kind: 'variable', name }` or `{ rule, kind: 'condition', index }`. Return `undefined` for a cell with no value. Called when a rule is rendered and on `refreshValues()`. |
 
 ### Handle (`RulesEditorHandle`)
 
-`getModel()` · `getXml()` · `getErrors()` · `setModel(model)` · `destroy()`
+`getModel()` · `getXml()` · `getErrors()` · `setModel(model)` · `refreshValues()` · `destroy()`
+
+`setModel()` keeps the selected rule when it still exists. `refreshValues()`
+re-reads `monitor` for every result cell without a re-render; call it when
+your live values change (a poll, an MQTT message). Result cells are otherwise
+read only when the rule is rendered.
 
 ### Small screens
 

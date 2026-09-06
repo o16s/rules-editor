@@ -377,7 +377,10 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 - **A committed edit is immediate.** A cell commits on Enter, Tab, or blur;
   there is no save button, no undo, and no confirm on Delete.
 - **The host owns persistence.** `onChange` fires on mount and after every
-  edit, and carries the XML even while invalid, so a host can autosave a draft.
+  committed edit, once per edit, and carries the XML even while invalid, so a
+  host can autosave a draft.
+- **The host owns live values.** Result cells show what `monitor` returned
+  when the rule was rendered, or on `refreshValues()`. The editor polls nothing.
 - **The editor mutates nothing it is given.** Models passed in are cloned.
 - **A v0.2 file re-saves as v0.3.** `tag`/`op`/`value` become `expr`, nested
   groups fold into one row. XML comments, attribute order, and unknown

@@ -298,6 +298,63 @@ describe('rules editor component (jsdom)', () => {
     expect(root.querySelector('.re-cool.is-invalid')).toBeTruthy();
   });
 
+  it('selecting a rule keeps the rail rows and only re-renders the pane', () => {
+    const { root } = setup();
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('.re-rail-row'));
+    rows[2].click();
+    expect(Array.from(root.querySelectorAll<HTMLElement>('.re-rail-row'))).toEqual(rows);
+    expect(rows[2].classList.contains('is-selected')).toBe(true);
+    expect(rows[0].classList.contains('is-selected')).toBe(false);
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('wetwell-highlevel');
+  });
+
+  it('the Then preview follows a change of condition 1 description', () => {
+    const { root } = setup();
+    const cause = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'))[5];
+    expect(cause.querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\./);
+    type(inputByLabel(root, 'Description of condition 1'), 'Alarm bit set');
+    expect(cause.querySelector('.re-cell-result')?.textContent).toMatch(/^Alarm bit set\./);
+  });
+
+  it('refreshValues re-reads the monitor in place; setModel keeps the selected rule', () => {
+    let value = 'a';
+    const { root, api } = setup({ monitor: (ref) => (ref.kind === 'variable' ? value : undefined) });
+    const cellEl = root.querySelector('.re-sheet-vars .re-cell-result') as HTMLElement;
+    expect(cellEl.textContent).toBe('a');
+    value = 'b';
+    api.refreshValues();
+    expect(cellEl.textContent).toBe('b');
+    expect(root.querySelector('.re-sheet-vars .re-cell-result')).toBe(cellEl); // no re-render
+    (root.querySelectorAll('.re-rail-row')[1] as HTMLElement).click();
+    api.setModel(api.getModel());
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('pump-overtemp');
+    api.setModel({ rules: [api.getModel().rules[0]] });
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('alarm-camera');
+  });
+
+  it('the XML panel follows commits while open, unless it is being edited', () => {
+    const { root } = setup({ initialModel: wrap() });
+    button(root, 'XML').click();
+    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+    type(inputByLabel(root, 'Condition 1'), 'temp > 61');
+    expect(ta.value).toContain('expr="temp &gt; 61"');
+    ta.focus();
+    type(inputByLabel(root, 'Condition 1'), 'temp > 62');
+    expect(ta.value).toContain('expr="temp &gt; 61"');
+  });
+
+  it('gives the tabs panels: aria-controls on each tab, role tabpanel on each sheet', () => {
+    const { root } = setup();
+    for (const tabEl of Array.from(root.querySelectorAll<HTMLElement>('.re-tab'))) {
+      const panel = root.querySelector(`#${tabEl.getAttribute('aria-controls')}`);
+      expect(panel?.getAttribute('role')).toBe('tabpanel');
+      expect(panel?.getAttribute('aria-labelledby')).toBe(tabEl.id);
+    }
+    // two editors on one page do not share ids
+    const other = setup();
+    expect(other.root.querySelector('.re-tab')?.id).not.toBe(root.querySelector('.re-tab')?.id);
+  });
+
   it('marks a bad formula on its cell with the message, and clears it without a re-render', () => {
     const { root } = setup({ initialModel: wrap() });
     const input = inputByLabel(root, 'Condition 1');
@@ -609,6 +666,44 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     draft(barInput(root), 'Hot');
     tab(root, 'Then').click();
     expect(api.getXml()).toContain('description="Hot"');
+  });
+
+  it('makes room under the sheet while the bar is open, so the last rows can scroll above it', () => {
+    const { root } = narrowSetup();
+    const paneEl = root.querySelector('.re-pane') as HTMLElement;
+    const barEl = bar(root);
+    Object.defineProperty(barEl, 'offsetHeight', { value: 96, configurable: true });
+    expect(paneEl.style.paddingBottom).toBe('');
+    (inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement).click();
+    expect(paneEl.style.paddingBottom).toBe('96px');
+    button(root, 'Done').click();
+    expect(paneEl.style.paddingBottom).toBe('');
+  });
+
+  it('Escape in the bar discards the draft; a commit with an error keeps the focus in the bar', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
+    (inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement).click();
+    draft(barInput(root), 'temp > 99');
+    key(barInput(root), 'Escape');
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
+    expect(bar(root).classList.contains('is-open')).toBe(false);
+    (inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement).click();
+    draft(barInput(root), 'temp >');
+    button(root, 'Done').click();
+    expect(bar(root).classList.contains('is-open')).toBe(true);
+    expect(document.activeElement).toBe(barInput(root));
+  });
+
+  it('a structural change with a pending draft fires onChange once', () => {
+    let changes = 0;
+    const { root, api } = narrowSetup({ initialModel: wrap(), onChange: () => changes++ });
+    const before = changes;
+    (inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement).click();
+    draft(barInput(root), 'temp > 63');
+    (root.querySelector('.re-sheet-when .re-add') as HTMLButtonElement).click();
+    const r = api.getModel().rules[0];
+    expect(r.conditions.map((c) => c.expr)).toEqual(['temp > 63', '']);
+    expect(changes).toBe(before + 1);
   });
 
   it('after a commit with an error the bar stays open and shows the message', () => {
