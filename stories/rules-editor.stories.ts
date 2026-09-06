@@ -92,6 +92,49 @@ export const PhoneInvalidFormula: Story = {
   },
 };
 
+/** Type TAG(" in a formula cell: the catalog offers devices, then the tags of the chosen device, with live readings. */
+export const Autocomplete: Story = {
+  args: { containerWidth: '1180px', showOutput: false },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvasElement.querySelector('.re-sheet-vars .re-add') as HTMLElement);
+    const input = canvas.getByLabelText('Formula of variable 11') as HTMLInputElement;
+    await userEvent.click(input);
+    await userEvent.type(input, 'RATE(TAG("vi');
+    const menu = canvasElement.querySelector('.re-menu') as HTMLElement;
+    await expect(menu).toBeVisible();
+    await expect(menu).toHaveTextContent('vibration1');
+    await userEvent.keyboard('{Enter}');
+    await expect(input).toHaveValue('RATE(TAG("vibration1", "');
+    await expect(menu).toHaveTextContent('48.2 °C');
+    await userEvent.type(input, 'temp');
+    await userEvent.keyboard('{Enter}');
+    await expect(input).toHaveValue('RATE(TAG("vibration1", "temperature")');
+    await userEvent.type(input, ', 30min)');
+    await userEvent.keyboard('{Enter}');
+    await expect(window.editor!.getXml()).toContain('RATE(TAG("vibration1", "temperature"), 30min)');
+  },
+};
+
+/** The same menu on a phone: it sits inside the bar, above the input. */
+export const PhoneAutocomplete: Story = {
+  args: { containerWidth: '360px', showOutput: false },
+  globals: { viewport: { value: 'mobile2', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('tab', { name: /When/ }));
+    await userEvent.click(canvasElement.querySelector('.re-sheet-when .re-add') as HTMLElement);
+    const bar = canvas.getByLabelText('Cell content') as HTMLInputElement;
+    await userEvent.type(bar, 'TAG("bu');
+    const menu = canvasElement.querySelector('.re-bar .re-menu') as HTMLElement;
+    await expect(menu).toBeVisible();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.type(bar, 'door');
+    await userEvent.keyboard('{Enter}');
+    await expect(bar).toHaveValue('TAG("bulk1", "door_state")');
+  },
+};
+
 /** No host values: the result columns show a dash, Then rows still preview their text. */
 export const NoLiveValues: Story = {
   args: { containerWidth: '1180px', showOutput: false, liveValues: false },

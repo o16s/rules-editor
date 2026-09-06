@@ -809,6 +809,128 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
   });
 });
 
+describe('TAG("…") autocomplete', () => {
+  beforeEach(() => (document.body.innerHTML = ''));
+
+  const CATALOG = {
+    devices: [
+      { tags: [{ tag: 'AlarmActive' }, { tag: 'StatusWord' }] },
+      { device: 'vibration1', description: 'Press motor sensor', tags: [{ tag: 'temperature', unit: '°C', value: '48.2' }, { tag: 'alert_vrms_max', stale: true }] },
+      { device: 'bulk1', tags: [{ tag: 'milk_temperature', unit: '°C' }] },
+    ],
+  };
+  const menu = (root: HTMLElement) => root.querySelector('.re-menu') as HTMLElement;
+  const items = (root: HTMLElement) => Array.from(root.querySelectorAll('.re-menu-item .re-menu-main')).map((m) => m.textContent);
+  /** Type into an input with the caret at the end, without committing. */
+  function typeAt(input: HTMLInputElement, value: string): void {
+    input.value = value;
+    input.setSelectionRange(value.length, value.length);
+    input.dispatchEvent(new Event('input'));
+  }
+
+  it('lists devices and implicit-device tags after TAG(", then the device\'s tags, and completes the call', () => {
+    const { root, api } = setup({ initialModel: wrap(), catalog: CATALOG });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'TAG("');
+    expect(menu(root).hidden).toBe(false);
+    expect(items(root)).toEqual(['AlarmActive', 'StatusWord', 'vibration1', 'bulk1']);
+    expect(root.querySelectorAll('.re-menu-item')[2].querySelector('.re-menu-meta')?.textContent).toBe('Press motor sensor · 2 tags');
+    typeAt(input, 'TAG("vib');
+    expect(items(root)).toEqual(['vibration1']);
+    key(input, 'Enter');
+    // a device opens the second argument and the menu moves on to its tags
+    expect(input.value).toBe('TAG("vibration1", "');
+    expect(input.selectionStart).toBe(input.value.length);
+    expect(menu(root).hidden).toBe(false);
+    expect(items(root)).toEqual(['temperature', 'alert_vrms_max']);
+    expect(root.querySelector('.re-menu-item .re-menu-meta')?.textContent).toBe('48.2 °C');
+    expect(root.querySelectorAll('.re-menu-item')[1].classList.contains('is-stale')).toBe(true);
+    key(input, 'ArrowDown');
+    key(input, 'ArrowUp');
+    key(input, 'Tab');
+    expect(input.value).toBe('TAG("vibration1", "temperature")');
+    expect(menu(root).hidden).toBe(true);
+    // nothing committed yet: Enter now commits the cell as usual
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
+    key(input, 'Enter');
+    expect(api.getXml()).toContain(`expr='TAG("vibration1", "temperature")'`);
+  });
+
+  it('a pointer pick keeps the cell focused; Escape closes only the menu', () => {
+    const { root } = setup({ initialModel: wrap(), catalog: CATALOG });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'TAG("Al');
+    const item = root.querySelector('.re-menu-item') as HTMLElement;
+    const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+    item.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(input.value).toBe('TAG("AlarmActive")');
+    typeAt(input, 'TAG("AlarmActive") > TAG("');
+    expect(menu(root).hidden).toBe(false);
+    key(input, 'Escape');
+    expect(menu(root).hidden).toBe(true);
+    expect(input.value).toBe('TAG("AlarmActive") > TAG("'); // the draft survives
+  });
+
+  it('does nothing without a catalog, and starts working after setCatalog', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'TAG("');
+    expect(menu(root).hidden).toBe(true);
+    api.setCatalog(() => CATALOG);
+    typeAt(input, 'TAG("bu');
+    expect(items(root)).toEqual(['bulk1']);
+    api.setCatalog(undefined);
+    typeAt(input, 'TAG("bul');
+    expect(menu(root).hidden).toBe(true);
+  });
+
+  it('stays closed outside a TAG string and in non-formula cells', () => {
+    const { root } = setup({ initialModel: wrap(), catalog: CATALOG });
+    typeAt(inputByLabel(root, 'Condition 1'), 'temp > TAG(');
+    expect(menu(root).hidden).toBe(true);
+    typeAt(inputByLabel(root, 'Description of condition 1'), 'TAG("');
+    expect(menu(root).hidden).toBe(true);
+    typeAt(inputByLabel(root, 'Name of variable 1'), 'TAG("');
+    expect(menu(root).hidden).toBe(true);
+  });
+
+  it('works in the phone bar, inline above the input', () => {
+    const root = document.createElement('div');
+    Object.defineProperty(root, 'clientWidth', { value: 360, configurable: true });
+    document.body.append(root);
+    initRulesEditor(root, { initialModel: wrap(), catalog: CATALOG });
+    (inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement).click();
+    const barIn = root.querySelector('.re-bar input') as HTMLInputElement;
+    typeAt(barIn, 'TAG("');
+    expect(menu(root).hidden).toBe(false);
+    expect(menu(root).classList.contains('re-menu-inline')).toBe(true);
+    expect(menu(root).parentElement).toBe(root.querySelector('.re-bar'));
+    key(barIn, 'ArrowDown');
+    key(barIn, 'ArrowDown');
+    key(barIn, 'Enter');
+    expect(barIn.value).toBe('TAG("vibration1", "');
+    expect(inputByLabel(root, 'Condition 1').value).toBe('TAG("vibration1", "');
+    key(barIn, 'Enter');
+    expect(barIn.value).toBe('TAG("vibration1", "temperature")');
+    expect(menu(root).hidden).toBe(true);
+    // a description cell does not offer the menu
+    (inputByLabel(root, 'Description of condition 1').closest('.re-cell') as HTMLElement).click();
+    typeAt(barIn, 'TAG("');
+    expect(menu(root).hidden).toBe(true);
+  });
+
+  it('setXml replaces the file and reports its problems; setMonitor re-reads the cells', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    expect(api.setXml('<rules><rule name="x"><cond expr="TAG(&quot;a&quot;)"/><actions><publish topic="t"/></actions></rule></rules>')).toEqual([]);
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('x');
+    expect(api.setXml('<rules><rule')).toEqual([expect.stringMatching(/Malformed/)]);
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('x');
+    api.setMonitor(() => '7');
+    expect(root.querySelector('.re-sheet-when .re-cell-result')?.textContent).toBe('7');
+  });
+});
+
 describe('rules editor component API', () => {
   beforeEach(() => (document.body.innerHTML = ''));
 

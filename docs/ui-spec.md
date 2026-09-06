@@ -222,6 +222,16 @@ commit at once. There is no save button and no file-level dirty state.
 Limits are enforced by disabling the **Add** row with the reason as its tooltip,
 not by an error after the fact.
 
+### 4.5 The TAG("…") menu
+
+When the host supplies a catalog of devices and tags, typing `TAG("` in any
+formula cell opens a menu: the devices (and the tags of a device-less source),
+filtered as you type. Picking a device writes `"device", "` and the menu moves
+on to that device's tags, each with its live value, unit, and a `stale` mark.
+Picking a tag closes the call. Arrow keys, Enter and Tab pick; Escape closes
+the menu without touching the draft. On a desktop the menu floats under the
+cell; on a phone it sits inside the formula bar, above the input.
+
 ---
 
 ## 5. Validation and error presentation
@@ -394,8 +404,8 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 ## 10. Open weaknesses
 
 1. No undo, and no confirmation on Delete rule, Delete row, or Import.
-2. No tag catalogue: a misspelled tag inside `TAG(...)` is not caught until the
-   gateway loads the file.
+2. The tag catalogue only feeds the `TAG("…")` menu. A misspelled tag typed by
+   hand is not flagged; a catalogue-aware warning is the next step.
 3. No simulator. Slide 14a of the handoff describes one: a signal generator per
    tag, a timeline tree of condition › variable › tag, and a log. It needs an
    evaluator for the formula language.

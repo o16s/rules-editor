@@ -19,6 +19,7 @@ import { LIMITS, SEVERITIES, } from './model.js';
 import { serialize } from './serialize.js';
 import { parse, validateIssues, RulesParseError } from './parse.js';
 import { formulaTokens, isFormula, parseFormula } from './formula.js';
+import { applyTagChoice, tagChoices, tagContext } from './catalog.js';
 const clone = (v) => JSON.parse(JSON.stringify(v));
 /** Editors mounted so far, for unique ids (tabs and their panels). */
 let instances = 0;
@@ -404,6 +405,14 @@ const STYLES = `
 .re-bar-btn { flex:none; min-width:44px; min-height:44px; border:1px solid var(--re-line); border-radius:3px; background:var(--re-surface); font-size:18px; color:var(--re-ink); cursor:pointer; }
 .re-bar-btn.re-bar-ok { background:var(--re-reading); color:#fff; border-color:var(--re-reading); }
 .re-bar > .re-msg { padding:6px 0 0; background:none; }
+.re-menu { position:fixed; z-index:20; min-width:260px; max-width:min(480px, 96vw); max-height:240px; overflow-y:auto; background:var(--re-surface); border:1px solid var(--re-line); border-radius:4px; box-shadow:0 4px 16px rgba(0,0,0,.12); font-size:13px; }
+.re-menu.re-menu-inline { position:static; max-width:none; max-height:200px; margin-bottom:6px; box-shadow:none; }
+.re-menu-item { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:7px 10px; cursor:pointer; }
+.re-menu-item.is-active, .re-menu-item:hover { background:var(--re-select); }
+.re-menu-main { color:var(--re-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.re-menu-meta { color:var(--re-reading); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.re-menu-item.is-stale .re-menu-meta { color:var(--re-warn); }
+.re-menu.re-menu-inline .re-menu-item { min-height:44px; align-items:center; }
 .re-cell { position:relative; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
 .re-cell input { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
 .re-cell input:focus { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
@@ -485,6 +494,9 @@ export function initRulesEditor(root, opts = {}) {
     /** True while a structural change is in progress: commits then skip their own refresh. */
     let batching = false;
     let xmlTextarea = null;
+    let monitor = opts.monitor;
+    let catalogSource = opts.catalog;
+    const resolveCatalog = () => typeof catalogSource === 'function' ? catalogSource() : catalogSource ?? null;
     /** Validation messages, with any initial parse error surfaced first. */
     const computeErrors = (issues = validateIssues(model)) => {
         const errs = issues.map((i) => i.message);
@@ -609,15 +621,20 @@ export function initRulesEditor(root, opts = {}) {
         let committed = value;
         const input = el('input', { type: 'text', value, placeholder: o.placeholder ?? '', 'aria-label': o.label });
         const commit = () => {
+            closeMenu();
             if (input.value === committed)
                 return;
             committed = input.value;
             onCommit(committed);
             refresh();
         };
-        input.addEventListener('input', () => o.onDraft?.(input.value));
+        input.addEventListener('input', () => { o.onDraft?.(input.value); if (o.formula)
+            maybeMenu(input); });
         input.addEventListener('change', commit);
         input.addEventListener('keydown', (e) => {
+            // An open TAG("…") menu takes the arrows, Enter, Tab and Escape first.
+            if (o.formula && menuKey(input, e))
+                return;
             if (e.key === 'Enter') {
                 commit();
                 input.blur();
@@ -628,7 +645,138 @@ export function initRulesEditor(root, opts = {}) {
                 input.blur();
             }
         });
+        if (o.formula) {
+            input.addEventListener('click', () => maybeMenu(input));
+            input.addEventListener('blur', () => { if (menuFor === input)
+                closeMenu(); });
+        }
         return o.prose ? input : identifierAttrs(input);
+    }
+    // ---- TAG("…") autocomplete ----
+    // One menu for the whole editor. On a desktop it floats under the cell being
+    // typed into (position: fixed, so the sheet's own scrolling never clips it);
+    // on a phone it sits inside the bar, above the input.
+    const menu = el('div', { class: 're-menu', role: 'listbox', hidden: true });
+    let menuFor = null;
+    let menuItems = [];
+    let menuIndex = 0;
+    let menuCtx = null;
+    /** Open, refresh or close the menu for the caret position in `input`. */
+    function maybeMenu(input) {
+        // On a phone the bar is the only place to type; a cell input never anchors the menu.
+        if (narrow && input !== barInput)
+            return;
+        const catalog = resolveCatalog();
+        const ctx = catalog ? tagContext(input.value, input.selectionStart ?? input.value.length) : null;
+        const items = catalog && ctx ? tagChoices(catalog, ctx).slice(0, 40) : [];
+        if (!ctx || items.length === 0) {
+            closeMenu();
+            return;
+        }
+        menuFor = input;
+        menuCtx = ctx;
+        menuItems = items;
+        menuIndex = 0;
+        drawMenu();
+        placeMenu();
+    }
+    function drawMenu() {
+        menu.replaceChildren(...menuItems.map((choice, i) => {
+            const main = choice.kind === 'device' ? choice.device : choice.entry.tag;
+            const meta = [];
+            if (choice.kind === 'device') {
+                if (choice.entry.description)
+                    meta.push(choice.entry.description);
+                meta.push(`${choice.entry.tags.length} tag${choice.entry.tags.length === 1 ? '' : 's'}`);
+            }
+            else {
+                if (choice.entry.value !== undefined)
+                    meta.push(`${choice.entry.value}${choice.entry.unit ? ` ${choice.entry.unit}` : ''}`);
+                else if (choice.entry.unit)
+                    meta.push(choice.entry.unit);
+                if (choice.entry.stale)
+                    meta.push('stale');
+            }
+            const item = el('div', {
+                class: `re-menu-item${i === menuIndex ? ' is-active' : ''}${choice.kind === 'tag' && choice.entry.stale ? ' is-stale' : ''}`,
+                role: 'option',
+                'aria-selected': String(i === menuIndex),
+                // pointerdown, not click: the input must keep its focus and caret.
+                onpointerdown: (e) => { e.preventDefault(); pickMenu(i); },
+            }, [
+                el('span', { class: 're-menu-main' }, [main]),
+                el('span', { class: 're-menu-meta' }, [meta.join(' · ')]),
+            ]);
+            if (choice.kind === 'tag' && choice.entry.description)
+                item.title = choice.entry.description;
+            return item;
+        }));
+        menu.hidden = false;
+        menu.querySelector('.re-menu-item.is-active')?.scrollIntoView?.({ block: 'nearest' });
+    }
+    function placeMenu() {
+        if (!menuFor)
+            return;
+        if (menuFor === barInput) {
+            menu.classList.add('re-menu-inline');
+            menu.removeAttribute('style');
+            if (menu.parentElement !== bar)
+                bar.insertBefore(menu, barLine);
+            return;
+        }
+        menu.classList.remove('re-menu-inline');
+        if (menu.parentElement !== root)
+            root.append(menu);
+        const r = menuFor.getBoundingClientRect();
+        const height = Math.min(240, menu.scrollHeight || 240);
+        const below = window.innerHeight - r.bottom >= height + 8;
+        menu.style.left = `${Math.round(r.left)}px`;
+        menu.style.minWidth = `${Math.round(Math.max(r.width, 260))}px`;
+        menu.style.top = below ? `${Math.round(r.bottom)}px` : '';
+        menu.style.bottom = below ? '' : `${Math.round(window.innerHeight - r.top)}px`;
+    }
+    function pickMenu(i) {
+        const input = menuFor;
+        const ctx = menuCtx;
+        const choice = menuItems[i];
+        if (!input || !ctx || !choice)
+            return;
+        const r = applyTagChoice(input.value, ctx, choice);
+        input.value = r.text;
+        input.setSelectionRange(r.caret, r.caret);
+        input.dispatchEvent(new Event('input'));
+        if (!r.more)
+            closeMenu();
+    }
+    /** Keys the open menu consumes; false when the menu is closed for this input. */
+    function menuKey(input, e) {
+        if (menu.hidden || menuFor !== input)
+            return false;
+        switch (e.key) {
+            case 'ArrowDown':
+                menuIndex = (menuIndex + 1) % menuItems.length;
+                drawMenu();
+                break;
+            case 'ArrowUp':
+                menuIndex = (menuIndex + menuItems.length - 1) % menuItems.length;
+                drawMenu();
+                break;
+            case 'Enter':
+            case 'Tab':
+                pickMenu(menuIndex);
+                break;
+            case 'Escape':
+                closeMenu();
+                break;
+            default: return false;
+        }
+        e.preventDefault();
+        return true;
+    }
+    function closeMenu() {
+        menu.hidden = true;
+        menuFor = null;
+        menuCtx = null;
     }
     function selectInput(value, options, onChange, label) {
         const sel = el('select', { 'aria-label': label, onchange: (e) => onChange(e.target.value) });
@@ -669,7 +817,7 @@ export function initRulesEditor(root, opts = {}) {
         const c = el('div', { class: `re-cell ${cls}`, 'data-label': label }, children);
         if (loc)
             c.dataset.loc = locKey(loc);
-        cellInfo.set(c, { address: info.address ?? label, input: info.input, remove: info.remove });
+        cellInfo.set(c, { address: info.address ?? label, input: info.input, formula: info.formula, remove: info.remove });
         return c;
     }
     /**
@@ -693,6 +841,7 @@ export function initRulesEditor(root, opts = {}) {
             label: o.label,
             placeholder: o.placeholder,
             prose: Boolean(o.thenField),
+            formula: true,
             onDraft: (raw) => {
                 const v = strip(raw);
                 if (v !== raw)
@@ -702,12 +851,12 @@ export function initRulesEditor(root, opts = {}) {
                 view = next;
             },
         });
-        return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, remove: o.remove });
+        return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, formula: true, remove: o.remove });
     }
     const resultCell = (label, value, info = {}) => cell('re-cell-result', label, null, value ? [value] : [], info);
     /** A result cell fed by `monitor`; `refreshValues()` re-reads it in place. */
     function liveCell(label, ref, info) {
-        const read = () => opts.monitor?.(ref);
+        const read = () => monitor?.(ref);
         const c = resultCell(label, read(), info);
         liveCells.set(c, read);
         return c;
@@ -1050,8 +1199,14 @@ export function initRulesEditor(root, opts = {}) {
             // A draft: the in-cell input and its coloured view follow, the model does not.
             info.input.value = barInput.value;
             info.input.dispatchEvent(new Event('input'));
+            if (info.formula)
+                maybeMenu(barInput);
         },
+        onclick: () => { const info = selectedCell ? cellInfo.get(selectedCell) : undefined; if (info?.formula)
+            maybeMenu(barInput); },
         onkeydown: (e) => {
+            if (menuKey(barInput, e))
+                return;
             const k = e.key;
             if (k === 'Enter')
                 done();
@@ -1086,9 +1241,10 @@ export function initRulesEditor(root, opts = {}) {
         } }, ['✕']);
     const barOk = el('button', { class: 're-bar-btn re-bar-ok', type: 'button', 'aria-label': 'Done', title: 'Done', onclick: () => done() }, ['✓']);
     const barMsg = el('p', { class: 're-msg', hidden: true });
+    const barLine = el('div', { class: 're-bar-line' }, [barInput, barCancel, barOk]);
     const bar = el('div', { class: 're-bar', 'aria-label': 'Formula bar' }, [
         el('div', { class: 're-bar-head' }, [barAddress, barDelete]),
-        el('div', { class: 're-bar-line' }, [barInput, barCancel, barOk]),
+        barLine,
         barMsg,
     ]);
     function selectCell(c) {
@@ -1107,6 +1263,7 @@ export function initRulesEditor(root, opts = {}) {
     function clearSelection(commit = true) {
         if (commit)
             commitSelected();
+        closeMenu();
         selectedCell?.classList.remove('is-selected');
         selectedCell = null;
         bar.classList.remove('is-open');
@@ -1164,6 +1321,7 @@ export function initRulesEditor(root, opts = {}) {
             barCancel.hidden = true;
         }
         updateBarMessage();
+        closeMenu();
         bar.classList.add('is-open');
         placeBar();
     }
@@ -1351,7 +1509,7 @@ export function initRulesEditor(root, opts = {}) {
                 } }, ['Add rule']),
         ]),
     ]);
-    root.replaceChildren(top, status, xmlPanel, el('div', { class: 're-body' }, [rail, pane]), bar);
+    root.replaceChildren(top, status, xmlPanel, el('div', { class: 're-body' }, [rail, pane]), bar, menu);
     render();
     return {
         getModel: () => clone(model),
@@ -1365,6 +1523,22 @@ export function initRulesEditor(root, opts = {}) {
             render();
         },
         refreshValues,
+        setMonitor: (m) => { monitor = m; refreshValues(); },
+        setCatalog: (c) => { catalogSource = c; closeMenu(); },
+        setXml: (xml) => {
+            try {
+                const next = parse(xml);
+                parseError = null;
+                model = next;
+                if (selected >= model.rules.length)
+                    selected = 0;
+                render();
+                return computeErrors();
+            }
+            catch (e) {
+                return [e instanceof RulesParseError ? e.message : 'Could not parse XML.'];
+            }
+        },
         destroy: () => {
             resizeObserver?.disconnect();
             viewport?.removeEventListener('resize', placeBar);
@@ -1378,5 +1552,6 @@ export function initRulesEditor(root, opts = {}) {
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';
 export { FUNCTIONS, RESERVED_NAMES, CONTEXT_NAMES, FormulaError, parseFormula, printFormula, formulaTokens, formulaRefs, inferType, checkFunctions, functionSpec, legacyCondToFormula, isFormula, formulaBody, quoteString, } from './formula.js';
+export { tagContext, tagChoices, applyTagChoice } from './catalog.js';
 export { OPERATORS, SEVERITIES, EDGES, MATCHES, VALUELESS_OPS, OP_ALIASES, LIMITS, COOLDOWN_PATTERN, COOLDOWN_RE, VARIABLE_NAME_PATTERN, VARIABLE_NAME_RE, canonicalOp, } from './model.js';
 //# sourceMappingURL=gui.js.map

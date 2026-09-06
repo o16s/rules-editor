@@ -1,5 +1,6 @@
 import { type RulesModel } from './model.js';
 import { type Token } from './formula.js';
+import { type TagCatalog } from './catalog.js';
 /** What a `monitor` callback is asked for: one result cell. */
 export type MonitorRef = {
     rule: number;
@@ -32,9 +33,18 @@ export interface RulesEditorOptions {
     }) => void;
     /**
      * Live values for the "Formula result" and "Condition result" cells. Called
-     * on every render. Return undefined for a cell with no value; it shows "—".
+     * when a rule is rendered and on `refreshValues()`. Return undefined for a
+     * cell with no value; it shows "—".
      */
     monitor?: (ref: MonitorRef) => string | undefined;
+    /**
+     * The devices and tags the gateway knows, for the TAG("…") autocomplete.
+     * Typing `TAG("` lists devices (and the tags of a device-less source);
+     * after the device, the tags of that device. A function is read each time
+     * the menu opens, so it can return live values. Update later with
+     * `setCatalog()`. Without a catalog the editor works as before.
+     */
+    catalog?: TagCatalog | (() => TagCatalog);
 }
 export interface RulesEditorHandle {
     /** Deep copy of the current model. */
@@ -47,6 +57,15 @@ export interface RulesEditorHandle {
     setModel(model: RulesModel): void;
     /** Re-read `monitor` for every result cell, without a re-render. Call it when live values change. */
     refreshValues(): void;
+    /** Replace the `monitor` callback and re-read every result cell. */
+    setMonitor(monitor: ((ref: MonitorRef) => string | undefined) | undefined): void;
+    /** Replace the tag catalog. Takes effect the next time the TAG("…") menu opens. */
+    setCatalog(catalog: TagCatalog | (() => TagCatalog) | undefined): void;
+    /**
+     * Replace the file from rules.xml text. Returns the validation messages; a
+     * malformed file is reported there and leaves the editor unchanged.
+     */
+    setXml(xml: string): string[];
     /** Tear down the editor (empties the container). */
     destroy(): void;
 }
@@ -57,6 +76,8 @@ export { parse, validate, validateIssues, RulesParseError } from './parse.js';
 export type { ValidationIssue } from './parse.js';
 export { FUNCTIONS, RESERVED_NAMES, CONTEXT_NAMES, FormulaError, parseFormula, printFormula, formulaTokens, formulaRefs, inferType, checkFunctions, functionSpec, legacyCondToFormula, isFormula, formulaBody, quoteString, } from './formula.js';
 export type { Ast, BinaryOp, FormulaType, FunctionSpec, FormulaRefs, TagRef, TokenKind } from './formula.js';
+export { tagContext, tagChoices, applyTagChoice } from './catalog.js';
+export type { TagCatalog, DeviceEntry, TagEntry, TagContext, TagChoice } from './catalog.js';
 export { OPERATORS, SEVERITIES, EDGES, MATCHES, VALUELESS_OPS, OP_ALIASES, LIMITS, COOLDOWN_PATTERN, COOLDOWN_RE, VARIABLE_NAME_PATTERN, VARIABLE_NAME_RE, canonicalOp, } from './model.js';
 export type { Op, Severity, Edge, Match, Variable, Cond, Publish, Incident, Rule, RulesModel, } from './model.js';
 //# sourceMappingURL=gui.d.ts.map

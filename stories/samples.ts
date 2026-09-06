@@ -1,5 +1,5 @@
 import type { Rule, RulesModel } from '../src/model.js';
-import type { MonitorRef } from '../src/gui.js';
+import type { MonitorRef, TagCatalog } from '../src/gui.js';
 
 const rule = (r: Partial<Rule> & { name: string }): Rule => ({
   variables: [],
@@ -120,6 +120,42 @@ export function liveValues(ref: MonitorRef): string | undefined {
   if (ref.kind === 'variable') return LIVE_VARIABLES[ref.name];
   return LIVE_CONDITIONS[ref.rule]?.[ref.index];
 }
+
+/** The devices and tags a gateway would report, with live readings, for the TAG("…") menu. */
+export const CATALOG: TagCatalog = {
+  devices: [
+    {
+      description: 'Cell 3 PLC (tsend2mqtt)',
+      tags: [
+        { tag: 'AlarmActive', value: 'true', description: 'The PLC has set its own alarm bit' },
+        { tag: 'StatusWord', value: '20', description: 'Status register, 16 bits' },
+        { tag: 'AlarmFlags', value: '0', description: 'One bit per alarm' },
+        { tag: 'FirmwareVersion', value: 'V4.2.1' },
+      ],
+    },
+    {
+      device: 'vibration1',
+      description: 'Press motor vibration sensor',
+      tags: [
+        { tag: 'temperature', unit: '°C', value: '48.2' },
+        { tag: 'alert_vrms_max', value: 'false' },
+        { tag: 'alert_acc_peak', value: 'false' },
+        { tag: 'v_rms', unit: 'mm/s', value: '1.8' },
+      ],
+    },
+    {
+      device: 'bulk1',
+      description: 'Bulk milk tank 1',
+      tags: [
+        { tag: 'milk_temperature', unit: '°C', value: '3.4' },
+        { tag: 'door_state', value: 'closed' },
+        { tag: 'agitator_running', value: 'true', stale: true },
+      ],
+    },
+    { device: 'wetwell', description: 'Wet well level sensor', tags: [{ tag: 'level', unit: 'm', value: '2.9' }] },
+    { device: 'flowmeter1', tags: [{ tag: 'total', unit: 'm³', value: '18 402' }, { tag: 'rate', unit: 'l/min', value: '312' }] },
+  ],
+};
 
 /** A v0.2 file: leaf conditions and nested logic. Opens as formula rows. */
 export const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>

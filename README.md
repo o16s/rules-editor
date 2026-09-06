@@ -86,14 +86,105 @@ editor.destroy();    // tear down
 | `onChange` | `(s: { model, xml, errors }) => void` | Fires on mount and after every committed edit. A text cell commits on Enter, Tab, or when it loses focus; Escape restores it. Choices, Add, Delete and Import commit at once. Keystrokes inside a cell do not fire it. |
 | `monitor` | `(ref: MonitorRef) => string \| undefined` | Live values for the "Formula result" and "Condition result" cells. `ref` is `{ rule, kind: 'variable', name }` or `{ rule, kind: 'condition', index }`. Return `undefined` for a cell with no value. Called when a rule is rendered and on `refreshValues()`. |
 
+| `catalog` | `TagCatalog \| () => TagCatalog` | The devices and tags the gateway knows. Typing `TAG("` in any formula cell opens a menu of devices, then of that device's tags. A function is read each time the menu opens. See "Tag catalog and live data". |
+
 ### Handle (`RulesEditorHandle`)
 
-`getModel()` · `getXml()` · `getErrors()` · `setModel(model)` · `refreshValues()` · `destroy()`
+`getModel()` · `getXml()` · `getErrors()` · `setModel(model)` · `setXml(xml)` ·
+`refreshValues()` · `setMonitor(fn)` · `setCatalog(catalog)` · `destroy()`
 
-`setModel()` keeps the selected rule when it still exists. `refreshValues()`
-re-reads `monitor` for every result cell without a re-render; call it when
-your live values change (a poll, an MQTT message). Result cells are otherwise
-read only when the rule is rendered.
+`setModel()` and `setXml()` keep the selected rule when it still exists.
+`setXml()` returns the validation messages, and a malformed file is reported
+there and leaves the editor unchanged. `refreshValues()` re-reads `monitor` for
+every result cell without a re-render; call it when your live values change (a
+poll, an MQTT message). `setMonitor()` and `setCatalog()` replace the callbacks
+given at mount.
+
+### Tag catalog and live data
+
+Two channels carry data from the host into the editor. Both are optional, and
+each works without the other.
+
+**The catalog** feeds the `TAG("…")` menu. It is a list of devices, each with
+its tags. Omit `device` for a source with one implicit device (a PLC read by
+`tsend2mqtt`), so its tags complete as `TAG("tag")`.
+
+```ts
+const catalog: TagCatalog = {
+  devices: [
+    { tags: [{ tag: 'AlarmActive', value: 'true' }, { tag: 'StatusWord', value: '20' }] },
+    {
+      device: 'vibration1',
+      description: 'Press motor vibration sensor',
+      tags: [
+        { tag: 'temperature', unit: '°C', value: '48.2' },
+        { tag: 'alert_vrms_max', value: 'false', stale: true },
+      ],
+    },
+  ],
+};
+```
+
+Typing `TAG("` lists the devices and the implicit device's tags, filtered as
+you type. Picking a device writes `TAG("vibration1", "` and lists that device's
+tags, each with its `value` and `unit` and marked `stale` when set. Picking a
+tag closes the call. Arrow keys, Enter and Tab pick; Escape closes the menu
+only. On a phone the menu appears inside the formula bar.
+
+**Live values** feed the result columns through `monitor`, and the menu
+through the catalog's `value` fields. When they change, call `refreshValues()`
+for the cells and `setCatalog()` (or pass a function as `catalog`) for the
+menu.
+
+### Use in React
+
+The editor is framework-free, so a React host mounts it once in an effect and
+talks to it through the handle. Props that change over time go through the
+handle, not through a remount.
+
+```tsx
+import { useEffect, useRef } from 'react';
+import { initRulesEditor, type RulesEditorHandle, type TagCatalog } from '@octanis/rules-editor';
+
+type Props = {
+  xml: string;                                   // the file to edit
+  onChange: (xml: string, errors: string[]) => void;
+  catalog?: TagCatalog;                          // devices and tags, with live readings
+  values?: Record<string, string>;               // live results, keyed by variable name
+};
+
+export function RulesEditor({ xml, onChange, catalog, values }: Props) {
+  const host = useRef<HTMLDivElement>(null);
+  const editor = useRef<RulesEditorHandle>();
+  // Callbacks read the latest props through a ref, so the editor never remounts.
+  const latest = useRef({ onChange, values });
+  latest.current = { onChange, values };
+
+  useEffect(() => {
+    editor.current = initRulesEditor(host.current!, {
+      initialXml: xml,
+      catalog,
+      monitor: (ref) => (ref.kind === 'variable' ? latest.current.values?.[ref.name] : undefined),
+      onChange: (s) => latest.current.onChange(s.xml, s.errors),
+    });
+    return () => editor.current?.destroy();
+    // mount once; later changes go through the handle below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { editor.current?.setCatalog(catalog); }, [catalog]);
+  useEffect(() => { editor.current?.refreshValues(); }, [values]);
+  useEffect(() => {
+    // Only when the host loaded a different file; the editor's own edits already came back through onChange.
+    if (editor.current && editor.current.getXml() !== xml) editor.current.setXml(xml);
+  }, [xml]);
+
+  return <div ref={host} />;
+}
+```
+
+The same shape works in Vue, Svelte or plain DOM: mount once, then call
+`setCatalog()`, `refreshValues()` and `setXml()` as your data changes.
 
 ### Small screens
 

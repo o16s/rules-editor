@@ -1,6 +1,6 @@
 import type { Meta } from '@storybook/html-vite';
 import { initRulesEditor, type RulesEditorHandle, type RulesEditorOptions } from '../src/gui.js';
-import { liveValues } from './samples.js';
+import { CATALOG, liveValues } from './samples.js';
 
 /**
  * Host design-token sets. The editor reads these from its container with
@@ -40,7 +40,7 @@ export const THEMES: Record<string, Record<string, string>> = {
 export const WIDTHS = ['fluid', '320px', '360px', '560px', '800px', '1180px'] as const;
 export type Width = (typeof WIDTHS)[number];
 
-export interface HarnessArgs extends Omit<RulesEditorOptions, 'monitor'> {
+export interface HarnessArgs extends Omit<RulesEditorOptions, 'monitor' | 'catalog'> {
   /** Width of the element the editor is mounted into — not the browser width. */
   containerWidth: Width;
   theme: keyof typeof THEMES | string;
@@ -48,6 +48,8 @@ export interface HarnessArgs extends Omit<RulesEditorOptions, 'monitor'> {
   showOutput: boolean;
   /** Feed the result columns from a fixed set of live values. */
   liveValues: boolean;
+  /** Supply the device and tag catalog, so TAG("…") offers a menu. */
+  catalog: boolean;
 }
 
 export const harnessArgTypes: Meta<HarnessArgs>['argTypes'] = {
@@ -55,6 +57,7 @@ export const harnessArgTypes: Meta<HarnessArgs>['argTypes'] = {
   theme: { control: 'select', options: Object.keys(THEMES), table: { category: 'Harness' } },
   showOutput: { control: 'boolean', table: { category: 'Harness' } },
   liveValues: { control: 'boolean', table: { category: 'Harness' } },
+  catalog: { control: 'boolean', table: { category: 'Harness' } },
   initialXml: { control: 'text', table: { category: 'Editor' } },
   initialModel: { control: 'object', table: { category: 'Editor' } },
   onChange: { table: { disable: true } },
@@ -65,6 +68,7 @@ export const harnessDefaults = {
   theme: 'octaview (default)',
   showOutput: true,
   liveValues: true,
+  catalog: true,
 };
 
 /** The editor of the story currently on screen — poke at it from the console. */
@@ -86,7 +90,7 @@ function pane(title: string): { wrap: HTMLElement; body: HTMLElement } {
 }
 
 export function renderHarness(args: HarnessArgs): HTMLElement {
-  const { containerWidth, theme, showOutput, liveValues: live, ...editorOpts } = args;
+  const { containerWidth, theme, showOutput, liveValues: live, catalog, ...editorOpts } = args;
 
   const page = document.createElement('div');
   page.style.cssText =
@@ -110,6 +114,7 @@ export function renderHarness(args: HarnessArgs): HTMLElement {
   const handle = initRulesEditor(host, {
     ...editorOpts,
     monitor: live ? liveValues : undefined,
+    catalog: catalog ? CATALOG : undefined,
     onChange: (state) => {
       if (showOutput) {
         xml.textContent = state.xml;
