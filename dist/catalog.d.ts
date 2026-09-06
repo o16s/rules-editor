@@ -1,4 +1,4 @@
-import type { FunctionSpec } from './formula.js';
+import { type FunctionSpec } from './formula.js';
 /** One field a device exposes. `value` and `stale` are live data the host may bind. */
 export interface TagEntry {
     tag: string;
@@ -40,6 +40,8 @@ export type TagChoice = {
     device?: string;
     entry: TagEntry;
 };
+/** True when `caret` sits inside a string literal of `text` (`""` is an escaped quote). */
+export declare function insideString(text: string, caret: number): boolean;
 /**
  * Where the caret is, when it is inside a string argument of TAG(...).
  * Scans `text` up to `caret`, tracking strings and the stack of open calls.

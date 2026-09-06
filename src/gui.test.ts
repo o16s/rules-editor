@@ -298,6 +298,34 @@ describe('rules editor component (jsdom)', () => {
     expect(root.querySelector('.re-cool.is-invalid')).toBeTruthy();
   });
 
+  it('deleting a rule before the selected one keeps the same rule on screen', () => {
+    const { root, api } = setup();
+    (root.querySelectorAll('.re-rail-row')[2] as HTMLElement).click();
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('wetwell-highlevel');
+    button(root, 'Delete alarm-camera').click();
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('wetwell-highlevel');
+    expect(api.getModel().rules.map((r) => r.name)[1]).toBe('wetwell-highlevel');
+    // deleting the selected one moves to its neighbour
+    button(root, 'Delete wetwell-highlevel').click();
+    expect((root.querySelector('.re-name') as HTMLInputElement).value).toBe('weekly-flow-total');
+  });
+
+  it('refreshValues asks for a renamed variable under its new name', () => {
+    const asked: string[] = [];
+    const { root, api } = setup({ initialModel: wrap(), monitor: (ref) => { if (ref.kind === 'variable') asked.push(ref.name); return undefined; } });
+    type(inputByLabel(root, 'Name of variable 1'), 'temp2');
+    asked.length = 0;
+    api.refreshValues();
+    expect(asked).toEqual(['temp2']);
+  });
+
+  it('changing the alarm severity in place recolours the rail square', () => {
+    const { root } = setup({ initialModel: wrap({ incident: { source: 's', severity: 'critical', summary: 'x' } }) });
+    expect(root.querySelector('.re-rail-row .re-square')?.className).toBe('re-square is-critical');
+    choose(root.querySelector('.re-sheet-then select') as HTMLSelectElement, 'info');
+    expect(root.querySelector('.re-rail-row .re-square')?.className).toBe('re-square is-info');
+  });
+
   it('selecting a rule keeps the rail rows and only re-renders the pane', () => {
     const { root } = setup();
     const rows = Array.from(root.querySelectorAll<HTMLElement>('.re-rail-row'));

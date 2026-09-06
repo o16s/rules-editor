@@ -1,6 +1,7 @@
 import type { Cond, Edge, Incident, Match, Publish, Rule, RulesModel, Severity, Variable } from './model.js';
 import { canonicalOp, COOLDOWN_RE, EDGES, LIMITS, SEVERITIES, VALUELESS_OPS, VARIABLE_NAME_RE } from './model.js';
 import {
+  CONTEXT_NAMES,
   FormulaError,
   RESERVED_NAMES,
   checkFunctions,
@@ -385,8 +386,9 @@ function checkFormula(
   for (const v of refs.variables) {
     if (!scope.has(v)) report(`${label}: "${v}" is not a variable of this rule.`);
   }
-  if (!o.allowContext && refs.context.length) {
-    report(`${label}: ${refs.context[0]} can only be used in a Then field.`);
+  for (const name of refs.context) {
+    if (!CONTEXT_NAMES.includes(name)) report(`${label}: "${name}" is not a known name. Did you mean ${CONTEXT_NAMES.join(' or ')}?`);
+    else if (!o.allowContext) report(`${label}: ${name} can only be used in a Then field.`);
   }
   return ast;
 }

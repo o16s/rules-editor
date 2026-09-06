@@ -1,5 +1,5 @@
 import { canonicalOp, COOLDOWN_RE, EDGES, LIMITS, SEVERITIES, VALUELESS_OPS, VARIABLE_NAME_RE } from './model.js';
-import { FormulaError, RESERVED_NAMES, checkFunctions, formulaBody, formulaRefs, inferType, isFormula, legacyCondToFormula, parseFormula, } from './formula.js';
+import { CONTEXT_NAMES, FormulaError, RESERVED_NAMES, checkFunctions, formulaBody, formulaRefs, inferType, isFormula, legacyCondToFormula, parseFormula, } from './formula.js';
 export class RulesParseError extends Error {
 }
 // ---- parsing -------------------------------------------------------------
@@ -349,8 +349,11 @@ function checkFormula(text, label, scope, report, o) {
         if (!scope.has(v))
             report(`${label}: "${v}" is not a variable of this rule.`);
     }
-    if (!o.allowContext && refs.context.length) {
-        report(`${label}: ${refs.context[0]} can only be used in a Then field.`);
+    for (const name of refs.context) {
+        if (!CONTEXT_NAMES.includes(name))
+            report(`${label}: "${name}" is not a known name. Did you mean ${CONTEXT_NAMES.join(' or ')}?`);
+        else if (!o.allowContext)
+            report(`${label}: ${name} can only be used in a Then field.`);
     }
     return ast;
 }

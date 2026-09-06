@@ -381,8 +381,9 @@ const xsd = readFileSync(new URL(RULES_XSD_PATH), 'utf8'); // file: URL in Node
 - `<variables>` with up to 64 `<var name formula description/>`. Names are
   `[A-Za-z_][A-Za-z0-9_]*` and unique within the rule.
 - `<cond expr="…" description="…"/>`. The 0.2 attributes `tag`, `op`, `value`,
-  `device` are still accepted as input. `description` is also allowed on
-  `<and>` and `<or>`.
+  `device` are still accepted as input. A nested `<and>`/`<or>` (which folds
+  into one row) can carry a `description` too; the top-level group cannot,
+  because it is the match mode and has no row to keep one.
 - `<incident first_step="…" cause="…"/>`. `summary` is the alarm title and keeps
   its 120-character cap. `first_step`, `cause`, and every `description` hold at
   most 240 characters.

@@ -250,6 +250,12 @@ describe('validate', () => {
     expect(validate(viaVar).join('\n')).toMatch(/is a number/);
   });
 
+  it('flags a context name that does not exist', () => {
+    const bad = wrap({ incident: { source: 's', severity: 'info', summary: '=condition.descripton & "."' } });
+    expect(validate(bad).join('\n')).toMatch(/"condition.descripton" is not a known name. Did you mean condition.description/);
+    expect(validate(wrap({ actions: [{ topic: '=rule.name' }] })).join('\n')).toMatch(/"rule.name" is not a known name/);
+  });
+
   it('flags condition.description outside a Then field', () => {
     expect(validate(wrap({ conditions: [{ expr: 'condition.description = "x"' }] })).join('\n')).toMatch(/only be used in a Then field/);
     expect(validate(wrap({ variables: [{ name: 'd', formula: 'condition.description' }] })).join('\n')).toMatch(/only be used in a Then field/);

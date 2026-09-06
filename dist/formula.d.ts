@@ -64,6 +64,9 @@ export interface Token {
     text: string;
     start: number;
 }
+/** Identifier characters, shared with the autocomplete scanners. */
+export declare const isIdentStart: (c: string) => boolean;
+export declare const isIdentChar: (c: string) => boolean;
 /** Tokens for display, spaces included, never throws. A leading `=` is skipped. */
 export declare function formulaTokens(text: string): Token[];
 /** Parse a formula. A leading `=` is accepted and ignored. Throws FormulaError. */

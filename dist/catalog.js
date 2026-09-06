@@ -2,8 +2,21 @@
 // autocomplete: where the caret is (inside a TAG call, or in a bare name),
 // which choices fit, and what the text becomes when one is picked. No DOM
 // here; gui.ts draws the menu.
-const isIdentStart = (c) => /[A-Za-z_]/.test(c);
-const isIdentChar = (c) => /[A-Za-z0-9_]/.test(c);
+import { isIdentChar, isIdentStart, quoteString as quote } from './formula.js';
+/** True when `caret` sits inside a string literal of `text` (`""` is an escaped quote). */
+export function insideString(text, caret) {
+    let inString = false;
+    for (let i = 0; i < caret; i++) {
+        if (text[i] !== '"')
+            continue;
+        if (inString && text[i + 1] === '"' && i + 1 < caret) {
+            i++;
+            continue;
+        }
+        inString = !inString;
+    }
+    return inString;
+}
 /**
  * Where the caret is, when it is inside a string argument of TAG(...).
  * Scans `text` up to `caret`, tracking strings and the stack of open calls.
@@ -107,20 +120,9 @@ export function tagChoices(catalog, ctx) {
     }
     return out.sort((a, b) => a.rank - b.rank).map((o) => o.choice);
 }
-const quote = (s) => `"${s.replace(/"/g, '""')}"`;
 /** Where the caret is, when it is inside a bare name (a variable or function being typed). */
 export function nameContext(text, caret) {
-    let inString = false;
-    for (let i = 0; i < caret; i++) {
-        if (text[i] !== '"')
-            continue;
-        if (inString && text[i + 1] === '"' && i + 1 < caret) {
-            i++;
-            continue;
-        }
-        inString = !inString;
-    }
-    if (inString)
+    if (insideString(text, caret))
         return null;
     let start = caret;
     while (start > 0 && isIdentChar(text[start - 1]))

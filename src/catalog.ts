@@ -3,7 +3,7 @@
 // which choices fit, and what the text becomes when one is picked. No DOM
 // here; gui.ts draws the menu.
 
-import type { FunctionSpec } from './formula.js';
+import { isIdentChar, isIdentStart, quoteString as quote, type FunctionSpec } from './formula.js';
 
 /** One field a device exposes. `value` and `stale` are live data the host may bind. */
 export interface TagEntry {
@@ -45,8 +45,16 @@ export type TagChoice =
   | { kind: 'device'; device: string; entry: DeviceEntry }
   | { kind: 'tag'; device?: string; entry: TagEntry };
 
-const isIdentStart = (c: string): boolean => /[A-Za-z_]/.test(c);
-const isIdentChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
+/** True when `caret` sits inside a string literal of `text` (`""` is an escaped quote). */
+export function insideString(text: string, caret: number): boolean {
+  let inString = false;
+  for (let i = 0; i < caret; i++) {
+    if (text[i] !== '"') continue;
+    if (inString && text[i + 1] === '"' && i + 1 < caret) { i++; continue; }
+    inString = !inString;
+  }
+  return inString;
+}
 
 /**
  * Where the caret is, when it is inside a string argument of TAG(...).
@@ -127,8 +135,6 @@ export function tagChoices(catalog: TagCatalog, ctx: TagContext): TagChoice[] {
   return out.sort((a, b) => a.rank - b.rank).map((o) => o.choice);
 }
 
-const quote = (s: string): string => `"${s.replace(/"/g, '""')}"`;
-
 // ---- names: variables and functions ---------------------------------------
 
 /** The caret sits at the end of a bare name being typed, outside any string. */
@@ -154,13 +160,7 @@ export type NameChoice = VariableChoice | FunctionChoice;
 
 /** Where the caret is, when it is inside a bare name (a variable or function being typed). */
 export function nameContext(text: string, caret: number): NameContext | null {
-  let inString = false;
-  for (let i = 0; i < caret; i++) {
-    if (text[i] !== '"') continue;
-    if (inString && text[i + 1] === '"' && i + 1 < caret) { i++; continue; }
-    inString = !inString;
-  }
-  if (inString) return null;
+  if (insideString(text, caret)) return null;
   let start = caret;
   while (start > 0 && isIdentChar(text[start - 1])) start--;
   if (start === caret || !isIdentStart(text[start])) return null;

@@ -12,7 +12,7 @@
     - <variables> with one <var name formula description/> per named formula,
     - <cond expr="..." description="..."/> as the condition form the editor
       writes; the 0.2 form <cond tag op value/> is still accepted as input,
-    - description on <and>/<or> groups,
+    - description on nested <and>/<or> groups (they fold into one row),
     - first_step and cause on <incident>,
     - a Then attribute (topic, payload, source, summary, first_step, cause)
       that starts with "=" is a formula; anything else is literal text.
@@ -245,7 +245,9 @@
       <xs:documentation>An and/or group at level 1; holds 1 to 16 level-2 conditions (LIMITS.maxChildren).</xs:documentation>
     </xs:annotation>
     <xs:group ref="conditionLevel2" minOccurs="1" maxOccurs="16"/>
-    <xs:attribute name="description" type="text" use="optional"/>
+    <!-- No description here: the top-level group is the match mode (any/all),
+         which has no row of its own to carry one. Nested groups fold into a
+         row and keep theirs. -->
   </xs:complexType>
 
   <!-- Level 2: children of a level-1 group. -->

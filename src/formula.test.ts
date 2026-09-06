@@ -137,6 +137,9 @@ describe('formulaRefs', () => {
     expect(refs.tags).toEqual([{ device: 'plc1', tag: 'A' }, { tag: 'B' }]);
     expect(refs.context).toEqual([]);
     expect(formulaRefs(parseFormula('condition.description & "."')).context).toEqual(['condition.description']);
+    // an empty TAG() is an arity error, not a tag reference
+    expect(formulaRefs(parseFormula('TAG() > 1')).tags).toEqual([]);
+    expect(formulaRefs(parseFormula('TAG(x) > 1')).tags).toEqual([]);
   });
 });
 

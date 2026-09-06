@@ -613,6 +613,9 @@ export function initRulesEditor(root, opts = {}) {
             const meta = row.querySelector('.re-rail-meta');
             if (rule && meta)
                 meta.textContent = EDGE_META[rule.edge ?? 'none'];
+            const square = row.querySelector('.re-square');
+            if (rule && square)
+                square.className = `re-square ${rule.incident ? `is-${rule.incident.severity}` : 'is-hollow'}`;
         }
         const select = pane.querySelector('.re-rail-select');
         if (select) {
@@ -964,9 +967,12 @@ export function initRulesEditor(root, opts = {}) {
         return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, formula: true, remove: o.remove });
     }
     const resultCell = (label, value, info = {}) => cell('re-cell-result', label, null, value ? [value] : [], info);
-    /** A result cell fed by `monitor`; `refreshValues()` re-reads it in place. */
+    /**
+     * A result cell fed by `monitor`; `refreshValues()` re-reads it in place.
+     * `ref` is a function, so a renamed variable is asked for under its new name.
+     */
     function liveCell(label, ref, info) {
-        const read = () => monitor?.(ref);
+        const read = () => monitor?.(ref());
         const c = resultCell(label, read(), info);
         liveCells.set(c, read);
         return c;
@@ -1079,6 +1085,9 @@ export function initRulesEditor(root, opts = {}) {
     }
     function deleteRule(index) {
         model.rules.splice(index, 1);
+        // Keep showing the same rule when one before it goes.
+        if (index < selected)
+            selected--;
         if (selected >= model.rules.length)
             selected = Math.max(0, model.rules.length - 1);
         render();
@@ -1178,7 +1187,7 @@ export function initRulesEditor(root, opts = {}) {
             gutter(i + 1),
             cell('', 'Name', { rule: index, field: 'variable', variable: i }, [nameInput], { address: `${who} · Name`, input: nameInput, remove }),
             formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")', address: `${who} · Formula`, remove }),
-            liveCell('Formula result', { rule: index, kind: 'variable', name: v.name }, { address: `${who} · Formula result`, remove }),
+            liveCell('Formula result', () => ({ rule: index, kind: 'variable', name: v.name }), { address: `${who} · Formula result`, remove }),
             cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
             removeBtn('Delete variable', remove),
         ]);
@@ -1214,7 +1223,7 @@ export function initRulesEditor(root, opts = {}) {
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
             formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50', address: `${who} · Condition`, remove }),
-            liveCell('Condition result', { rule: index, kind: 'condition', index: i }, { address: `${who} · Condition result`, remove }),
+            liveCell('Condition result', () => ({ rule: index, kind: 'condition', index: i }), { address: `${who} · Condition result`, remove }),
             cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
             removeBtn('Delete condition', remove),
         ]);

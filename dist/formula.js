@@ -44,8 +44,9 @@ export const RESERVED_NAMES = [...FUNCTIONS.map((f) => f.name), 'TRUE', 'FALSE',
 /** The names a Then field can read from the firing condition. */
 export const CONTEXT_NAMES = ['condition.description'];
 const DURATION_UNITS = { ms: 0.001, s: 1, m: 60, min: 60, h: 3600 };
-const isIdentStart = (c) => /[A-Za-z_]/.test(c);
-const isIdentChar = (c) => /[A-Za-z0-9_]/.test(c);
+/** Identifier characters, shared with the autocomplete scanners. */
+export const isIdentStart = (c) => /[A-Za-z_]/.test(c);
+export const isIdentChar = (c) => /[A-Za-z0-9_]/.test(c);
 const isDigit = (c) => /[0-9]/.test(c);
 /**
  * Tokenize `text`. With `lenient` the tokenizer never throws: an unreadable
@@ -346,7 +347,7 @@ export function formulaRefs(ast) {
                 push(refs.context, n.name);
                 break;
             case 'call':
-                if (n.name === 'TAG' && n.args.every((a) => a.kind === 'string')) {
+                if (n.name === 'TAG' && n.args.length >= 1 && n.args.every((a) => a.kind === 'string')) {
                     const strings = n.args.map((a) => a.value);
                     const ref = strings.length === 2 ? { device: strings[0], tag: strings[1] } : { tag: strings[0] };
                     if (!refs.tags.some((t) => t.tag === ref.tag && t.device === ref.device))

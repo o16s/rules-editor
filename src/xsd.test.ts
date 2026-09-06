@@ -112,7 +112,7 @@ const VALID: Record<string, string> = {
   'exactly 64 variables': rules(
     rule('r', `<variables>${Array.from({ length: LIMITS.maxVariables }, (_, i) => `<var name="v${i}" formula="${i}"/>`).join('')}</variables>` + EXPR + ACTIONS)
   ),
-  'description on a group': rules(rule('r', `<or description="either">${EXPR}${EXPR}</or>` + ACTIONS)),
+  'description on a nested group (it folds into one row)': rules(rule('r', `<and><or description="either">${EXPR}${EXPR}</or>${EXPR}</and>` + ACTIONS)),
   'description of exactly 240 characters': rules(rule('r', `<cond expr="TAG(&quot;a&quot;) = 1" description="${'x'.repeat(LIMITS.maxText)}"/>` + ACTIONS)),
   'incident with first_step and cause': rules(
     rule('r', EXPR + `<incident source="s" severity="critical" summary="Press guard alarm on cell 3" first_step="Watch the clip." cause='=condition.description &amp; ". The PLC set its own bit."'/>`)
@@ -254,6 +254,13 @@ const INVALID: Record<string, string> = {
 };
 
 /**
+ * Accepted by the XSD and by the parser, but the parser has nowhere to keep
+ * the value: the top-level group is the match mode, not a row. Removed from
+ * the schema so a file cannot lose text silently.
+ */
+const TOP_GROUP_DESCRIPTION = rules(rule('r', `<or description="either">${EXPR}${EXPR}</or>` + ACTIONS));
+
+/**
  * The editor rejects these, but XSD 1.0 cannot express the rule. They stay
  * application-level checks in validate() or parse(). The XSD must ACCEPT them.
  */
@@ -378,6 +385,10 @@ describe('schema/rules.xsd', () => {
     // xmllint reports schema errors before document errors; a trivially valid
     // document isolates schema problems.
     expect(await xsdErrors('<rules/>')).toEqual([]);
+  });
+
+  it('rejects a description on the top-level group, which no row could keep', async () => {
+    expect(await xsdErrors(TOP_GROUP_DESCRIPTION)).not.toEqual([]);
   });
 
   it('is reachable through RULES_XSD_PATH', () => {

@@ -101,8 +101,9 @@ export interface Token {
 
 const DURATION_UNITS: Record<string, number> = { ms: 0.001, s: 1, m: 60, min: 60, h: 3600 };
 
-const isIdentStart = (c: string): boolean => /[A-Za-z_]/.test(c);
-const isIdentChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
+/** Identifier characters, shared with the autocomplete scanners. */
+export const isIdentStart = (c: string): boolean => /[A-Za-z_]/.test(c);
+export const isIdentChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
 const isDigit = (c: string): boolean => /[0-9]/.test(c);
 
 /**
@@ -376,7 +377,7 @@ export function formulaRefs(ast: Ast): FormulaRefs {
       case 'ref': push(refs.variables, n.name); break;
       case 'context': push(refs.context, n.name); break;
       case 'call':
-        if (n.name === 'TAG' && n.args.every((a) => a.kind === 'string')) {
+        if (n.name === 'TAG' && n.args.length >= 1 && n.args.every((a) => a.kind === 'string')) {
           const strings = n.args.map((a) => (a as { value: string }).value);
           const ref: TagRef = strings.length === 2 ? { device: strings[0], tag: strings[1] } : { tag: strings[0] };
           if (!refs.tags.some((t) => t.tag === ref.tag && t.device === ref.device)) refs.tags.push(ref);
