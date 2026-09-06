@@ -35,9 +35,18 @@ function inputByLabel(root: HTMLElement, label: string): HTMLInputElement {
   if (!i) throw new Error(`input "${label}" not found`);
   return i;
 }
-function type(input: HTMLInputElement, value: string): void {
+/** Type without committing: the cell holds a draft. */
+function draft(input: HTMLInputElement, value: string): void {
   input.value = value;
   input.dispatchEvent(new Event('input'));
+}
+/** Type and commit, as Tab or leaving the cell does (the `change` event). */
+function type(input: HTMLInputElement, value: string): void {
+  draft(input, value);
+  input.dispatchEvent(new Event('change'));
+}
+function key(input: HTMLElement, k: string): void {
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
 }
 function choose(select: HTMLSelectElement, value: string): void {
   select.value = value;
@@ -243,6 +252,50 @@ describe('rules editor component (jsdom)', () => {
     expect(api.getXml()).toContain('edge="rising"');
     type(inputByLabel(root, 'Cooldown'), '45s');
     expect(api.getXml()).toContain('cooldown="45s"');
+  });
+
+  it('validates on commit only: keystrokes leave the model, the marks and onChange alone', () => {
+    let changes = 0;
+    const { root, api } = setup({ initialModel: wrap(), onChange: () => changes++ });
+    const mounted = changes;
+    const input = inputByLabel(root, 'Condition 1');
+    const cellEl = input.closest('.re-cell') as HTMLElement;
+    draft(input, 'temp >');
+    expect(cellEl.classList.contains('is-invalid')).toBe(false);
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
+    expect(changes).toBe(mounted);
+    // the coloured view still follows the draft
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp >');
+    // Enter commits: model, mark, onChange
+    key(input, 'Enter');
+    expect(api.getXml()).toContain('expr="temp &gt;"');
+    expect(cellEl.classList.contains('is-invalid')).toBe(true);
+    expect(changes).toBe(mounted + 1);
+    // Escape restores the committed value and does not fire onChange
+    draft(input, 'temp > 9');
+    key(input, 'Escape');
+    expect(input.value).toBe('temp >');
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp >');
+    expect(changes).toBe(mounted + 1);
+    // leaving the cell (change) commits too; an unchanged value does not fire
+    type(input, 'temp > 60');
+    expect(api.getXml()).toContain('expr="temp &gt; 60"');
+    expect(cellEl.classList.contains('is-invalid')).toBe(false);
+    expect(changes).toBe(mounted + 2);
+    input.dispatchEvent(new Event('change'));
+    expect(changes).toBe(mounted + 2);
+  });
+
+  it('the rule name and the cooldown commit the same way', () => {
+    const { root, api } = setup({ initialModel: wrap() });
+    draft(root.querySelector('.re-name') as HTMLInputElement, 'renamed');
+    expect(api.getXml()).toContain('name="r"');
+    key(root.querySelector('.re-name') as HTMLInputElement, 'Enter');
+    expect(api.getXml()).toContain('name="renamed"');
+    draft(inputByLabel(root, 'Cooldown'), '5d');
+    expect(root.querySelector('.re-cool.is-invalid')).toBeNull();
+    key(inputByLabel(root, 'Cooldown'), 'Enter');
+    expect(root.querySelector('.re-cool.is-invalid')).toBeTruthy();
   });
 
   it('marks a bad formula on its cell with the message, and clears it without a re-render', () => {
@@ -521,33 +574,60 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(cellEl.contains(document.activeElement)).toBe(false);
   });
 
-  it('typing in the bar edits the cell; the cross restores, the tick keeps', () => {
+  it('the bar holds a draft; the cross discards it, the tick or Enter commits it', () => {
     const { root, api } = narrowSetup({ initialModel: wrap() });
     const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
     cellEl.click();
-    type(barInput(root), 'temp > 60');
-    expect(api.getXml()).toContain('expr="temp &gt; 60"');
+    draft(barInput(root), 'temp > 60');
+    // the cell view follows the draft, the model does not
     expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp > 60');
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
     button(root, 'Cancel').click();
     expect(api.getXml()).toContain('expr="temp &gt; 50"');
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp > 50');
     expect(bar(root).classList.contains('is-open')).toBe(false);
     expect(cellEl.classList.contains('is-selected')).toBe(false);
     cellEl.click();
-    type(barInput(root), 'temp > 70');
+    draft(barInput(root), 'temp > 70');
     button(root, 'Done').click();
     expect(api.getXml()).toContain('expr="temp &gt; 70"');
     expect(bar(root).classList.contains('is-open')).toBe(false);
+    cellEl.click();
+    draft(barInput(root), 'temp > 80');
+    key(barInput(root), 'Enter');
+    expect(api.getXml()).toContain('expr="temp &gt; 80"');
+    expect(bar(root).classList.contains('is-open')).toBe(false);
   });
 
-  it('shows the cell validation message in the bar while editing', () => {
-    const { root } = narrowSetup({ initialModel: wrap() });
+  it('tapping another cell or a tab commits the draft', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
     (inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement).click();
-    type(barInput(root), 'temp >');
+    draft(barInput(root), 'temp > 61');
+    (inputByLabel(root, 'Description of condition 1').closest('.re-cell') as HTMLElement).click();
+    expect(api.getXml()).toContain('expr="temp &gt; 61"');
+    expect(root.querySelector('.re-bar-address')?.textContent).toBe('Row 1 · Description');
+    draft(barInput(root), 'Hot');
+    tab(root, 'Then').click();
+    expect(api.getXml()).toContain('description="Hot"');
+  });
+
+  it('after a commit with an error the bar stays open and shows the message', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
+    const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
+    cellEl.click();
+    draft(barInput(root), 'temp >');
     const msg = bar(root).querySelector('.re-msg') as HTMLElement;
+    expect(msg.hidden).toBe(true); // a draft is not validated
+    key(barInput(root), 'Enter');
+    expect(api.getXml()).toContain('expr="temp &gt;"');
+    expect(cellEl.classList.contains('is-invalid')).toBe(true);
+    expect(bar(root).classList.contains('is-open')).toBe(true);
     expect(msg.hidden).toBe(false);
     expect(msg.textContent).toMatch(/column 7/);
-    type(barInput(root), 'temp > 1');
-    expect(msg.hidden).toBe(true);
+    draft(barInput(root), 'temp > 1');
+    key(barInput(root), 'Enter');
+    expect(cellEl.classList.contains('is-invalid')).toBe(false);
+    expect(bar(root).classList.contains('is-open')).toBe(false);
   });
 
   it('a result cell opens the bar read-only, without Done or Cancel', () => {

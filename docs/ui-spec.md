@@ -213,9 +213,11 @@ every `45s`".
 
 ### 4.4 Editing
 
-Every cell is an input. Enter commits (blurs). Every keystroke updates the
-model, re-validates, and fires `onChange` with the XML. There is no save button
-and no dirty state.
+Every cell is an input with spreadsheet commit semantics. While you type, the
+cell holds a draft: the coloured formula view follows, but the model, the
+validation marks and `onChange` wait. Enter, Tab, or leaving the cell commits
+the draft; Escape restores the committed value. Choices, Add, Delete and Import
+commit at once. There is no save button and no file-level dirty state.
 
 Limits are enforced by disabling the **Add** row with the reason as its tooltip,
 not by an error after the fact.
@@ -262,9 +264,11 @@ The model is Google Sheets on a phone. The sheet stays a sheet.
 - **Tabs** (`Variables 10 · When 5 · Then 6`) show one sheet at a time.
 - Nobody types inside a cell. A **tap selects** a cell (2px reading-blue
   outline). A **formula bar** anchored at the bottom of the editor shows the
-  cell's address (`temp_rate · Formula`) and its content. Typing in the bar
-  edits the cell live. **✓** keeps, **✕** restores what the cell had when it was
-  tapped, **Delete row** removes the row. A result cell opens the bar read-only.
+  cell's address (`temp_rate · Formula`) and its content. Typing in the bar is a
+  draft: the cell shows it, the model waits. **✓** or Enter commits; tapping
+  another cell or a tab commits too. **✕** discards the draft, **Delete row**
+  removes the row. After a commit with an error the bar stays open and shows
+  the message. A result cell opens the bar read-only.
 - Choice cells (Action, `any`, `becomes true`) keep their native picker and do
   not open the bar.
 - Every control a finger can focus is 16px or larger (below that iOS zooms the
@@ -370,8 +374,8 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 
 ## 9. Behaviours to know about
 
-- **Every edit is immediate.** No save, no dirty state, no undo, no confirm on
-  Delete.
+- **A committed edit is immediate.** A cell commits on Enter, Tab, or blur;
+  there is no save button, no undo, and no confirm on Delete.
 - **The host owns persistence.** `onChange` fires on mount and after every
   edit, and carries the XML even while invalid, so a host can autosave a draft.
 - **The editor mutates nothing it is given.** Models passed in are cloned.

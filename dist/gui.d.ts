@@ -20,7 +20,11 @@ export interface RulesEditorOptions {
      * `initialModel`.
      */
     initialXml?: string;
-    /** Called after every edit (and once on mount) with the current state. */
+    /**
+     * Called once on mount and after every committed edit: a text cell commits
+     * on Enter, Tab, or when it loses focus; choices, Add, Delete and Import
+     * commit at once. Keystrokes inside a cell do not fire it.
+     */
     onChange?: (state: {
         model: RulesModel;
         xml: string;

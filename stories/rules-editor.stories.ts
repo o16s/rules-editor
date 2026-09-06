@@ -62,12 +62,16 @@ export const PhoneFormulaBar: Story = {
     const bar = canvas.getByLabelText('Cell content') as HTMLInputElement;
     await userEvent.clear(bar);
     await userEvent.type(bar, 'RATE(temp, 15min)');
-    await expect(window.editor!.getXml()).toContain('RATE(temp, 15min)');
+    // A draft: the cell view follows, the model waits for the commit.
     await expect(cell.querySelector('.re-formula-view')).toHaveTextContent('=RATE(temp, 15min)');
+    await expect(window.editor!.getXml()).toContain('RATE(temp, 30min)');
+    await userEvent.keyboard('{Enter}');
+    await expect(window.editor!.getXml()).toContain('RATE(temp, 15min)');
+    await expect(canvasElement.querySelector('.re-bar')).not.toHaveClass('is-open');
   },
 };
 
-/** A bad formula marks the cell and shows its message in the bar, where the keyboard cannot hide it. */
+/** A bad formula is flagged on commit, not while typing. The bar stays open with the message, where the keyboard cannot hide it. */
 export const PhoneInvalidFormula: Story = {
   args: { containerWidth: '360px', showOutput: false },
   globals: { viewport: { value: 'mobile2', isRotated: false } },
@@ -80,7 +84,10 @@ export const PhoneInvalidFormula: Story = {
     const bar = canvas.getByLabelText('Cell content') as HTMLInputElement;
     await userEvent.clear(bar);
     await userEvent.type(bar, 'temp >');
+    await expect(cell).not.toHaveClass('is-invalid'); // a draft is not validated
+    await userEvent.keyboard('{Enter}');
     await expect(cell).toHaveClass('is-invalid');
+    await expect(canvasElement.querySelector('.re-bar')).toHaveClass('is-open');
     await expect(canvasElement.querySelector('.re-bar .re-msg')).toHaveTextContent('column 7');
   },
 };

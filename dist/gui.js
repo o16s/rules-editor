@@ -580,15 +580,34 @@ export function initRulesEditor(root, opts = {}) {
         input.setAttribute('spellcheck', 'false');
         return input;
     };
-    function textInput(value, onInput, o) {
-        const input = el('input', {
-            type: 'text',
-            value,
-            placeholder: o.placeholder ?? '',
-            'aria-label': o.label,
-            oninput: (e) => { onInput(e.target.value); refresh(); },
-            onkeydown: (e) => { if (e.key === 'Enter')
-                e.target.blur(); },
+    /**
+     * A text cell with spreadsheet commit semantics. The model changes, and
+     * validation runs, only when the edit is committed: Enter, Tab, or leaving
+     * the cell (the `change` event). Escape restores the committed value.
+     * `onDraft` sees every keystroke, for cosmetic updates only.
+     */
+    function textInput(value, onCommit, o) {
+        let committed = value;
+        const input = el('input', { type: 'text', value, placeholder: o.placeholder ?? '', 'aria-label': o.label });
+        const commit = () => {
+            if (input.value === committed)
+                return;
+            committed = input.value;
+            onCommit(committed);
+            refresh();
+        };
+        input.addEventListener('input', () => o.onDraft?.(input.value));
+        input.addEventListener('change', commit);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                commit();
+                input.blur();
+            }
+            else if (e.key === 'Escape') {
+                input.value = committed;
+                o.onDraft?.(committed);
+                input.blur();
+            }
         });
         return o.prose ? input : identifierAttrs(input);
     }
@@ -642,17 +661,28 @@ export function initRulesEditor(root, opts = {}) {
     function formulaCell(value, onInput, o) {
         const literal = (v) => Boolean(o.thenField) && !isFormula(v);
         let view = formulaView(value, literal(value));
-        // The model updates inside textInput's own handler, before it refreshes.
+        // Excel habit: a typed leading "=" is the cell's own prefix, not formula text.
+        const strip = (raw) => (!o.thenField && raw.startsWith('=') ? raw.slice(1) : raw);
+        // The model updates inside textInput's commit, before it refreshes; the
+        // coloured view follows every keystroke.
         const input = textInput(value, (raw) => {
-            // Excel habit: a typed leading "=" is the cell's own prefix, not formula text.
-            const v = !o.thenField && raw.startsWith('=') ? raw.slice(1) : raw;
+            const v = strip(raw);
             if (v !== raw)
                 input.value = v;
-            const next = formulaView(v, literal(v));
-            view.replaceWith(next);
-            view = next;
             onInput(v, input);
-        }, { label: o.label, placeholder: o.placeholder, prose: Boolean(o.thenField) });
+        }, {
+            label: o.label,
+            placeholder: o.placeholder,
+            prose: Boolean(o.thenField),
+            onDraft: (raw) => {
+                const v = strip(raw);
+                if (v !== raw)
+                    input.value = v;
+                const next = formulaView(v, literal(v));
+                view.replaceWith(next);
+                view = next;
+            },
+        });
         return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, remove: o.remove });
     }
     const resultCell = (label, value, info = {}) => cell('re-cell-result', label, null, value ? [value] : [], info);
@@ -776,14 +806,8 @@ export function initRulesEditor(root, opts = {}) {
         const index = selected;
         const rule = model.rules[index];
         pane.append(railSelect);
-        const nameInput = identifierAttrs(el('input', {
-            type: 'text',
-            class: 're-name',
-            value: rule.name,
-            placeholder: 'rule-name',
-            'aria-label': 'Rule name',
-            oninput: (e) => { rule.name = e.target.value; refresh(); },
-        }));
+        const nameInput = textInput(rule.name, (v) => { rule.name = v; }, { label: 'Rule name', placeholder: 'rule-name' });
+        nameInput.className = 're-name';
         const head = el('div', { class: 're-pane-head' }, [
             nameInput,
             el('button', { class: 're-link re-danger', type: 'button', onclick: () => deleteRule(index) }, ['Delete']),
@@ -904,18 +928,11 @@ export function initRulesEditor(root, opts = {}) {
             focusNext = locKey({ rule: index, field: 'topic', action: rule.actions.length - 1 });
             render();
         }));
-        const cooldown = el('input', {
-            type: 'text',
-            value: rule.cooldown ?? '',
-            placeholder: '0s',
-            'aria-label': 'Cooldown',
-            title: 'A Go duration: 30s, 1m30s, 500ms. Units ns, us, ms, s, m, h. Blank fires every time.',
-            oninput: (e) => { const v = e.target.value; if (v)
-                rule.cooldown = v;
-            else
-                delete rule.cooldown; refresh(); },
-        });
-        identifierAttrs(cooldown);
+        const cooldown = textInput(rule.cooldown ?? '', (v) => { if (v)
+            rule.cooldown = v;
+        else
+            delete rule.cooldown; }, { label: 'Cooldown', placeholder: '0s' });
+        cooldown.title = 'A Go duration: 30s, 1m30s, 500ms. Units ns, us, ms, s, m, h. Blank fires every time.';
         const cool = el('div', { class: 're-cool' }, ['Actions are fired at most once every', cooldown]);
         cool.dataset.loc = locKey({ rule: index, field: 'cooldown' });
         sheet.append(cool);
@@ -980,7 +997,7 @@ export function initRulesEditor(root, opts = {}) {
     const barAddress = el('span', { class: 're-bar-address' });
     const barDelete = el('button', { class: 're-link re-danger', type: 'button', onclick: () => {
             const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
-            clearSelection();
+            clearSelection(false);
             info?.remove?.();
         } }, ['Delete row']);
     const barInput = el('input', {
@@ -990,24 +1007,37 @@ export function initRulesEditor(root, opts = {}) {
             const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
             if (!info?.input)
                 return;
-            // Route through the in-cell input so the model, the coloured view, the
-            // validation marks and onChange all run exactly as on desktop.
+            // A draft: the in-cell input and its coloured view follow, the model does not.
             info.input.value = barInput.value;
             info.input.dispatchEvent(new Event('input'));
-            updateBarMessage();
         },
         onkeydown: (e) => { if (e.key === 'Enter')
-            clearSelection(); },
+            done(); },
     });
+    /** Commit the selected cell's draft (a no-op when nothing changed). */
+    function commitSelected() {
+        const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
+        info?.input?.dispatchEvent(new Event('change'));
+    }
+    /** Tick or Enter: commit; stay open with the message when the cell is now invalid. */
+    function done() {
+        commitSelected();
+        if (selectedCell?.classList.contains('is-invalid')) {
+            selectedOriginal = barInput.value;
+            updateBarMessage();
+            return;
+        }
+        clearSelection(false);
+    }
     const barCancel = el('button', { class: 're-bar-btn', type: 'button', 'aria-label': 'Cancel', title: 'Cancel', onclick: () => {
             const info = selectedCell ? cellInfo.get(selectedCell) : undefined;
             if (info?.input && info.input.value !== selectedOriginal) {
                 info.input.value = selectedOriginal;
                 info.input.dispatchEvent(new Event('input'));
             }
-            clearSelection();
+            clearSelection(false);
         } }, ['✕']);
-    const barOk = el('button', { class: 're-bar-btn re-bar-ok', type: 'button', 'aria-label': 'Done', title: 'Done', onclick: () => clearSelection() }, ['✓']);
+    const barOk = el('button', { class: 're-bar-btn re-bar-ok', type: 'button', 'aria-label': 'Done', title: 'Done', onclick: () => done() }, ['✓']);
     const barMsg = el('p', { class: 're-msg', hidden: true });
     const bar = el('div', { class: 're-bar', 'aria-label': 'Formula bar' }, [
         el('div', { class: 're-bar-head' }, [barAddress, barDelete]),
@@ -1015,15 +1045,21 @@ export function initRulesEditor(root, opts = {}) {
         barMsg,
     ]);
     function selectCell(c) {
-        if (selectedCell && selectedCell !== c)
+        if (selectedCell && selectedCell !== c) {
+            // Moving on commits the draft, as in a spreadsheet.
+            commitSelected();
             selectedCell.classList.remove('is-selected');
+        }
         selectedCell = c;
         c.classList.add('is-selected');
         const info = cellInfo.get(c);
         selectedOriginal = info?.input ? info.input.value : (c.textContent ?? '');
         updateBar();
     }
-    function clearSelection() {
+    /** Close the bar. By default the draft is committed first; Cancel and Delete pass false. */
+    function clearSelection(commit = true) {
+        if (commit)
+            commitSelected();
         selectedCell?.classList.remove('is-selected');
         selectedCell = null;
         bar.classList.remove('is-open');
@@ -1118,6 +1154,8 @@ export function initRulesEditor(root, opts = {}) {
     // ---- render ----
     function render() {
         measure();
+        // A draft in the bar survives a structural change (Add, Delete) by being committed first.
+        commitSelected();
         selectedCell = null;
         bar.classList.remove('is-open');
         renderRail();

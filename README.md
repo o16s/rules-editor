@@ -83,7 +83,7 @@ editor.destroy();    // tear down
 |--------|------|-------|
 | `initialXml` | `string` | Parsed internally. A **malformed** file does not throw: the editor opens empty and the parse error is surfaced through `onChange`'s `errors` (and the status line). Takes precedence over `initialModel`. A v0.2 file opens as formula rows. |
 | `initialModel` | `RulesModel` | Start from a model instead of XML. Cloned; your object is not mutated. |
-| `onChange` | `(s: { model, xml, errors }) => void` | Fires on mount and after every edit. |
+| `onChange` | `(s: { model, xml, errors }) => void` | Fires on mount and after every committed edit. A text cell commits on Enter, Tab, or when it loses focus; Escape restores it. Choices, Add, Delete and Import commit at once. Keystrokes inside a cell do not fire it. |
 | `monitor` | `(ref: MonitorRef) => string \| undefined` | Live values for the "Formula result" and "Condition result" cells. `ref` is `{ rule, kind: 'variable', name }` or `{ rule, kind: 'condition', index }`. Return `undefined` for a cell with no value. Called on every render. |
 
 ### Handle (`RulesEditorHandle`)
@@ -123,6 +123,12 @@ Two things are the host page's job, because a component cannot do them:
 
 Each sheet has a help button (ⓘ) that reveals its text, and validation messages
 appear in the cell they belong to, so both work without a mouse hover.
+
+Validation runs when a cell is committed, not while you type. On a desktop a
+cell commits on Enter, Tab, or when it loses focus, and Escape restores what
+it held. On a phone the bar commits on the tick, Enter, or when you tap
+another cell or a tab; the cross discards the draft. After a commit with an
+error the bar stays open and shows the message.
 
 ## Formulas
 
