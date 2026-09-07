@@ -13,12 +13,12 @@ The module has no dependency outside the Go standard library.
 ## Install
 
 ```bash
-go get github.com/o16s/rules-editor/rules-engine@v0.4.0
+go get github.com/o16s/rules-editor/rules-engine@v0.4.1
 ```
 
-The module lives in a subdirectory, so its git tag is `rules-engine/v0.4.0`.
+The module lives in a subdirectory, so its git tag is `rules-engine/v0.4.1`.
 Go maps the path suffix to that tag prefix by itself, so the version string
-stays `v0.4.0`. Do not write `@rules-engine/v0.4.0`: Go rejects it as an
+stays `v0.4.1`. Do not write `@rules-engine/v0.4.1`: Go rejects it as an
 invalid version. The npm package keeps the plain `vX.Y.Z` tags.
 
 The repository is public, so a build needs no credential. For a private fork,

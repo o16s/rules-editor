@@ -8,7 +8,7 @@ parse / serialize / validate core and the formula language. Vanilla TypeScript,
 
 ```bash
 # HTTPS release tarball: works everywhere, including CI (no SSH key required)
-npm install "https://github.com/o16s/rules-editor/archive/refs/tags/v0.4.0.tar.gz"
+npm install "https://github.com/o16s/rules-editor/archive/refs/tags/v0.4.1.tar.gz"
 ```
 
 Prefer the tarball: prebuilt `dist/` is committed, so there is **no build step on
@@ -18,7 +18,7 @@ install** and **zero runtime dependencies** are pulled in.
 <summary>git shorthand (needs SSH configured)</summary>
 
 ```bash
-npm install github:o16s/rules-editor#v0.4.0
+npm install github:o16s/rules-editor#v0.4.1
 ```
 
 Convenient for local dev, but npm resolves `github:` to a `git+ssh://` URL, so it
@@ -537,12 +537,12 @@ that the schema, the fixtures, the formula language and the engine change in
 one commit:
 
 ```bash
-go get github.com/o16s/rules-editor/rules-engine@v0.4.0
+go get github.com/o16s/rules-editor/rules-engine@v0.4.1
 ```
 
-The git tag is `rules-engine/v0.4.0`, because the module sits in a
+The git tag is `rules-engine/v0.4.1`, because the module sits in a
 subdirectory. Go maps the path suffix to that tag prefix by itself, so the
-version string stays `v0.4.0`.
+version string stays `v0.4.1`.
 
 `schema/fixtures/`, `schema/formula-cases.json` and
 `schema/formula-functions.json` are read by both test suites. A change to the
