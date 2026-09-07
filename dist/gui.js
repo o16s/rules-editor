@@ -261,6 +261,7 @@ export function initRulesEditor(root, opts = {}) {
         el('span', { class: 're-title' }, ['Rules']),
         el('div', { class: 're-top-actions' }, [
             el('button', { class: 're-btn', type: 'button', onclick: () => xmlPanel.toggle() }, ['XML']),
+            ...(opts.onSimulate ? [el('button', { class: 're-btn', type: 'button', onclick: () => opts.onSimulate?.(state.selected) }, ['Simulator'])] : []),
             el('button', { class: 're-btn-primary', type: 'button', onclick: () => {
                     state.parseError = null;
                     state.model.rules.push({ name: 'new-rule', variables: [], match: 'any', conditions: [{ expr: '' }], actions: [], incident: null });
@@ -298,6 +299,9 @@ export function initRulesEditor(root, opts = {}) {
         },
     };
 }
+// ---- the Simulator page and its core ----
+export { initSimulator, parseSeconds } from './gui/simulator.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';

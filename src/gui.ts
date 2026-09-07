@@ -70,6 +70,11 @@ export interface RulesEditorOptions {
    * `setCatalog()`. Without a catalog the editor works as before.
    */
   catalog?: TagCatalog | (() => TagCatalog);
+  /**
+   * Shows a "Simulator" button next to "XML". Called with the index of the
+   * selected rule; the host opens the Simulator page (see `initSimulator`).
+   */
+  onSimulate?: (ruleIndex: number) => void;
 }
 
 export interface RulesEditorHandle {
@@ -324,6 +329,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     el('span', { class: 're-title' }, ['Rules']),
     el('div', { class: 're-top-actions' }, [
       el('button', { class: 're-btn', type: 'button', onclick: () => xmlPanel.toggle() }, ['XML']),
+      ...(opts.onSimulate ? [el('button', { class: 're-btn', type: 'button', onclick: () => opts.onSimulate?.(state.selected) }, ['Simulator'])] : []),
       el('button', { class: 're-btn-primary', type: 'button', onclick: () => {
         state.parseError = null;
         state.model.rules.push({ name: 'new-rule', variables: [], match: 'any', conditions: [{ expr: '' }], actions: [], incident: null });
@@ -364,6 +370,12 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 }
 
 export type { Token };
+
+// ---- the Simulator page and its core ----
+export { initSimulator, parseSeconds } from './gui/simulator.js';
+export type { SimulatorOptions, SimulatorHandle, SimulatorState } from './gui/simulator.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value, Env } from './simulate.js';
 
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';

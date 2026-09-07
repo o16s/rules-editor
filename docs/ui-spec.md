@@ -402,7 +402,32 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 
 ---
 
-## 10. Open weaknesses
+## 10. The Simulator page (design 14a)
+
+Opened from the **Simulator** button in the editor's top bar (shown when the
+host passes `onSimulate`). It runs one rule against signals the user writes.
+Nothing is written to the gateway.
+
+- **Header.** `← rule name` (back), the title "Simulator", then Stop time,
+  Max step, a read-only Cursor readout, and Run.
+- **Tags sheet.** Columns: Tag formula · Signal formula. One row per tag the
+  rule reads. Signals: `HOLD`, `STEP`, `RAMP`, `PULSE`, `SINE`. A signal that
+  is not one takes the amber wash with its message under the value, and its
+  tag reads nothing.
+- **Timeline.** Columns: Condition › variable › tag · At {cursor} · axis ·
+  lane. A tree, fully open at first; a caret folds a node. Condition rows are
+  bold on the paper colour with a heavier separator between groups. Discrete
+  lanes are Foxglove-style state bands labelled with their value and tinted
+  when true. Analog lanes carry a trace in the reading blue, a max/min axis
+  in a narrow column, and dashed thresholds where a condition compares the
+  value with a constant. One ink for every trace; the cursor (solid) and the
+  fire marks (dashed) share the accent colour. Times are seconds.
+- **Log.** Time · Event. Condition changes, fires ("Fired." in bold, then the
+  actions as sent), and the next allowed fire after a cooldown.
+- **Widths.** Below 900px the log moves under the timeline and the label
+  column narrows. Below 560px the tag formula sits above its signal.
+
+## 11. Open weaknesses
 
 1. No undo, and no confirmation on Delete rule, Delete row, or Import.
 2. The tag catalogue only feeds the `TAG("…")` menu. A misspelled tag typed by
@@ -416,7 +441,7 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 
 ---
 
-## 11. Glossary
+## 12. Glossary
 
 | Term | Meaning |
 |---|---|

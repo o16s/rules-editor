@@ -18,7 +18,11 @@ octaview website and edge-hub.
     download, import), `styles.ts` (the scoped stylesheet), `state.ts` (the
     shared state object and small types), `dom.ts` (element builder, icons,
     choice controls), `labels.ts` (options and help text), `then-rows.ts` (the
-    Then sheet's row model and preview), `example.ts` (the default file).
+    Then sheet's row model and preview), `example.ts` (the default file),
+    `simulator.ts` (the Simulator page of design 14a: signals per tag, the
+    condition › variable › tag timeline, the log).
+  - `simulate.ts` — the simulator core: signal generators, a formula
+    evaluator over a clock (`evaluateAt`), and the rule's firing (`simulate`).
   - `model.ts` — types + constants. `formula.ts` — the formula language:
     tokenizer, parser, printer, static checks, function registry.
     `serialize.ts` — model → xml. `parse.ts` — xml → model + `validate`.

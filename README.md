@@ -234,6 +234,54 @@ it held. On a phone the bar commits on the tick, Enter, or when you tap
 another cell or a tab; the cross discards the draft. After a commit with an
 error the bar stays open and shows the message.
 
+## Simulator
+
+The Simulator page (design 14a) runs one rule against signals you write, so
+a fault can be staged without touching the plant. Nothing on the page is
+written to the gateway.
+
+```ts
+import { initSimulator } from '@octanis/rules-editor';
+
+const sim = initSimulator(document.getElementById('sim'), {
+  rule: editor.getModel().rules[0],
+  catalog,                      // units and default values for the tags
+  signals: { 'plc1/AlarmActive': 'STEP(false, true, 180s)' },
+  stop: 600,                    // seconds
+  step: 1,                      // seconds between samples
+  onBack: () => showEditor(),   // shows "← rule name" at the top left
+});
+```
+
+The editor shows a **Simulator** button next to **XML** when you pass
+`onSimulate: (ruleIndex) => …` in its options. The host opens the page; the
+Storybook story "From editor" shows the flow.
+
+The page has three parts:
+
+- **Tags.** One row per tag the rule reads, with its signal formula. A signal
+  is one of `HOLD(value)`, `STEP(before, after, at)`, `RAMP(from, to, over)`,
+  `PULSE(low, high, period, width)` or `SINE(mean, amplitude, period)`. Times
+  are durations of the formula language (`180s`, `2min`, `1h`) or plain
+  seconds. A tag without a signal holds its catalog value.
+- **Timeline.** A tree: each condition opens to the variables it reads, each
+  variable to its tags. Every row shows its value at the cursor and a lane on
+  the shared clock: state bands with their text for true/false and text values,
+  a trace with a y-axis for numbers, a dashed line where a condition compares
+  the value with a constant. Click or drag on the lanes to move the cursor.
+  Dashed vertical lines mark where the rule fired.
+- **Log.** Condition changes, fires with the actions as sent (Then formulas
+  are evaluated with `condition.description`), and the next allowed fire after
+  a cooldown.
+
+The header holds the stop time, the sample step and the cursor readout. The
+run repeats on every committed change. `simulate()` and `evaluateAt()` are
+exported for a host that wants the numbers without the page. The evaluator
+follows the function list in `FUNCTIONS`: `RATE` is change per hour over the
+window, `CHANGED` is true in the sample where the value changed, `STALE` is
+true when the value did not change within the window, `AVG` is the mean over
+the window. A time function without enough history reads nothing (a dash).
+
 ## Formulas
 
 A formula is Excel-style text. The editor shows it with a leading `=`. In the

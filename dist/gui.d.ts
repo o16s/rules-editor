@@ -38,6 +38,11 @@ export interface RulesEditorOptions {
      * `setCatalog()`. Without a catalog the editor works as before.
      */
     catalog?: TagCatalog | (() => TagCatalog);
+    /**
+     * Shows a "Simulator" button next to "XML". Called with the index of the
+     * selected rule; the host opens the Simulator page (see `initSimulator`).
+     */
+    onSimulate?: (ruleIndex: number) => void;
 }
 export interface RulesEditorHandle {
     /** Deep copy of the current model. */
@@ -69,6 +74,10 @@ export interface RulesEditorHandle {
 export declare function shortMessage(message: string): string;
 export declare function initRulesEditor(root: HTMLElement, opts?: RulesEditorOptions): RulesEditorHandle;
 export type { Token };
+export { initSimulator, parseSeconds } from './gui/simulator.js';
+export type { SimulatorOptions, SimulatorHandle, SimulatorState } from './gui/simulator.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value, Env } from './simulate.js';
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';
 export type { ValidationIssue } from './parse.js';
