@@ -91,9 +91,11 @@ describe('simulator page (jsdom)', () => {
     expect(bandText).toEqual(['false', 'true']);
     expect(cond.querySelectorAll('.rs-band.is-on')).toHaveLength(1);
     expect((cond.querySelector('.rs-band') as HTMLElement).style.width).toBe('30%');
-    // the door: closed / open bands, unit-less text
+    // the door: closed / open bands; a 30 s pulse is too short for its text, the title carries it
     const door = lanes(root)[11];
-    expect(Array.from(door.querySelectorAll('.rs-band')).map(text).slice(0, 3)).toEqual(['closed', 'open', 'closed']);
+    const doorBands = Array.from(door.querySelectorAll<HTMLElement>('.rs-band'));
+    expect(doorBands.map((b) => b.title).slice(0, 3)).toEqual(['closed', 'open', 'closed']);
+    expect(doorBands.map(text).slice(0, 3)).toEqual(['closed', '', 'closed']);
     // moving the cursor re-reads the column without a re-render
     api.setCursor(100);
     expect(text(root.querySelector('.rs-readout'))).toBe('100 s');
