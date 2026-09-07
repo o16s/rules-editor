@@ -1,0 +1,12 @@
+# SARA configuration for the rules-engine specification set.
+# Operate `sara check` from this directory, or set SARA_CONFIG to this file.
+
+[repositories]
+paths = ["./specs"]
+
+[validation]
+strict_mode = true
+
+[output]
+colors = true
+emojis = false
