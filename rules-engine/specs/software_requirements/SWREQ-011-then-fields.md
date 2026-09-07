@@ -50,4 +50,4 @@ page. The buffer keeps the hot path free of allocations.
 
 ## Notes
 
-A `topic` formula that renders an empty string drops the action and increments `Stats.DroppedActions`.
+A `topic` formula that renders an empty string, or a string with `+` or `#`, drops the action and increments `Stats.DroppedActions`.

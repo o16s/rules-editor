@@ -36,7 +36,7 @@ A frame arrives with `AlarmFlag` set to `true`.
 3. [Reaction]: The result is true and the previous result was false. This is a rising edge.
 4. [Reaction]: No cooldown is active. The rule fires.
 5. [Reaction]: The engine returns four actions in document order and one trigger incident.
-6. [Reaction]: The service publishes the four actions with QoS 0, with 10 ms between them.
+6. [Reaction]: The service publishes the four actions with QoS 1, with 10 ms between them.
 7. [Reaction]: The service publishes the trigger to `incidents/` with QoS 1.
 8. [Action]: The next frame arrives with `AlarmFlag` still `true`.
 9. [Reaction]: No slot of the rule changed. The engine does not evaluate the rule. Nothing fires.

@@ -42,7 +42,8 @@ stateDiagram-v2
 `Reset(now)` iterates every rule once, appends a resolve for each active
 incident, sets `active = false` and `prev = false`, and leaves `lastFired`.
 It also clears the `CHANGED` node states and the window rings, so the first
-`Eval` after a reconnect starts from unknown history.
+`Eval` after a reconnect starts from unknown history. It keeps `lastChange`
+of every slot, so `STALE` holds across a reconnect.
 
 ## Interface & API Definitions
 

@@ -39,7 +39,7 @@ type Env struct {
 - `LoadSlot(i)`: box the slot with a type switch into `Value`. `nil` gives `Unknown`.
 - `Binary`: pop two, apply the operator by the kind pair, push. For `=` and `!=`, a bool with the number `1` or `0` compares as a bool. A string with a number or a bool compares with the rendered text (ADR-015). Other mismatched kinds push `Unknown`. `&` builds a string with `strings.Builder` and allocates. The compiler marks programs with `&` so the engine uses them only in Then fields.
 - `Call AND/OR`: implemented by jumps. `NOT`: pop, invert, `Unknown` stays.
-- `Changed(k)`: compare the top of the stack with `States[k]` by kind and value, store, push the boolean.
+- `Changed(k)`: if the top of the stack is `Unknown`, push false and keep `States[k]`. Else, if `States[k]` is `Unknown`, store the value and push false. Else compare with `States[k]` by kind and value, store the value, push the result (ADR-018).
 - `Stale(w)`, `Rate(w)`, `Avg(w)`: read the ring `w` (SWDD-008), push.
 - `Context`: push `Env.Context` as a string.
 

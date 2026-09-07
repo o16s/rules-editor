@@ -39,7 +39,7 @@ graph LR
         cat["Catalog<br/>Fields, Sources, TopicPrefix, Period"]
         slots["[]any slots<br/>one per field"]
         tick["timer<br/>every Period"]
-        pub["publisher<br/>QoS 0 actions, QoS 1 incidents"]
+        pub["publisher<br/>QoS 1 actions and incidents"]
     end
     subgraph eng["rules-engine"]
         load["Load"]
@@ -78,7 +78,7 @@ sequenceDiagram
     A->>A: slots[i] = value for each field of d
     A->>E: Eval(slots, now)
     E-->>A: actions, incidents
-    A->>M: publish actions (QoS 0, in order)
+    A->>M: publish actions (QoS 1, in order)
     A->>M: publish incidents (QoS 1, incidents/)
     Note over A,E: every Period without data
     A->>E: Eval(slots, now)

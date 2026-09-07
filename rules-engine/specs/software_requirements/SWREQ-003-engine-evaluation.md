@@ -46,9 +46,10 @@ Per rule:
 - `result` is the value of the compiled condition program.
 - `rising = result && !prev`, `falling = !result && prev`, then `prev = result`.
 - If the rule contains a `CHANGED` node and `result` is true, set `prev = false` after the edge computation.
-- `cooledDown = Cooldown == 0 || lastFired.IsZero() || now.Sub(lastFired) >= Cooldown`.
+- `cooledDown = Cooldown == 0 || lastFired.IsZero() || now.Sub(lastFired) >= Cooldown`. It is computed once per evaluation, before the actions and before the incident machine.
 - `edge="none"`: fire actions when `result && cooledDown`. `edge="rising"`: fire actions when `rising && cooledDown`. A firing sets `lastFired = now`.
 - The incident state machine of SWREQ-004 comes after the actions.
+- `FieldRefs` and `HasTime` come from the condition program only. A slot that only a Then field references does not make the rule due.
 
 ## Acceptance Criteria
 

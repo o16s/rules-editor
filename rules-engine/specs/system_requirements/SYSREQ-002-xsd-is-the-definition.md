@@ -42,3 +42,8 @@ for one file cost an operator a site visit.
 
 The XSD and the fixtures live in the same repository as the engine, so a
 schema change and its engine change are one commit.
+
+Binding checks are stricter than the XSD and the editor on purpose. They
+report an unknown device or tag, a value that does not fit the field type,
+and a non-boolean condition on a typed field. They need the catalog, which
+only the service has.

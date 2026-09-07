@@ -30,7 +30,7 @@ The engine no longer decodes frames. tsend2mqtt has the largest change.
 
 ## Logic & Interface Details
 
-- `loadRules`: `Fields[i] = Field{Device: "", Tag: layout.Fields[i].Name, Type: typeOf(layout.Fields[i].Type)}`. `typeOf` maps `TypeBool` to `Bool`, `TypeReal` and `TypeLReal` to `Number`, `TypeString` and `TypeWString` to `String`, and every other S7 type to `Integer`. `Sources = []string{cfg.MQTT.TopicPrefix}`, `TopicPrefix = ""`, `Period = time.Second`.
+- `loadRules`: `Fields[i] = Field{Device: "", Tag: layout.Fields[i].Name, Type: typeOf(layout.Fields[i].Type)}`. `typeOf` maps `TypeBool` to `Bool`, `TypeReal` and `TypeLReal` to `Number`, `TypeString` and `TypeWString` to `String`, and every other S7 type to `Integer`. `TypeTime` decodes to `int32`, `TypeLInt` and `TypeLTime` to `int64`, and `TypeLWord` to `uint64`, all `Integer`. `TypeDate` and `TypeTOD` are not decoded today, so their slots stay `nil`. `Sources = []string{cfg.MQTT.TopicPrefix}`, `TopicPrefix = ""`, `Period = time.Second`.
 - The slot array has `len(layout.Fields)` entries. On the first frame of a connection, `decode.DecodeField` fills every slot. On each later frame, `ruleValues[c.Index] = c.Value` for each `ChangedTag`.
 - `Eval(ruleValues, time.Now())` comes after the change detection of the frame. A `time.Ticker` of 1 s calls `Eval` as well. Both hold one mutex around the slots and the engine.
 - On reconnect, `Reset(now)` replaces `Reset()`. Resolves publish through `Message`.

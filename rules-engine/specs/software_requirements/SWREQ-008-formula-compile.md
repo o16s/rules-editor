@@ -68,3 +68,7 @@ Compilation:
 ## Notes
 
 The AST stays for `Print`. The program is the runtime form (ADR-011).
+
+The engine knows the field types and the editor does not. `TAG(x)` alone as a
+condition passes the editor for every field, and passes the engine only for a
+boolean field. This is a binding check, like an unknown tag.

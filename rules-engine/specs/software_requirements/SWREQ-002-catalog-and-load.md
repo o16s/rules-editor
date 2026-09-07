@@ -52,6 +52,7 @@ Resolution rules:
 - A 0.2 `cond` compiles to the same program as its formula form, so both forms behave the same.
 - `<incident source="S">` must name an entry of `Sources`. Source ID is `TopicPrefix + "/" + S`, or `S` when `TopicPrefix` is empty. Dedup key is source ID `+ "-" +` rule name.
 - `cooldown` parses with `time.ParseDuration`. A negative value is a problem.
+- A literal `topic` must be a valid MQTT publish topic: not empty, without `+` and `#`, and at most 65535 bytes. A violation is a problem.
 - Duplicate `Fields` entries (same device and tag) make `Load` return one problem and no rule.
 - `Load` returns no rule when the problem list is not empty.
 

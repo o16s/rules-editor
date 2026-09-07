@@ -39,6 +39,7 @@ TypeScript package.
 | Registry file | `src/formula.test.ts` | The test writes `schema/formula-functions.json` from `FUNCTIONS` and fails when the committed file differs. |
 | Type-aware rewrite | `src/formula.ts`, `src/parse.ts` | `legacyCondToFormula` takes the field type from the host catalog when present. On a boolean field, `1` becomes `true`. On a string field, `true` becomes `"true"`. Without a catalog the current behavior stays. |
 | Documentation | `README.md` | The Go module, its tags, and the shared files. |
+| QoS text | `schema/rules.xsd`, service `docs/rules.md` | The `publish` annotation says QoS 0. The services publish with QoS 1. The text changes to QoS 1 (ADR-017). |
 | Package | `package.json`, `.npmignore` | Version `0.3.1`. The fixture files ship, or `.npmignore` excludes them. |
 
 ## Acceptance Criteria

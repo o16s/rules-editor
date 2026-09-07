@@ -49,7 +49,7 @@ Test-only.
 
 ## Error Handling & Edge Cases
 
-- tsend2mqtt has no `device` in its keys: the step values use the tag name alone.
+- tsend2mqtt has no `device` in its keys: the step values use the tag name alone. The recorder builds one frame per step. It writes each value at the offset of its field in the `.udt` layout, over the previous frame. Then it feeds the frame to the old engine.
 - A `null` value writes `nil` into the slot.
 
 ## Notes

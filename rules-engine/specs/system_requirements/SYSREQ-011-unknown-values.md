@@ -28,7 +28,7 @@ stale data. modbus2mqtt clears the values today, iolinkmaster2mqtt does not.
 ## Acceptance Criteria
 
 - `TAG(...) > 5` is false when the slot is `nil`.
-- `CHANGED(TAG(...))` is true in the cycle where the slot becomes `nil` and in the cycle where it becomes a value again.
+- `CHANGED(TAG(...))` is false in the cycle where the slot becomes `nil`. When the slot gets a value again, it is true only if that value differs from the last known value (ADR-018).
 - `STALE(TAG(...), d)` is true when the slot is `nil`.
 - After the offline threshold, a service writes `nil` into every slot of the device and calls `Eval`.
 - When a device report lacks a catalog field of that device, the service writes `nil` into that slot. The SICK MPB10 changes its field names with its profile, so this happens in production.

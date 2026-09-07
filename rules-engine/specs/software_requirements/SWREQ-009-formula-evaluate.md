@@ -39,7 +39,7 @@ func (p *Program) Eval(env *Env) Value   // env: slots, changedSet, windows, clo
 | `TAG` | the slot value as `Bool`, `Integer` (int64), `Number` (float64) or `String`. `nil` gives `Unknown` |
 | `AND`, `OR` | boolean, short-circuit, 2 to 16 arguments. An `Unknown` argument gives `Unknown` unless the result is decided |
 | `NOT` | boolean. `NOT(Unknown)` is `Unknown` |
-| `CHANGED(x)` | true when the value of `x` this call differs from its value at the previous call, by `equalValue` |
+| `CHANGED(x)` | true when the value of `x` is known and differs from the last known value of `x`, by `equalValue`. The first value of `x` is not a change. `nil` is never a change (ADR-018). The engine keeps the last known value per `CHANGED` node, so `x` can be an expression |
 | `BITAND`, `BITOR`, `BITXOR` | on `int64`. A `Number` operand with a fraction gives `Unknown` |
 | `HEX2DEC(s)` | `int64` of a hex string without prefix. Invalid gives `Unknown` |
 | `+ - * /` | on `float64`. `Integer` operands widen. `x / 0` gives `Unknown` |
@@ -47,7 +47,7 @@ func (p *Program) Eval(env *Env) Value   // env: slots, changedSet, windows, clo
 | `=`, `!=` bool with number | `1` reads as `true` and `0` as `false`. Another number gives `Unknown` (ADR-015) |
 | `=`, `!=` string with number or bool | the string compares with the text form of the other value, as `&` renders it (ADR-015) |
 | any other pair | `Unknown` |
-| `&` | string join. Number prints with `strconv.FormatFloat(f, 'g', -1, 64)`, integer with `FormatInt`, bool as `true` or `false`, `Unknown` as the empty string |
+| `&` | string join. A number prints with `strconv.FormatFloat(f, 'g', -1, 64)` and an integer with `FormatInt`. A bool prints as `true` or `false`. A duration prints as its formula text, such as `30min`. `Unknown` prints as the empty string |
 
 A condition with the value `Unknown` counts as false.
 

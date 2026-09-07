@@ -17,6 +17,7 @@ satisfies:
   - "SYSREQ-009"
   - "SYSREQ-012"
   - "SYSREQ-014"
+  - "SYSREQ-016"
 ---
 
 # Architecture: The rules-engine module

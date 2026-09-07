@@ -13,11 +13,11 @@ specs/
   solutions/               SOL-001      the solution
   use_cases/               UC-001..006  what an actor wants
   scenarios/               SCEN-001..014 concrete paths, with verification
-  system_requirements/     SYSREQ-001..015 what the system must do, measurable
+  system_requirements/     SYSREQ-001..016 what the system must do, measurable
   system_architecture/     SYSARCH-001..002 the module and the service adapter
   software_requirements/   SWREQ-001..018 what each package and each adapter must do
   detailed_design/         SWDD-001..016 how each package and adapter is built
-  adrs/                    ADR-001..016 the decisions and their alternatives
+  adrs/                    ADR-001..018 the decisions and their alternatives
 ```
 
 ## Links
