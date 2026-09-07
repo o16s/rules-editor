@@ -35,11 +35,19 @@ behavior with modbus2mqtt (ADR-010).
 - `portMiss`, when it takes a port offline, writes `nil` into the slots of that port. `poll()` then evaluates as usual.
 - Incidents publish as `incidents[i].Message(now)` with `PublishQoS1Absolute`.
 
+### What must not change
+
+- The MCAP writer keeps its own input. It logs the report as it arrived, or the raw frame. The slot array never reaches it, so a `nil` written for an offline device or an absent field does not enter the log.
+- The timer that calls `Eval` without new data must not write to MCAP. A log row means a poll happened.
+
 ## Acceptance Criteria
 
 - `go build ./...` with no `internal/rules`.
 - A test of `portMiss` past the threshold shows `nil` slots and a resolve on the next `Eval`.
 - The replay test of SWREQ-017 matches the golden file, except for the documented offline case.
+
+- A test drives one poll cycle and one timer tick, and checks that MCAP received one message, not two.
+- A test takes a device offline and checks that the MCAP message of the last real report is unchanged.
 
 ## Verification Plan
 

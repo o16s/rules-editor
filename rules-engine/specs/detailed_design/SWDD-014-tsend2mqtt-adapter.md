@@ -50,7 +50,7 @@ the incident.
 ## Interface & API Definitions
 
 The catalog: `Device ""`, `Tag` = field name, `Type` from `typeOf`.
-`Sources = []string{cfg.MQTT.TopicPrefix}`, `TopicPrefix = ""`, `Period = time.Second`.
+`Sources` are the device names of the configuration, `TopicPrefix` is the configured prefix, and `Period` is one second (ADR-019).
 
 ## Error Handling & Edge Cases
 
@@ -60,4 +60,4 @@ The catalog: `Device ""`, `Tag` = field name, `Type` from `typeOf`.
 
 ## Notes
 
-ADR-006.
+ADR-019.

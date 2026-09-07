@@ -5,7 +5,7 @@ name: "Keep the tsend2mqtt dedup key through an empty topic prefix"
 description: >
   tsend2mqtt sets TopicPrefix to empty and Sources to its topic prefix, so the
   dedup key stays {topic_prefix}-{rule}.
-status: accepted
+status: superseded
 deciders:
   - "octanis engineering"
 justifies:
@@ -61,3 +61,4 @@ Chosen option: "`TopicPrefix: ""` means source ID equals `source`". The key does
 ## Links
 
 - PLAN.md, section 4.7 and decision 2.
+- Superseded by ADR-019: no deployed file needs the old key, so every service uses one identity.

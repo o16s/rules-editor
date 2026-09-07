@@ -36,12 +36,20 @@ modbus2mqtt is the closest to the module. Its change is the smallest.
 - `cmd/modbus2mqtt/aggregator.go`: `evalRules` publishes `incidents[i].Message(now)` with `PublishQoS1Absolute`, and records `incidents[i].Rule` in the status page firing. A `time.Ticker` event in the aggregator loop calls `evalRules(now)`.
 - The CI step `Schema parity really ran` and the vendored `testdata/` are removed.
 
+### What must not change
+
+- The MCAP writer keeps its own input. It logs the report as it arrived, or the raw frame. The slot array never reaches it, so a `nil` written for an offline device or an absent field does not enter the log.
+- The timer that calls `Eval` without new data must not write to MCAP. A log row means a poll happened.
+
 ## Acceptance Criteria
 
 - `go build ./...` with no `internal/rules` and no `internal/rulesxml`.
 - The aggregator tests pass with the module types.
 - The replay test of SWREQ-017 matches the golden file.
 - `examples/rules.xml` loads with zero problems.
+
+- A test drives one poll cycle and one timer tick, and checks that MCAP received one message, not two.
+- A test takes a device offline and checks that the MCAP message of the last real report is unchanged.
 
 ## Verification Plan
 

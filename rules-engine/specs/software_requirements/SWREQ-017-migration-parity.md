@@ -1,15 +1,14 @@
 ---
 id: "SWREQ-017"
 type: software_requirement
-name: "Migration parity by replay"
+name: "Service behavior tests"
 description: >
-  Each service records the outputs of its old engine on a scripted value
-  sequence and replays it against the module.
+  Each service replays a scripted sequence of values against its own adapter
+  and the module, and compares what it publishes with an expected file.
 specification: >
-  Before its migration, each service must record the actions and incidents of
-  its `examples/rules.xml` over a scripted value sequence. After the
-  migration, it must replay the sequence against the module with the same
-  output, except for the changes this specification lists.
+  Each service must hold a scripted sequence of values and the actions and
+  incidents its rules must produce, and must replay it against the module in
+  its test suite.
 derives_from:
   - "SYSARCH-002"
 depends_on:
@@ -18,49 +17,46 @@ depends_on:
   - "SWREQ-016"
 ---
 
-# Software Requirement: Migration parity by replay
+# Software Requirement: Service behavior tests
 
 ## Requirement Specification
 
-> Before its migration, each service must record the actions and incidents of its `examples/rules.xml` over a scripted value sequence. After the migration, it must replay the sequence against the module with the same output, except for the changes this specification lists.
+> Each service must hold a scripted sequence of values and the actions and incidents its rules must produce, and must replay it against the module in its test suite.
 
 ## Rationale
 
-The migration is behavior-preserving by design. The replay proves it per
-service.
+No service runs the shared engine yet, and no rule file in the field uses the
+0.3 format, so there is no old behavior to preserve and nothing to record
+from the engines the services are dropping. What each service still needs is
+a test that shows its own adapter feeding the engine correctly: the catalog it
+builds, the slots it fills, the timer it runs and the messages it publishes.
 
 ## Logic & Interface Details
 
-- The value sequence is a JSON file with a list of steps. Each step has a time offset and a map of `device.tag` to value. `null` means offline.
-- The golden file is a JSON list of the actions (`topic`, `payload`) and incidents (`action`, `dedup_key`, `severity`, `summary`) per step.
-- The recorder is a small test in each service against its old engine, committed before the engine is deleted.
-- The replay test loads the same rules file with the module and compares.
+- The sequence is a JSON file in the service: a list of steps, each with a time offset and a map of `device.tag` to value. `null` means offline.
+- The expected file is a JSON list of the actions (`topic`, `payload`) and incidents (`action`, `dedup_key`, `severity`, `summary`) per step, written by hand from the rules of the service and its documentation.
+- The test builds the catalog the way the service builds it, loads `examples/rules.xml`, replays the steps, and compares.
+- The steps cover, for each service: a rising edge, a falling edge, a cooldown that holds, a device going offline, and one timer tick with no new data.
 
-Listed differences:
-
-| Service | Difference | Reason |
-|---|---|---|
-| tsend2mqtt | incident rules with `edge="none"` load | SYSREQ-004 |
-| tsend2mqtt | no resolve after a suppressed trigger | SYSREQ-004 |
-| iolinkmaster2mqtt, modbus2mqtt | a `CHANGED` rule fires on every change | SYSREQ-003 |
-| iolinkmaster2mqtt | offline device resolves | SYSREQ-011 |
-| iolinkmaster2mqtt, modbus2mqtt | a field absent from a device report becomes `nil` | SYSREQ-011 |
-| all | firings of several rules in one call follow the document order | ADR-016 |
-| iolinkmaster2mqtt, modbus2mqtt | a `CHANGED` rule does not fire on the first value after startup, and not on an offline transition | ADR-018 |
-| all | one resolve per incident rule whose condition is false at the first evaluation | SYSREQ-015 |
-| all | `op`, `edge` and `severity` match exactly. `GT` and `Critical` are problems | SYSREQ-002 |
-| tsend2mqtt | a boolean field compared with `1` or `0` keeps its meaning after the editor rewrite | ADR-015 |
+```json
+{ "steps": [ { "t_ms": 0,    "values": { "pump1.error_code": 0 } },
+             { "t_ms": 1000, "values": { "pump1.error_code": 5 } },
+             { "t_ms": 2000, "values": { "pump1.error_code": null } } ] }
+```
 
 ## Acceptance Criteria
 
-- Three golden files exist and are committed before the deletion of the old engines.
-- The replay tests pass after the migration, with the listed differences encoded in the expected output.
+- Each of the three services has the two files and the test.
+- The test fails when the adapter stops filling a slot, stops calling the timer, or changes a topic.
+- The expected file names the rule behind each message, so a reader sees why it is there.
 
 ## Verification Plan
 
 - **Method**: test.
-- **Procedure**: The replay test in each service CI.
+- **Procedure**: The test runs in the CI of each service.
 
 ## Notes
 
-The sequences cover every rule of the example files at least once, with a rising edge, a falling edge and a cooldown.
+The module already loads and replays the example files of the three services
+in `rules/service_test.go`. The test here is the other half: it drives the
+service adapter, not the engine alone.
