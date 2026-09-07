@@ -57,7 +57,7 @@ engine keeps `{topic_prefix}/{source}`. The dedup key stays
 `Load` rejects a `SourceIDs` whose length is neither zero nor the length of
 `Sources`. It also rejects an empty entry.
 
-This lands in `rules-engine/v0.4.0`, before the tsend2mqtt adapter.
+This lands in `rules-engine/v0.4.2`, before the tsend2mqtt adapter.
 modbus2mqtt and iolinkmaster2mqtt need no change, because the default is
 already their identity.
 

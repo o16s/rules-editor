@@ -91,9 +91,17 @@ type Catalog struct {
 	// Sources are the names an <incident source> may use, usually the device
 	// names of the configuration.
 	Sources []string
+	// SourceIDs is optional. SourceIDs[i] is the identity of Sources[i], the
+	// name the service already publishes for that device in its discovery
+	// message and its status topic. A service that lets a device override its
+	// topic passes them here, so an alert and the device carry one name
+	// (ADR-021). When the field is empty the engine builds the identity from
+	// TopicPrefix instead.
+	SourceIDs []string
 	// TopicPrefix builds the incident source ID as TopicPrefix + "/" + source.
 	// An empty prefix makes the source ID the source itself, which keeps the
-	// identity a single-source service already publishes.
+	// identity a single-source service already publishes. SourceIDs overrides
+	// it.
 	TopicPrefix string
 	// Period is the expected time between two Eval calls. It sizes the time
 	// windows, and a rule that uses a time function needs it.
@@ -158,7 +166,35 @@ func newBinder(cat Catalog) (*binder, []Problem) {
 		b.index[key] = i
 		b.types[i] = f.Type
 	}
+	problems = append(problems, checkSourceIDs(cat)...)
 	return b, problems
+}
+
+// checkSourceIDs holds the optional identities to one per source. A wrong
+// length is a programming fault in the service, and an empty identity would
+// make an incident nameless, so both stop the load.
+func checkSourceIDs(cat Catalog) []Problem {
+	if len(cat.SourceIDs) == 0 {
+		return nil
+	}
+	if len(cat.SourceIDs) != len(cat.Sources) {
+		return []Problem{{
+			Path: "catalog",
+			Message: "the catalog carries " + itoa(len(cat.SourceIDs)) +
+				" source identities for " + itoa(len(cat.Sources)) +
+				" sources: pass one identity per source, or none at all",
+		}}
+	}
+	var problems []Problem
+	for i := 0; i < len(cat.SourceIDs); i++ {
+		if cat.SourceIDs[i] == "" {
+			problems = append(problems, Problem{
+				Path:    "catalog",
+				Message: "the identity of source " + quote(cat.Sources[i]) + " is empty",
+			})
+		}
+	}
+	return problems
 }
 
 // fieldWords names a field for a message.

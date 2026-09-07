@@ -53,7 +53,7 @@ The catalog: `Device ""`, `Tag` = field name, `Type` from `typeOf`.
 `Sources` are the device names of the configuration, and `Period` is one second.
 `SourceIDs` are `cfg.DeviceIdentity(d)` for each device, which is `plc1` for the
 shipped configuration, because the device sets `topic: plc1` (ADR-021). The
-module gains `Catalog.SourceIDs` in v0.4.0, and this adapter requires that tag.
+module gains `Catalog.SourceIDs` in v0.4.2, and this adapter requires that tag.
 
 ## Error Handling & Edge Cases
 

@@ -13,12 +13,12 @@ The module has no dependency outside the Go standard library.
 ## Install
 
 ```bash
-go get github.com/o16s/rules-editor/rules-engine@v0.4.1
+go get github.com/o16s/rules-editor/rules-engine@v0.4.2
 ```
 
-The module lives in a subdirectory, so its git tag is `rules-engine/v0.4.1`.
+The module lives in a subdirectory, so its git tag is `rules-engine/v0.4.2`.
 Go maps the path suffix to that tag prefix by itself, so the version string
-stays `v0.4.1`. Do not write `@rules-engine/v0.4.1`: Go rejects it as an
+stays `v0.4.2`. Do not write `@rules-engine/v0.4.2`: Go rejects it as an
 invalid version. The npm package keeps the plain `vX.Y.Z` tags.
 
 The repository is public, so a build needs no credential. For a private fork,
@@ -61,6 +61,7 @@ for i := range incidents {
 ### What the service owns
 
 - The catalog: the fields it decodes, their types, and the names an incident may use as its source.
+- The identity of each source, when the service lets a device override its topic. `SourceIDs[i]` is the identity of `Sources[i]`, the same name the service publishes in its discovery message and its status topic. Leave the field empty and the engine builds `{TopicPrefix}/{source}` instead (ADR-021).
 - The slot array. Slot `i` holds the value of `Fields[i]`. When data arrives, write the value. When a device goes offline, or a report lacks a field, write `nil`.
 - The calls to `Eval`, from one goroutine, on data and on a timer.
 - The MQTT publishing, the logging and the counters of `Stats`.

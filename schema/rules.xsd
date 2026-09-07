@@ -44,7 +44,7 @@
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            elementFormDefault="qualified"
-           version="0.4.1">
+           version="0.4.2">
 
   <xs:annotation>
     <xs:documentation>

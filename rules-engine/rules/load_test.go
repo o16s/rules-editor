@@ -327,3 +327,50 @@ func TestParseReturnsOneErrorPerLine(t *testing.T) {
 		t.Error("a nil reader is an error")
 	}
 }
+
+// ADR-021: a service that overrides the topic of a device passes the identity
+// it already publishes, instead of letting the engine compute one.
+func TestSourceIDsReplaceTheComputedIdentity(t *testing.T) {
+	cat := testCatalog()
+	cat.SourceIDs = []string{"vibration1", "pumps/pump1"}
+	rules := load(t, `<rules><rule name="fault">
+		<cond expr='TAG("pump1", "error_code") &gt; 0'/>
+		<incident source="pump1" severity="error" summary="Fault"/>
+	</rule></rules>`, cat)
+	if got := rules[0].incident.sourceID; got != "pumps/pump1" {
+		t.Errorf("sourceID = %q, want the identity the service passed", got)
+	}
+	if got := rules[0].incident.dedupKey; got != "pumps/pump1-fault" {
+		t.Errorf("dedupKey = %q", got)
+	}
+}
+
+// Without the field the engine keeps building the identity from the prefix,
+// which is right for a service that does not override a device topic.
+func TestNoSourceIDsKeepsThePrefixFormula(t *testing.T) {
+	rules := load(t, `<rules><rule name="fault">
+		<cond expr='TAG("pump1", "error_code") &gt; 0'/>
+		<incident source="pump1" severity="error" summary="Fault"/>
+	</rule></rules>`, testCatalog())
+	if got := rules[0].incident.sourceID; got != "iolink/pump1" {
+		t.Errorf("sourceID = %q", got)
+	}
+}
+
+func TestSourceIDsMustMatchSourcesOrBeEmpty(t *testing.T) {
+	cat := testCatalog()
+	cat.SourceIDs = []string{"only-one"}
+	loadFails(t, `<rules><rule name="fault">
+		<cond expr='TAG("pump1", "error_code") &gt; 0'/>
+		<incident source="pump1" severity="error" summary="Fault"/>
+	</rule></rules>`, cat, "one identity per source")
+}
+
+func TestSourceIDsRejectsAnEmptyIdentity(t *testing.T) {
+	cat := testCatalog()
+	cat.SourceIDs = []string{"vibration1", ""}
+	loadFails(t, `<rules><rule name="fault">
+		<cond expr='TAG("pump1", "error_code") &gt; 0'/>
+		<incident source="pump1" severity="error" summary="Fault"/>
+	</rule></rules>`, cat, `the identity of source "pump1" is empty`)
+}

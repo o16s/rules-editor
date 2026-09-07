@@ -81,11 +81,19 @@ func (l *loader) knownSource(source string) bool {
 	return false
 }
 
-// sourceID builds the identity of an incident source. An empty topic prefix
-// means the source is the identity, which keeps the key a single-source
-// service already publishes. ADR-021 adds Catalog.SourceIDs in v0.4.0, so a
-// service that overrides its device topic can pass its identity instead.
+// sourceID builds the identity of an incident source. The service can pass
+// the identity it already publishes, which is what a device with an
+// overridden topic needs (ADR-021). Otherwise the identity is the prefix and
+// the source, and an empty prefix leaves the source as the identity, which
+// keeps the key a single-source service already publishes.
 func (l *loader) sourceID(source string) string {
+	if len(l.cat.SourceIDs) == len(l.cat.Sources) {
+		for i := 0; i < len(l.cat.Sources); i++ {
+			if l.cat.Sources[i] == source {
+				return l.cat.SourceIDs[i]
+			}
+		}
+	}
 	if l.cat.TopicPrefix == "" {
 		return source
 	}
