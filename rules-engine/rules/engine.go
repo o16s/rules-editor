@@ -21,14 +21,9 @@ type Engine struct {
 	dueSet []bool
 	due    []int
 
-	prevValues    []any
-	lastChange    []time.Time
-	windows       []*formula.Window
-	windowsBySlot [][]int
-	ewmas         []*formula.Ewma
-	ewmasBySlot   [][]int
-	env           formula.Env
-	lastNow       time.Time
+	past    history
+	env     formula.Env
+	lastNow time.Time
 
 	actions   []Action
 	incidents []Incident
@@ -48,16 +43,13 @@ func NewEngine(rules []Rule, cat Catalog) *Engine {
 		rulesByField: make([][]int, slots),
 		dueSet:       make([]bool, len(rules)),
 		due:          make([]int, 0, len(rules)),
-		prevValues:   make([]any, slots),
-		lastChange:   make([]time.Time, slots),
 	}
 	e.index(slots)
-	e.buildWindows(cat)
-	e.buildEwmas(slots)
+	e.past.build(cat, windowSpecs(rules), ewmaSpecs(rules))
 	e.env = formula.Env{
-		LastChange: e.lastChange,
-		Windows:    e.windows,
-		Ewmas:      e.ewmas,
+		LastChange: e.past.lastChange,
+		Windows:    e.past.windows,
+		Ewmas:      e.past.ewmas,
 		States:     make([]formula.Value, countStates(rules)),
 		Stack:      make([]formula.Value, stackDepth(rules)),
 	}
@@ -80,40 +72,6 @@ func (e *Engine) index(slots int) {
 		}
 		if r.hasTime {
 			e.timeRules = append(e.timeRules, ri)
-		}
-	}
-}
-
-// buildWindows allocates one ring per window the file asked for.
-func (e *Engine) buildWindows(cat Catalog) {
-	specs := windowSpecs(e.rules)
-	e.windows = make([]*formula.Window, len(specs))
-	e.windowsBySlot = make([][]int, len(cat.Fields))
-	for i := 0; i < len(specs); i++ {
-		if specs[i].Window <= 0 {
-			// An index no program claimed; a nil ring reads as unknown.
-			continue
-		}
-		e.windows[i] = formula.NewWindow(specs[i].Slot, specs[i].Window, cat.Period)
-		if slot := specs[i].Slot; slot >= 0 && slot < len(e.windowsBySlot) {
-			e.windowsBySlot[slot] = append(e.windowsBySlot[slot], i)
-		}
-	}
-}
-
-// buildEwmas allocates one smoothed value per pair the rules named, and
-// indexes them by slot for the same reason the windows are.
-func (e *Engine) buildEwmas(slots int) {
-	specs := ewmaSpecs(e.rules)
-	e.ewmas = make([]*formula.Ewma, len(specs))
-	e.ewmasBySlot = make([][]int, slots)
-	for i := 0; i < len(specs); i++ {
-		if specs[i].Tau <= 0 {
-			continue
-		}
-		e.ewmas[i] = formula.NewEwma(specs[i].Slot, specs[i].Tau)
-		if slot := specs[i].Slot; slot >= 0 && slot < slots {
-			e.ewmasBySlot[slot] = append(e.ewmasBySlot[slot], i)
 		}
 	}
 }
@@ -167,72 +125,15 @@ func (e *Engine) Eval(values []any, now time.Time) ([]Action, []Incident) {
 	return e.actions, e.incidents
 }
 
-// detect finds the slots that changed, records when, feeds the windows and
-// marks the rules that read them.
+// detect advances the history and marks the rules whose inputs moved.
 func (e *Engine) detect(values []any, now time.Time) {
-	for i := 0; i < len(e.windows); i++ {
-		if e.windows[i] != nil {
-			e.windows[i].Advance(now)
+	before := e.past.unsupported
+	e.past.advance(values, now)
+	e.stats.UnknownSlotTypes += e.past.unsupported - before
+	for i := 0; i < len(e.past.changed); i++ {
+		if e.past.changed[i] {
+			e.markRulesOf(i)
 		}
-	}
-	n := len(values)
-	if n > len(e.prevValues) {
-		n = len(e.prevValues)
-	}
-	for i := 0; i < n; i++ {
-		if !formula.IsSupported(values[i]) {
-			e.stats.UnknownSlotTypes++
-			continue
-		}
-		// Every evaluation is a reading, so a window holds what the service
-		// saw and not only what moved. A mean over ten minutes is then the
-		// mean of the readings, which is how an operator reads it (ADR-022).
-		e.sample(i, values[i], now)
-		e.smooth(i, values[i], now)
-		if formula.EqualAny(values[i], e.prevValues[i]) {
-			continue
-		}
-		e.lastChange[i] = now
-		e.markRulesOf(i)
-	}
-}
-
-// sample records one reading in every window that follows the slot. Most
-// slots carry no window, so the common case is one length check.
-func (e *Engine) sample(slot int, value any, now time.Time) {
-	if slot < 0 || slot >= len(e.windowsBySlot) {
-		return
-	}
-	list := e.windowsBySlot[slot]
-	if len(list) == 0 {
-		return
-	}
-	v := formula.FromAny(value)
-	if !v.IsNumeric() {
-		return
-	}
-	f := v.Float()
-	for i := 0; i < len(list); i++ {
-		e.windows[list[i]].Add(now, f)
-	}
-}
-
-// smooth folds one reading into every smoothed value that follows the slot.
-func (e *Engine) smooth(slot int, value any, now time.Time) {
-	if slot < 0 || slot >= len(e.ewmasBySlot) {
-		return
-	}
-	list := e.ewmasBySlot[slot]
-	if len(list) == 0 {
-		return
-	}
-	v := formula.FromAny(value)
-	if !v.IsNumeric() {
-		return
-	}
-	f := v.Float()
-	for i := 0; i < len(list); i++ {
-		e.ewmas[list[i]].Add(now, f)
 	}
 }
 
@@ -277,11 +178,7 @@ func insertOrdered(list []int, v int) []int {
 
 // finish records the values of this evaluation and clears the due marks.
 func (e *Engine) finish(values []any) {
-	n := len(values)
-	if n > len(e.prevValues) {
-		n = len(e.prevValues)
-	}
-	copy(e.prevValues[:n], values[:n])
+	e.past.keep(values)
 	for i := 0; i < len(e.due); i++ {
 		e.dueSet[e.due[i]] = false
 	}
@@ -302,22 +199,9 @@ func (e *Engine) Reset(now time.Time) []Incident {
 		r.prev = false
 		r.seen = false
 	}
-	for i := 0; i < len(e.windows); i++ {
-		if e.windows[i] != nil {
-			e.windows[i].Reset()
-		}
-	}
-	for i := 0; i < len(e.ewmas); i++ {
-		if e.ewmas[i] != nil {
-			e.ewmas[i].Reset()
-		}
-	}
+	e.past.reset()
 	for i := 0; i < len(e.env.States); i++ {
 		e.env.States[i] = formula.Unknown
-	}
-	for i := 0; i < len(e.prevValues); i++ {
-		e.prevValues[i] = nil
-		e.lastChange[i] = time.Time{}
 	}
 	e.lastNow = now
 	return e.incidents

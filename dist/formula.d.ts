@@ -46,7 +46,10 @@ export interface FunctionSpec {
     returns: FormulaType;
     /** Shown as a hint while typing. */
     signature: string;
+    /** One or two plain sentences: what the function answers. */
     doc: string;
+    /** A small formula an operator can read and copy. */
+    example: string;
 }
 /**
  * Every function the language knows. Adding a function is one line here; the

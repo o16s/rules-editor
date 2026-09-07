@@ -70,8 +70,8 @@ func TestEngineSharesOneWindowBetweenRules(t *testing.T) {
 	    <actions><publish topic="b"/></actions></rule>
 	</rules>`
 	e := engineFor(t, xml, testCatalog())
-	if len(e.windows) != 1 {
-		t.Errorf("windows = %d, want one shared ring", len(e.windows))
+	if len(e.past.windows) != 1 {
+		t.Errorf("windows = %d, want one shared ring", len(e.past.windows))
 	}
 }
 
