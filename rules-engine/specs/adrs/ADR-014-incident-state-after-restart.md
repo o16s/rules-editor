@@ -6,7 +6,7 @@ description: >
   Three ways to recover the incident state after a restart: resolve all at
   startup, persist the active keys, or assume active and decide on the first
   evaluation.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

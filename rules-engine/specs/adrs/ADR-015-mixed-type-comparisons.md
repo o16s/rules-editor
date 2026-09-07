@@ -5,7 +5,7 @@ name: "Comparison rules for mixed types"
 description: >
   A boolean compared with 0 or 1, and a string compared with a number or a
   boolean, follow the 0.2 behavior instead of the strict Unknown result.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:
