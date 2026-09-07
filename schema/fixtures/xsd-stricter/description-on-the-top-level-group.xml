@@ -1,0 +1,1 @@
+<rules><rule name="r"><or description="either"><cond expr="TAG(&quot;a&quot;) = 1"/><cond expr="TAG(&quot;a&quot;) = 1"/></or><actions><publish topic="t"/></actions></rule></rules>

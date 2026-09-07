@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond tag="a" op="eq" value="1"/><incident source="plc1" severity="info" summary="s"/></rule></rules>

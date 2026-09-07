@@ -1,0 +1,1 @@
+<rules><rule name="r"><and><or><cond expr="TAG(&quot;a&quot;)" description="kept?"/><cond expr="TAG(&quot;b&quot;)"/></or><cond expr="TAG(&quot;c&quot;)"/></and><actions><publish topic="t"/></actions></rule></rules>

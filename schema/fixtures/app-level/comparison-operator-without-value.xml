@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond tag="a" op="gt"/><actions><publish topic="t"/></actions></rule></rules>

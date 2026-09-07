@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond tag="a" op="eq" value="1"/><incident source="s" severity="warning" summary="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"/></rule></rules>

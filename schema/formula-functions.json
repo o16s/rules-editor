@@ -1,0 +1,86 @@
+[
+  {
+    "name": "TAG",
+    "minArgs": 1,
+    "maxArgs": 2,
+    "returns": "any",
+    "signature": "TAG(\"tag\") or TAG(\"device\", \"tag\")"
+  },
+  {
+    "name": "AND",
+    "minArgs": 2,
+    "maxArgs": 16,
+    "returns": "bool",
+    "signature": "AND(a, b, …)"
+  },
+  {
+    "name": "OR",
+    "minArgs": 2,
+    "maxArgs": 16,
+    "returns": "bool",
+    "signature": "OR(a, b, …)"
+  },
+  {
+    "name": "NOT",
+    "minArgs": 1,
+    "maxArgs": 1,
+    "returns": "bool",
+    "signature": "NOT(a)"
+  },
+  {
+    "name": "CHANGED",
+    "minArgs": 1,
+    "maxArgs": 1,
+    "returns": "bool",
+    "signature": "CHANGED(x)"
+  },
+  {
+    "name": "STALE",
+    "minArgs": 1,
+    "maxArgs": 2,
+    "returns": "bool",
+    "signature": "STALE(x, 4h)"
+  },
+  {
+    "name": "RATE",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "RATE(x, 30min)"
+  },
+  {
+    "name": "AVG",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "AVG(x, 10min)"
+  },
+  {
+    "name": "BITAND",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "BITAND(x, mask)"
+  },
+  {
+    "name": "BITOR",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "BITOR(x, mask)"
+  },
+  {
+    "name": "BITXOR",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "BITXOR(x, mask)"
+  },
+  {
+    "name": "HEX2DEC",
+    "minArgs": 1,
+    "maxArgs": 1,
+    "returns": "number",
+    "signature": "HEX2DEC(\"FF\")"
+  }
+]

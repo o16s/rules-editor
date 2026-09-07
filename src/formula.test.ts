@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   FormulaError,
   FUNCTIONS,
@@ -193,5 +196,61 @@ describe('helpers', () => {
     for (const f of FUNCTIONS) expect(RESERVED_NAMES).toContain(f.name);
     expect(RESERVED_NAMES).toContain('TRUE');
     expect(RESERVED_NAMES).toContain('CONDITION');
+  });
+});
+
+// ---- parity with the engine ----------------------------------------------
+//
+// schema/formula-cases.json and schema/formula-functions.json are read by
+// this suite and by rules-engine/formula in Go. A change to the language
+// that only one side implements fails on the other side, on the same commit.
+
+const SCHEMA_DIR = resolve(fileURLToPath(import.meta.url), '..', '..', 'schema');
+
+interface Case {
+  text: string;
+  print?: string;
+  error?: { column: number; message: string };
+}
+
+describe('schema/formula-cases.json', () => {
+  const cases = JSON.parse(readFileSync(resolve(SCHEMA_DIR, 'formula-cases.json'), 'utf8')) as Case[];
+
+  it('holds both good and bad formulas', () => {
+    expect(cases.length).toBeGreaterThan(50);
+    expect(cases.some((c) => c.error)).toBe(true);
+  });
+
+  for (const c of cases) {
+    it(`${c.error ? 'rejects' : 'prints'} ${JSON.stringify(c.text)}`, () => {
+      if (c.error) {
+        try {
+          parseFormula(c.text);
+          throw new Error('expected a FormulaError');
+        } catch (e) {
+          expect(e).toBeInstanceOf(FormulaError);
+          expect((e as FormulaError).column).toBe(c.error.column);
+          expect((e as FormulaError).message).toBe(c.error.message);
+        }
+        return;
+      }
+      const printed = printFormula(parseFormula(c.text));
+      expect(printed).toBe(c.print);
+      expect(printFormula(parseFormula(printed))).toBe(c.print);
+    });
+  }
+});
+
+describe('schema/formula-functions.json', () => {
+  it('is the registry of formula.ts, so the Go engine reads the same list', () => {
+    const onDisk = JSON.parse(readFileSync(resolve(SCHEMA_DIR, 'formula-functions.json'), 'utf8'));
+    const inCode = FUNCTIONS.map((f) => ({
+      name: f.name,
+      minArgs: f.minArgs,
+      maxArgs: f.maxArgs,
+      returns: f.returns,
+      signature: f.signature,
+    }));
+    expect(onDisk).toEqual(inCode);
   });
 });

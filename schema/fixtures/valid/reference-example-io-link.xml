@@ -1,0 +1,18 @@
+<rules>
+  <!-- Action + incident: vibration max alarm while running warm. -->
+  <rule name="vibration1-alarm" cooldown="45s" edge="rising">
+    <or>
+      <and>
+        <cond device="vibration1" tag="alert_vrms_max" op="eq" value="true"/>
+        <cond device="vibration1" tag="temperature" op="gt" value="40.0"/>
+      </and>
+      <cond device="vibration1" tag="alert_acc_peak" op="eq" value="true"/>
+    </or>
+    <actions>
+      <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"alarm"}'/>
+      <publish topic="iolink/vibration1/param/reset_alerts" payload='{}'/>
+    </actions>
+    <incident source="vibration1" severity="warning"
+              summary="Vibration1 alarm triggered"/>
+  </rule>
+</rules>

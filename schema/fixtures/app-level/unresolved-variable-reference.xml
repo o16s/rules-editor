@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond expr="temp &gt; 50"/><actions><publish topic="t"/></actions></rule></rules>

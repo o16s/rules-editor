@@ -1,0 +1,27 @@
+<rules>
+  <rule name="alarm-camera" cooldown="45s" edge="rising">
+    <cond tag="AlarmActive" op="eq" value="true"/>
+    <actions>
+      <publish topic="camera/record" payload='{"duration":40}'/>
+    </actions>
+    <incident source="plc1" severity="critical"
+              summary="Machine alarm active"/>
+  </rule>
+  <rule name="alarm-hot" cooldown="30s" edge="rising">
+    <and>
+      <cond tag="AlarmActive" op="eq" value="true"/>
+      <cond tag="Temperature" op="geq" value="85.0"/>
+    </and>
+    <incident source="plc1" severity="critical"
+              summary="Alarm active while temperature high"/>
+  </rule>
+  <rule name="new-alarm-code" cooldown="5s" edge="rising">
+    <and>
+      <cond tag="AlarmCode" op="changed"/>
+      <cond tag="AlarmCode" op="neq" value="0"/>
+    </and>
+    <actions>
+      <publish topic="alerts/alarm_code" payload='{"event":"new_code"}'/>
+    </actions>
+  </rule>
+</rules>

@@ -1,0 +1,385 @@
+[
+  {
+    "text": "50",
+    "print": "50"
+  },
+  {
+    "text": "3.6",
+    "print": "3.6"
+  },
+  {
+    "text": "\"a\"",
+    "print": "\"a\""
+  },
+  {
+    "text": "TRUE",
+    "print": "true"
+  },
+  {
+    "text": "false",
+    "print": "false"
+  },
+  {
+    "text": "30min",
+    "print": "30min"
+  },
+  {
+    "text": "500ms",
+    "print": "500ms"
+  },
+  {
+    "text": "2h",
+    "print": "2h"
+  },
+  {
+    "text": "0.5s",
+    "print": "0.5s"
+  },
+  {
+    "text": "1.5m",
+    "print": "1.5m"
+  },
+  {
+    "text": "100ms",
+    "print": "100ms"
+  },
+  {
+    "text": "-5",
+    "print": "-5"
+  },
+  {
+    "text": "\"say \"\"hi\"\"\"",
+    "print": "\"say \"\"hi\"\"\""
+  },
+  {
+    "text": "condition.description",
+    "print": "condition.description"
+  },
+  {
+    "text": "=temp",
+    "print": "temp"
+  },
+  {
+    "text": "tag(\"plc1\", \"AlarmActive\")",
+    "print": "TAG(\"plc1\", \"AlarmActive\")"
+  },
+  {
+    "text": "and(a,b)",
+    "print": "AND(a, b)"
+  },
+  {
+    "text": "AND(a, b, c)",
+    "print": "AND(a, b, c)"
+  },
+  {
+    "text": "NOT(x)",
+    "print": "NOT(x)"
+  },
+  {
+    "text": "OR(a, b)",
+    "print": "OR(a, b)"
+  },
+  {
+    "text": "NOPE(1, 2, 3)",
+    "print": "NOPE(1, 2, 3)"
+  },
+  {
+    "text": "TAG(\"a\")",
+    "print": "TAG(\"a\")"
+  },
+  {
+    "text": "TAG(\"d\", \"t\")",
+    "print": "TAG(\"d\", \"t\")"
+  },
+  {
+    "text": "CHANGED(x)",
+    "print": "CHANGED(x)"
+  },
+  {
+    "text": "STALE(x, 4h)",
+    "print": "STALE(x, 4h)"
+  },
+  {
+    "text": "RATE(x, 30min)",
+    "print": "RATE(x, 30min)"
+  },
+  {
+    "text": "AVG(x, 10min)",
+    "print": "AVG(x, 10min)"
+  },
+  {
+    "text": "BITAND(x, 4)",
+    "print": "BITAND(x, 4)"
+  },
+  {
+    "text": "BITOR(x, 1)",
+    "print": "BITOR(x, 1)"
+  },
+  {
+    "text": "BITXOR(x, 3)",
+    "print": "BITXOR(x, 3)"
+  },
+  {
+    "text": "HEX2DEC(\"FF\")",
+    "print": "HEX2DEC(\"FF\")"
+  },
+  {
+    "text": "HEX2DEC(\"10\")",
+    "print": "HEX2DEC(\"10\")"
+  },
+  {
+    "text": "a + b * c",
+    "print": "a + b * c"
+  },
+  {
+    "text": "(a + b) * c",
+    "print": "(a + b) * c"
+  },
+  {
+    "text": "a > b + 1",
+    "print": "a > b + 1"
+  },
+  {
+    "text": "(a > b) + 1",
+    "print": "(a > b) + 1"
+  },
+  {
+    "text": "x & y = z",
+    "print": "x & y = z"
+  },
+  {
+    "text": "x & (y = z)",
+    "print": "x & y = z"
+  },
+  {
+    "text": "(x & y) = z",
+    "print": "(x & y) = z"
+  },
+  {
+    "text": "a - b - c",
+    "print": "a - b - c"
+  },
+  {
+    "text": "a - (b - c)",
+    "print": "a - (b - c)"
+  },
+  {
+    "text": "-(a + b)",
+    "print": "-(a + b)"
+  },
+  {
+    "text": "a * -b",
+    "print": "a * -b"
+  },
+  {
+    "text": "a / b / c",
+    "print": "a / b / c"
+  },
+  {
+    "text": "a + b + c",
+    "print": "a + b + c"
+  },
+  {
+    "text": "a <> 0",
+    "print": "a != 0"
+  },
+  {
+    "text": "a == 0",
+    "print": "a = 0"
+  },
+  {
+    "text": "BITAND(status_word, 4) <> 0",
+    "print": "BITAND(status_word, 4) != 0"
+  },
+  {
+    "text": "a >= 1",
+    "print": "a >= 1"
+  },
+  {
+    "text": "a <= 1",
+    "print": "a <= 1"
+  },
+  {
+    "text": "a != 1",
+    "print": "a != 1"
+  },
+  {
+    "text": "a = 1",
+    "print": "a = 1"
+  },
+  {
+    "text": "TAG(\"plc1\", \"AlarmActive\")",
+    "print": "TAG(\"plc1\", \"AlarmActive\")"
+  },
+  {
+    "text": "RATE(temp, 30min)",
+    "print": "RATE(temp, 30min)"
+  },
+  {
+    "text": "CHANGED(TAG(\"bulk1\", \"door_state\"))",
+    "print": "CHANGED(TAG(\"bulk1\", \"door_state\"))"
+  },
+  {
+    "text": "BITAND(status_word, 4) != 0",
+    "print": "BITAND(status_word, 4) != 0"
+  },
+  {
+    "text": "BITAND(status_word, HEX2DEC(\"10\")) != 0",
+    "print": "BITAND(status_word, HEX2DEC(\"10\")) != 0"
+  },
+  {
+    "text": "BITAND(alarm_byte, HEX2DEC(\"FF\")) != 0",
+    "print": "BITAND(alarm_byte, HEX2DEC(\"FF\")) != 0"
+  },
+  {
+    "text": "temp > 50",
+    "print": "temp > 50"
+  },
+  {
+    "text": "AND(milk_temp > 3.6, door_changed)",
+    "print": "AND(milk_temp > 3.6, door_changed)"
+  },
+  {
+    "text": "condition.description & \". The press PLC set its own alarm bit.\"",
+    "print": "condition.description & \". The press PLC set its own alarm bit.\""
+  },
+  {
+    "text": "temp > 50.0",
+    "print": "temp > 50.0"
+  },
+  {
+    "text": "TAG(\"vibration1\", \"temperature\")",
+    "print": "TAG(\"vibration1\", \"temperature\")"
+  },
+  {
+    "text": "temp > 60",
+    "print": "temp > 60"
+  },
+  {
+    "text": "condition.description & \". The press PLC set its own alarm bit. We read that bit and nothing upstream of it, so the reason sits in the PLC.\"",
+    "print": "condition.description & \". The press PLC set its own alarm bit. We read that bit and nothing upstream of it, so the reason sits in the PLC.\""
+  },
+  {
+    "text": "\"a/\" & \"b\"",
+    "print": "\"a/\" & \"b\""
+  },
+  {
+    "text": "TAG(\"AlarmActive\") = true",
+    "print": "TAG(\"AlarmActive\") = true"
+  },
+  {
+    "text": "TAG(\"vibration1\", \"temperature\") > 50.0",
+    "print": "TAG(\"vibration1\", \"temperature\") > 50.0"
+  },
+  {
+    "text": "CHANGED(TAG(\"AlarmCode\"))",
+    "print": "CHANGED(TAG(\"AlarmCode\"))"
+  },
+  {
+    "text": "TAG(\"state\") != \"open door\"",
+    "print": "TAG(\"state\") != \"open door\""
+  },
+  {
+    "text": "TAG(\"n\") <= -3",
+    "print": "TAG(\"n\") <= -3"
+  },
+  {
+    "text": "TAG(\"v\", \"t\") >= \"x \"\"q\"\"\"",
+    "print": "TAG(\"v\", \"t\") >= \"x \"\"q\"\"\""
+  },
+  {
+    "text": "TAG(\"a\") < 1",
+    "print": "TAG(\"a\") < 1"
+  },
+  {
+    "text": "temp >",
+    "error": {
+      "column": 6,
+      "message": "The formula is incomplete."
+    }
+  },
+  {
+    "text": "=temp >",
+    "error": {
+      "column": 7,
+      "message": "The formula is incomplete."
+    }
+  },
+  {
+    "text": "AND(a, b",
+    "error": {
+      "column": 8,
+      "message": "Expected \")\" at the end."
+    }
+  },
+  {
+    "text": "a $ b",
+    "error": {
+      "column": 2,
+      "message": "Unexpected character \"$\"."
+    }
+  },
+  {
+    "text": "\"open",
+    "error": {
+      "column": 0,
+      "message": "Missing closing quote."
+    }
+  },
+  {
+    "text": "30days",
+    "error": {
+      "column": 2,
+      "message": "Unknown unit \"days\". Use ms, s, m, min, or h."
+    }
+  },
+  {
+    "text": "a b",
+    "error": {
+      "column": 2,
+      "message": "Unexpected \"b\"."
+    }
+  },
+  {
+    "text": "",
+    "error": {
+      "column": 0,
+      "message": "The formula is incomplete."
+    }
+  },
+  {
+    "text": "()",
+    "error": {
+      "column": 1,
+      "message": "Unexpected \")\"."
+    }
+  },
+  {
+    "text": "AND(a,)",
+    "error": {
+      "column": 6,
+      "message": "Unexpected \")\"."
+    }
+  },
+  {
+    "text": "1 +",
+    "error": {
+      "column": 3,
+      "message": "The formula is incomplete."
+    }
+  },
+  {
+    "text": "(a",
+    "error": {
+      "column": 2,
+      "message": "Expected \")\" at the end."
+    }
+  },
+  {
+    "text": "a)",
+    "error": {
+      "column": 1,
+      "message": "Unexpected \")\"."
+    }
+  }
+]

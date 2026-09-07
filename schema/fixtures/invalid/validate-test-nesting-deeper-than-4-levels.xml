@@ -1,0 +1,1 @@
+<rules><rule name="r"><and><and><and><and><and><cond tag="a" op="eq" value="1"/></and></and></and></and></and><actions><publish topic="t"/></actions></rule></rules>

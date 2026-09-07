@@ -1,0 +1,1 @@
+<rules><rule name="r"><and><cond tag="a" op="eq" value="1"/><cond expr="TAG(&quot;a&quot;) = 1"/></and><actions><publish topic="t"/></actions></rule></rules>

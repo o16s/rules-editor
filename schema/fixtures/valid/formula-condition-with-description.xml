@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond expr="TAG(&quot;a&quot;)" description="PLC alarm bit"/><actions><publish topic="t"/></actions></rule></rules>

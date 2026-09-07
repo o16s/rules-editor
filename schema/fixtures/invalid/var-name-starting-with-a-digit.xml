@@ -1,0 +1,1 @@
+<rules><rule name="r"><variables><var name="1x" formula="1"/></variables><cond expr="TAG(&quot;a&quot;) = 1"/><actions><publish topic="t"/></actions></rule></rules>

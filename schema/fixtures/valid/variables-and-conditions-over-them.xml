@@ -1,0 +1,1 @@
+<rules><rule name="r"><variables><var name="temp" formula='TAG("vibration1", "temperature")' description="Housing"/><var name="hot" formula="temp &gt; 50"/></variables><or><cond expr="hot"/><cond expr="temp &gt; 60" description="hot"/></or><actions><publish topic="t"/></actions></rule></rules>

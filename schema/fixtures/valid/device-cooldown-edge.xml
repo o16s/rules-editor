@@ -1,0 +1,1 @@
+<rules><rule name="r" cooldown="30s" edge="rising"><cond device="vibration1" tag="temperature" op="gt" value="50.0"/><actions><publish topic="t"/></actions></rule></rules>

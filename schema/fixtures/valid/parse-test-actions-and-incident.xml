@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond tag="a" op="eq" value="true"/><actions><publish topic="camera/record" payload='{"duration":40}'/><publish topic="t"/></actions><incident source="plc1" severity="critical" summary="Boom"/></rule></rules>

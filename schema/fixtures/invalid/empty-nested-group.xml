@@ -1,0 +1,1 @@
+<rules><rule name="r"><and><or/></and><actions><publish topic="t"/></actions></rule></rules>

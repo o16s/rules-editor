@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond expr=""/><actions><publish topic="t"/></actions></rule></rules>

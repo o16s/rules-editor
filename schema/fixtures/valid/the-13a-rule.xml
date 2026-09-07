@@ -1,0 +1,29 @@
+<rules>
+  <rule name="alarm-camera" cooldown="45s" edge="rising">
+    <variables>
+      <var name="alarm_active" formula='TAG("plc1", "AlarmActive")' description="Cell 3 PLC has set its own alarm bit"/>
+      <var name="temp" formula='TAG("vibration1", "temperature")' description="Press motor housing temperature"/>
+      <var name="temp_rate" formula="RATE(temp, 30min)" description="How fast the housing is heating, over 30 min"/>
+      <var name="milk_temp" formula='TAG("bulk1", "milk_temperature")'/>
+      <var name="door_changed" formula='CHANGED(TAG("bulk1", "door_state"))'/>
+      <var name="status_word" formula='TAG("plc1", "StatusWord")'/>
+      <var name="guard_open" formula="BITAND(status_word, 4) != 0"/>
+      <var name="in_manual" formula='BITAND(status_word, HEX2DEC("10")) != 0'/>
+      <var name="alarm_byte" formula='TAG("plc1", "AlarmFlags")'/>
+      <var name="any_plc_alarm" formula='BITAND(alarm_byte, HEX2DEC("FF")) != 0'/>
+    </variables>
+    <or>
+      <cond expr="alarm_active" description="Cell 3 PLC raised its own alarm"/>
+      <cond expr="temp &gt; 50" description="Housing above 50 °C"/>
+      <cond expr="temp_rate &gt; 4" description="Housing heating faster than 4 °C/h"/>
+      <cond expr="AND(milk_temp &gt; 3.6, door_changed)" description="Milk warm while the tank door moved"/>
+      <cond expr="any_plc_alarm" description="Cell 3 PLC reports an alarm"/>
+    </or>
+    <actions>
+      <publish topic="camera/record" payload='{"duration":40}'/>
+    </actions>
+    <incident source="Cell 3 press" severity="critical" summary="Press guard alarm on cell 3"
+              first_step="Watch the 40 s camera clip before you open the cell."
+              cause='=condition.description &amp; ". The press PLC set its own alarm bit. We read that bit and nothing upstream of it, so the reason sits in the PLC."'/>
+  </rule>
+</rules>

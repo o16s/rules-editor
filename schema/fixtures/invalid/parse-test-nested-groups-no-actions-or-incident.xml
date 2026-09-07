@@ -1,0 +1,1 @@
+<rules><rule name="r"><or><and><cond tag="a" op="eq" value="true"/><cond tag="b" op="gt" value="1"/></and><cond tag="c" op="eq" value="true"/></or></rule></rules>

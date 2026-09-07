@@ -1,0 +1,28 @@
+{
+  "app-level": {
+    "comparison-operator-without-value": "value is required for every op except changed; XSD 1.0 cannot make one attribute depend on another",
+    "comparison-operator-with-empty-value": "same as above: the value constraint depends on op",
+    "cond-without-tag-or-expr": "a cond needs expr, or tag and op; XSD 1.0 cannot require one attribute or another",
+    "cond-with-tag-but-no-op": "same as above: op is required only in the tag form",
+    "cond-with-both-expr-and-tag": "the two forms are exclusive; XSD 1.0 cannot forbid an attribute combination",
+    "formula-that-does-not-parse": "the schema cannot parse a formula",
+    "unknown-function": "the function registry lives in formula.ts",
+    "unresolved-variable-reference": "a name must resolve inside the rule; XSD 1.0 has no keyref into attribute text",
+    "variable-cycle": "cycle detection needs the formula graph",
+    "reserved-variable-name": "the reserved list is the function registry",
+    "condition-that-is-a-number": "type inference happens in validate()",
+    "condition-description-outside-a-then-field": "the context object is only defined while an action fires",
+    "then-field-formula-that-does-not-parse": "the schema cannot parse a formula"
+  },
+  "xsd-stricter": {
+    "empty-actions-next-to-an-incident": "<actions> holds one or more <publish>; parse() maps an empty <actions/> to no actions",
+    "children-out-of-documented-order": "the XSD fixes the order variables, condition, actions, incident; parse() accepts any order and serialize() always emits this order",
+    "variables-after-the-condition": "same as above: <variables> comes first in the XSD; parse() accepts it anywhere",
+    "unknown-attribute": "the XSD allows only the documented attributes; parse() ignores attributes it does not know",
+    "empty-optional-attributes": "the XSD rejects \"\" for edge, cooldown, and device; parse() treats an empty attribute as absent",
+    "stray-content-the-parser-ignores": "the XSD allows no text in groups and no children in <cond>; parse() skips text nodes and never looks inside <cond>",
+    "operator-with-surrounding-whitespace": "the XSD enumeration is exact; canonicalOp() trims the token",
+    "description-on-a-folded-nested-leaf": "the XSD allows a description on every <cond>; parse() folds a nested group into one row and drops the descriptions of its leaves. Accepted by both, listed here because the round-trip is lossy",
+    "description-on-the-top-level-group": "the top-level group is the match mode, not a row, so a description there would be lost; the schema rejects it and parse() ignores it"
+  }
+}

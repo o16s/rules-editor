@@ -1,0 +1,1 @@
+<rules><rule name="r" foo="bar"><cond tag="a" op="eq" value="1" x="y"/><actions><publish topic="t"/></actions></rule></rules>

@@ -1,0 +1,1 @@
+<rules><rule name="r"><cond expr="TAG(&quot;a&quot;) = 1"/><incident source="s" severity="critical" summary="Press guard alarm on cell 3" first_step="Watch the clip." cause='=condition.description &amp; ". The PLC set its own bit."'/></rule></rules>
