@@ -128,7 +128,7 @@ export function createSheets(deps) {
             rule.edge = v; deps.refresh(); }, 'Trigger');
         const { title, help } = sheetTitle('re-when-title', HELP.when, ['When', match, 'of these', edge], 'When');
         const sheet = el('div', { class: 're-sheet re-sheet-when' }, [
-            sheetHead(['Condition', 'Condition result', 'Description'], ['A formula that is true or false', 'Live value from the gateway', 'What the row means. The alarm can quote it.']),
+            sheetHead(['Condition', 'Condition result', 'Description'], ['A formula that is true or false', 'Live value from the gateway', 'What the row means. The incident can quote it.']),
         ]);
         rule.conditions.forEach((c, i) => sheet.append(conditionRow(c, i, rule, index)));
         const full = rule.conditions.length >= LIMITS.maxChildren;
@@ -192,7 +192,7 @@ export function createSheets(deps) {
             deps.render();
         };
         // Every row of an action goes with it, so the button never says "row".
-        const removeLabel = row.kind === 'publish' ? 'Delete action' : 'Delete alarm';
+        const removeLabel = row.kind === 'publish' ? 'Delete action' : 'Delete incident';
         const who = THEN_LABEL[row.field];
         const formula = formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove, removeLabel });
         // A formula shows what it resolves to as a line under the value; literal
@@ -226,7 +226,7 @@ export function createSheets(deps) {
             trash,
         ]);
     }
-    /** The Action select changed: convert between a publish and the alarm, or change severity. */
+    /** The Action select changed: convert between a publish and the incident, or change severity. */
     function setAction(row, value, rule) {
         if (value === 'publish') {
             if (row.kind === 'publish')

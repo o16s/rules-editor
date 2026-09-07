@@ -191,8 +191,8 @@ export const ManyRules: Story = {
   args: { initialModel: manyRules(50), showOutput: false, liveValues: false },
 };
 
-/** Change the publish row's Action to an alarm: the publish goes, and the rule's alarm takes that severity. */
-export const ActionToAlarm: Story = {
+/** Change the publish row's Action to an incident: the publish goes, and the rule's incident takes that severity. */
+export const ActionToIncident: Story = {
   args: { containerWidth: '1180px', showOutput: false },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

@@ -1,4 +1,4 @@
-# rules-editor — UI specification
+# rules-editor: UI specification
 
 A description of what this component edits, what it does today, and what any
 change must keep true. Written for a designer or developer who works without
@@ -20,11 +20,11 @@ devices, and reacts to what it reads.
 
 One rule says: define some **variables** from the machine's data, and **when**
 any or all of a set of **conditions** on them is true, **then** publish MQTT
-messages and/or raise an alarm that pages a person.
+messages, raise an incident that pages a person, or both.
 
 The editor is embedded in two places:
 
-- the **octaview website**, as part of a device configuration page;
+- the **octaview website**, as part of a device configuration page,
 - **edge-hub** itself, served from the gateway on the local network.
 
 It has no backend. It parses XML in, edits a model, serializes XML out, and
@@ -64,14 +64,14 @@ RulesModel
      ├── match: 'any' | 'all'           any → <or>, all → <and>
      ├── conditions: Cond[]             1..16
      │    ├── expr: string              REQUIRED, a formula that is true or false
-     │    └── description?: string      max 240 characters; quoted as condition.description
+     │    └── description?: string      max 240 characters, quoted as condition.description
      ├── actions: Publish[]             0..N
      │    ├── topic: string             REQUIRED
      │    └── payload?: string          '{}' at runtime when blank
      └── incident: Incident | null      0..1
           ├── source: string            REQUIRED
           ├── severity                  'critical' | 'error' | 'warning' | 'info'
-          ├── summary: string           REQUIRED, max 120 characters (the alarm title)
+          ├── summary: string           REQUIRED, max 120 characters (the incident title)
           ├── firstStep?: string        max 240 characters
           └── cause?: string            max 240 characters
 ```
@@ -90,8 +90,8 @@ RulesModel
 | **description** | Variables and When sheets | no | text, max 240 characters | Prose: keep autocapitalise and spellcheck. |
 | **topic** | Then sheet, row `topic` | yes | text, or a formula when it starts with `=` | Identifier-like. |
 | **payload** | Then sheet, row `payload` | no | text, or a formula when it starts with `=` | Usually JSON. |
-| **source** | Then sheet, row `source` | yes | text, or a formula | The device the alarm is attributed to. |
-| **summary** | Then sheet, row `title` | yes | text, or a formula; max 120 characters | The 8-word alarm title. Labelled "title" in the UI. Prose. |
+| **source** | Then sheet, row `source` | yes | text, or a formula | The device the incident belongs to. |
+| **summary** | Then sheet, row `title` | yes | text, or a formula, max 120 characters | The incident title, a few words. Labelled "title" in the UI. Prose. |
 | **firstStep** | Then sheet, row `first step` | no | text, or a formula; max 240 characters | What the operator does first. Prose. |
 | **cause** | Then sheet, row `cause` | no | text, or a formula; max 240 characters | Why it fired and where the boundary of what we read sits. Prose. |
 
@@ -126,20 +126,20 @@ evaluates them, and the function list is the contract the gateway implements.
 
 ---
 
-## 3. Structural rules — what the format allows and forbids
+## 3. Structural rules: what the format allows and forbids
 
 ### Allowed
 
 - 0 to 1000 rules, in document order.
 - Per rule: 0 to 64 variables, 1 to 16 condition rows combined by `any` or
-  `all`, 0..N publish actions, 0 or 1 alarm. A rule with actions only, an
-  alarm only, or both.
+  `all`, 0..N publish actions, 0 or 1 incident. A rule with actions only, an
+  incident only, or both.
 - A formula can nest logic to any depth (`AND(a, OR(b, c))`), so the old
   condition tree is not needed. A v0.2 file with nested groups opens as one row
   whose formula holds the nesting.
 - A Then field is text, or a formula when it starts with `=`.
 
-### Not allowed — do not design for these
+### Not allowed: do not design for these
 
 | Not possible | Consequence for the UI |
 |---|---|
@@ -148,7 +148,7 @@ evaluates them, and the function list is the contract the gateway implements.
 | **Priority or ordering semantics** | Rules keep document order. No priority column. |
 | **A note or comment on a rule** | Only variables and conditions carry a description. XML comments are not preserved. |
 | **Anything but `<publish>` inside actions** | No HTTP calls, no writes back to the PLC. |
-| **More than one alarm per rule** | The Then sheet holds one alarm; a second "Raise alarm" row changes the severity of the same alarm. |
+| **More than one incident per rule** | The Then sheet holds one incident. A second "Raise …" row changes the severity of that same incident. |
 | **Custom severities or edge modes** | Exactly the four severities; exactly `becomes true` and `is true`. |
 | **Schedules or calendar conditions** | Not in the schema. |
 | **Live values from the editor itself** | Result cells show what the host passes in through `monitor`, or a dash. The editor has no data source and no evaluator. |
@@ -172,11 +172,11 @@ hover. A failed import shows the parse error and keeps the previous content.
 
 A 286px column on the left. A **Filter** input, then one row per rule:
 
-- an 8px square: filled in the severity colour when the rule raises an alarm,
-  hollow when it only publishes;
-- the rule name, with an amber issue count beside it when the rule is invalid;
+- an 8px square: filled in the severity colour when the rule raises an incident,
+  hollow when it only publishes,
+- the rule name, with an amber issue count beside it when the rule is invalid,
 - a meta line in the words of the Trigger choice: `when it becomes true` or
-  `while it is true`;
+  `while it is true`,
 - **Duplicate** and **Delete** icons, shown on hover and on the selected row.
 
 The selected row sits on the warm ground `#efece5`. Below 900px the rail
@@ -199,14 +199,17 @@ in the same grey, hairline grid lines `#efece7`, 13px cells, 12px headers.
 Formula cells colour their tokens: function names grey, strings and the
 `condition.description` context in the reading blue `#3b5570`. Result cells sit
 on `#f7f6f2` in the reading blue and are read-only. The last row of every sheet
-is **Add**. Each row has a trash icon at the far right.
+is **Add**. Each row has a trash icon at the far right. In the Then sheet the
+rows of one action share that icon, and share the **Action** cell, the way
+merged cells work in a spreadsheet: the first row of the action carries both,
+and the rows under it continue the cell.
 
 The Then sheet derives its rows from the model: per publish, `topic` and
-`payload`; when an alarm exists, `source`, `title`, `first step`, `cause`. The
-**Action** cell is a select: `Publish MQTT message`, `Raise critical alarm`,
-`Raise error alarm`, `Raise warning alarm`, `Raise info alarm`. Choosing an
-alarm on a publish row converts it; choosing it on an alarm row changes the
-severity. The Then sheet has no result column: literal text is sent as written.
+`payload`. When an incident exists: `source`, `title`, `first step`, `cause`. The
+**Action** cell is a select: `Publish MQTT message`, `Raise critical incident`,
+`Raise error incident`, `Raise warning incident`, `Raise info incident`.
+Choosing an incident on a publish row converts the row. Choosing it on an
+incident row changes the severity. The Then sheet has no result column: literal text is sent as written.
 A field that is a formula shows a preview under its value, in the reading blue,
 with constants folded and `condition.description` read from the first row.
 
@@ -218,7 +221,7 @@ every `45s`".
 Every cell is an input with spreadsheet commit semantics. While you type, the
 cell holds a draft: the coloured formula view follows, but the model, the
 validation marks and `onChange` wait. Enter, Tab, or leaving the cell commits
-the draft; Escape restores the committed value. Choices, Add, Delete and Import
+the draft. Escape restores the committed value. Choices, Add, Delete and Import
 commit at once. There is no save button and no file-level dirty state.
 
 Limits are enforced by disabling the **Add** row with the reason as its tooltip,
@@ -230,9 +233,9 @@ When the host supplies a catalog of devices and tags, typing `TAG("` in any
 formula cell opens a menu: the devices (and the tags of a device-less source),
 filtered as you type. Picking a device writes `"device", "` and the menu moves
 on to that device's tags, each with its live value, unit, and a `stale` mark.
-Picking a tag closes the call. Arrow keys, Enter and Tab pick; Escape closes
-the menu without touching the draft. On a desktop the menu floats under the
-cell; on a phone it sits inside the formula bar, above the input.
+Picking a tag closes the call. Arrow keys, Enter and Tab pick. Escape closes
+the menu and keeps the draft. On a desktop the menu floats under the
+cell. On a phone it sits inside the formula bar, above the input.
 
 ---
 
@@ -244,7 +247,7 @@ cell; on a phone it sits inside the formula bar, above the input.
 |---|---|
 | A cell's own problem (bad formula, unknown name, reserved name, over-long text, bad cooldown) | the cell takes the amber wash `#fbf3e0`, and the message appears as a hint line inside the cell, under its value, without the `Rule "…":` prefix |
 | A whole-sheet problem (no condition rows, too many rows or variables) | the sheet border turns red and the message sits under the sheet |
-| A whole-rule problem (no action and no alarm) | under the pane body |
+| A whole-rule problem (no action and no incident) | under the pane body |
 | A whole-file problem (parse error, too many rules) | the status line under the top bar |
 | Every rule's count | the rail, beside the name |
 | On a phone | the selected cell's message also shows in the formula bar, where the keyboard cannot hide it |
@@ -254,10 +257,18 @@ Marks clear as soon as the cell is fixed, without a re-render.
 ### 5.2 Messages
 
 Every message starts with `Rule "name":` and names the row (`condition 2`,
-`variable "temp"`). A formula error carries the column: `The formula is
-incomplete. (column 7)`. A non-boolean condition gets a hint: `must be true or
-false, but is a number. Compare it, for example "temp + 1 > 0"`. A cycle names
-its path: `refers to itself through a → b → c → a`.
+`variable "temp"`). In a cell the prefix goes: the rule is already on screen,
+so the cell reads `Condition 2: "nope" is not a variable of this rule.` The
+status line and `getErrors()` keep the whole text.
+
+A formula error carries the column: `The formula is incomplete. (column 7)`. A
+non-boolean condition gets a hint: `must be true or false, but this is a
+number. Compare it, for example "temp + 1 > 0"`. A cycle names its path:
+`refers to itself: a → b → c → a`.
+
+The words on screen are the words in the message. A message says "incident",
+never "alarm", and "the cooldown is not a time", never "not a Go duration".
+The reader is an operator at a machine, not the author of the file format.
 
 ### 5.3 Parse errors are different
 
@@ -272,16 +283,17 @@ The model is Google Sheets on a phone. The sheet stays a sheet.
 
 - Columns keep their widths. The sheet scrolls sideways inside its own frame.
   The page never scrolls sideways. Row numbers stay frozen on the left.
-- Rows keep one height; long text is clipped, not wrapped.
+- Rows keep one height. Long text is clipped, not wrapped.
 - **Tabs** (`Variables 10 · When 5 · Then 6`) show one sheet at a time.
 - Nobody types inside a cell. A **tap selects** a cell (2px reading-blue
   outline). A **formula bar** anchored at the bottom of the editor shows the
   cell's address (`temp_rate · Formula`) and its content. Typing in the bar is a
-  draft: the cell shows it, the model waits. **✓** or Enter commits; tapping
-  another cell or a tab commits too. **✕** discards the draft, and the delete button
-  removes what it names: **Delete variable**, **Delete condition**, **Delete
-  action** or **Delete alarm** (every Then row of one action goes with it). After a commit with an error the bar stays open and shows
-  the message. A result cell opens the bar read-only.
+  draft: the cell shows it, the model waits. **✓** or Enter commits, and so
+  does a tap on another cell or on a tab. **✕** discards the draft. The delete
+  button removes what it names: **Delete variable**, **Delete condition**,
+  **Delete action** or **Delete incident**. Every Then row of one action goes
+  with it. After a commit with an error the bar stays open and shows the
+  message. A result cell opens the bar read-only.
 - Choice cells (Action, `any`, `becomes true`) keep their native picker and do
   not open the bar.
 - Every control a finger can focus is 16px or larger (below that iOS zooms the
@@ -300,7 +312,7 @@ when the pane is narrower than a sheet's minimum width.
 4. **Failed import**: parse error in the XML panel, previous content untouched.
 5. **Opened with a broken file**: empty editor, parse error on the status line.
 6. **No live values**: dashes in every result cell.
-7. **Large file**: 50 or more rules in the rail; the filter is the way to find one.
+7. **Large file**: 50 or more rules in the rail. The filter is the way to find one.
 8. **Maxed-out sheet**: 64 variables or 16 conditions, Add disabled with a reason.
 9. **A v0.2 file**: leaf conditions and nested groups open as formula rows.
 10. **Phone**: tabs, sideways scroll, the bar.
@@ -349,7 +361,7 @@ must keep working when none are set.
 | `--incident` | `#a32c1e` | critical severity, Delete, invalid borders |
 | `--font-body` | Helvetica Neue stack | everything |
 
-A change may add tokens but must not require them: the unstyled default must
+A change can add tokens, but it must not require them: the unstyled default must
 look finished.
 
 ### 8.4 Responsive to its container, not the viewport
@@ -376,7 +388,7 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 - Help and error text are on the page, never hover-only.
 - The ⓘ buttons carry `aria-expanded` and an `aria-label`. Every input has an
   `aria-label` that names its row (`Formula of variable 3`, `Condition 2`).
-- Pinch zoom stays available; hosts must not set `user-scalable=no`.
+- Pinch zoom stays available. A host must not set `user-scalable=no`.
 - Identifier inputs (name, variable names, formulas, topic, cooldown, filter)
   set `autocapitalize=off`, `autocorrect=off`, `spellcheck=false`. Prose
   inputs (descriptions, title, first step, cause) keep the defaults.
@@ -387,8 +399,8 @@ Minimum supported width is **320px**. The page must not scroll sideways there.
 
 ## 9. Behaviours to know about
 
-- **A committed edit is immediate.** A cell commits on Enter, Tab, or blur;
-  there is no save button, no undo, and no confirm on Delete.
+- **A committed edit is immediate.** A cell commits on Enter, Tab, or blur.
+  There is no save button, no undo, and no confirm on Delete.
 - **The host owns persistence.** `onChange` fires on mount and after every
   committed edit, once per edit, and carries the XML even while invalid, so a
   host can autosave a draft.
@@ -421,12 +433,12 @@ Nothing is written to the gateway.
   is not one takes the amber wash with its message under the value, and its
   tag reads nothing.
 - **Timeline.** Columns: Condition › variable › tag · At {cursor} · axis ·
-  lane. A tree, fully open at first; a caret folds a node. Condition rows are
+  lane. A tree, fully open at first, and a caret folds a node. Condition rows are
   bold on the paper colour with a heavier separator between groups. Discrete
   lanes are Foxglove-style state bands labelled with their value and tinted
   when true. Analog lanes carry a trace in the reading blue, a max/min axis
   in a narrow column, and dashed thresholds where a condition compares the
-  value with a constant. One ink for every trace; the cursor (solid) and the
+  value with a constant. One ink for every trace. The cursor (solid) and the
   fire marks (dashed) share the accent colour. Times are seconds.
 - **Log.** Time · Event. Condition changes ("Condition 1 became true."), fires
   ("Fired." in bold, then the messages as sent), and the cooldown ("Cooldown:
@@ -439,7 +451,7 @@ Nothing is written to the gateway.
 
 1. No undo, and no confirmation on a delete or on Import.
 2. The tag catalogue only feeds the `TAG("…")` menu. A misspelled tag typed by
-   hand is not flagged; a catalogue-aware warning is the next step.
+   hand is not flagged. A catalogue-aware warning is the next step.
 3. No simulator. Slide 14a of the handoff describes one: a signal generator per
    tag, a timeline tree of condition › variable › tag, and a log. It needs an
    evaluator for the formula language.
@@ -461,7 +473,7 @@ Nothing is written to the gateway.
 | **variable** | A named formula of one rule, defined in the Variables sheet. |
 | **condition** | A formula in the When sheet that must be true. |
 | **condition.description** | The description of the condition that fired, available in Then fields. |
-| **alarm** | An incident raised to PagerDuty, deduplicated by `{prefix}/{source}-{rule}`. |
+| **incident** | What a rule raises for a person, sent to PagerDuty and deduplicated by `{prefix}/{source}-{rule}`. The Then sheet calls it "Raise critical incident". |
 | **cooldown** | Minimum wall-clock time between two firings of the same rule. |
 | **becomes true** | Rising edge: fire once on the false-to-true change. |
 | **is true** | Every cycle: fire on each evaluation pass while true. |

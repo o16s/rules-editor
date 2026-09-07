@@ -841,7 +841,7 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     cellOf('payload of row 2').click();
     expect(barButton(root, 'Delete action').hidden).toBe(false);
     cellOf('cause of row 6').click();
-    expect(barButton(root, 'Delete alarm').hidden).toBe(false);
+    expect(barButton(root, 'Delete incident').hidden).toBe(false);
   });
 
   it('the bar delete removes the selected row', () => {
@@ -892,7 +892,7 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(select.value).toBe('publish');
     choose(select, 'warning');
     // the label follows the choice, and the model too
-    expect((root.querySelector('.re-sheet-then .re-cell-pick .re-pick-label') as HTMLElement).textContent).toBe('Raise warning alarm');
+    expect((root.querySelector('.re-sheet-then .re-cell-pick .re-pick-label') as HTMLElement).textContent).toBe('Raise warning incident');
     const css = document.getElementById('octaview-rules-editor-styles')!.textContent ?? '';
     expect(css).toMatch(/\.re-pick select\s*\{[^}]*opacity:\s*0/);
     expect(css).toMatch(/\.re-pick select\s*\{[^}]*font-size:\s*16px/);

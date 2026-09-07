@@ -370,7 +370,7 @@ export function simulate(rule: Rule, opts: SimulationOptions): Simulation {
     };
     const actions = [
       ...rule.actions.map((a) => `Publish to ${text(a.topic)}${a.payload ? ` ${text(a.payload)}` : ''}`),
-      ...(rule.incident ? [`Raise ${rule.incident.severity} alarm “${text(rule.incident.summary)}”`] : []),
+      ...(rule.incident ? [`Raise ${rule.incident.severity} incident “${text(rule.incident.summary)}”`] : []),
     ];
     // The line above already names a condition that just changed; do not repeat it.
     const why = firing >= 0 && !announced.has(firing) ? `Condition ${firing + 1} is true.` : '';

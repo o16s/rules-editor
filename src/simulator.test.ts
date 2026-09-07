@@ -72,7 +72,7 @@ describe('simulator page (jsdom)', () => {
     expect(text(fired?.querySelector('.rs-time'))).toBe('180 s');
     // the change line names the condition, so the fire line does not repeat it
     expect(text(fired?.previousElementSibling?.querySelector('.rs-event'))).toBe('Condition 1 became true.');
-    expect(text(fired?.querySelector('.rs-event'))).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical alarm “Press guard alarm on cell 3”');
+    expect(text(fired?.querySelector('.rs-event'))).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical incident “Press guard alarm on cell 3”');
     expect(text(fired?.nextElementSibling?.querySelector('.rs-event'))).toBe('Cooldown: the rule cannot fire again before 225 s.');
     expect(root.querySelectorAll('.rs-fire')).toHaveLength(1);
   });

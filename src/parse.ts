@@ -264,7 +264,7 @@ export function validateIssues(model: RulesModel): ValidationIssue[] {
 
     if (rule.actions.length === 0 && !rule.incident) {
       // The Then sheet's words, not the file's: the reader is looking at the sheet.
-      at(`${where}: add an action in Then. Publish a message, raise an alarm, or both.`);
+      at(`${where}: add an action in Then. Publish a message, raise an incident, or both.`);
     }
     rule.actions.forEach((a, action) => {
       if (!a.topic) at(`${where}: a publish has no topic.`, { field: 'topic', action });
@@ -273,13 +273,13 @@ export function validateIssues(model: RulesModel): ValidationIssue[] {
     });
     if (rule.incident) {
       const inc = rule.incident;
-      if (!inc.source) at(`${where}: the alarm has no source.`, { field: 'source' });
+      if (!inc.source) at(`${where}: the incident has no source.`, { field: 'source' });
       else checkThenField(inc.source, `${where}: source`, scope, (m) => at(m, { field: 'source' }));
-      if (!inc.summary) at(`${where}: the alarm has no title.`, { field: 'summary' });
+      if (!inc.summary) at(`${where}: the incident has no title.`, { field: 'summary' });
       else checkThenField(inc.summary, `${where}: title`, scope, (m) => at(m, { field: 'summary' }));
       // Count characters, not UTF-16 units, to match the XSD's maxLength.
       if (chars(inc.summary) > LIMITS.maxSummary) {
-        at(`${where}: the alarm title is longer than ${LIMITS.maxSummary} characters.`, { field: 'summary' });
+        at(`${where}: the incident title is longer than ${LIMITS.maxSummary} characters.`, { field: 'summary' });
       }
       if (inc.firstStep) {
         checkThenField(inc.firstStep, `${where}: first step`, scope, (m) => at(m, { field: 'first_step' }));

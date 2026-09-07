@@ -179,7 +179,7 @@ describe('simulate', () => {
     const fired = sim.log.find((e) => e.fired)!;
     expect(fired.t).toBe(180);
     // the change line above already names condition 1, so the fire line does not repeat it
-    expect(fired.text).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical alarm “Press guard alarm on cell 3”');
+    expect(fired.text).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical incident “Press guard alarm on cell 3”');
     expect(sim.log.map((e) => e.text)).toContain('Cooldown: the rule cannot fire again before 225 s.');
     expect(sim.log.map((e) => e.text)).toContain('Condition 1 became true.');
     expect(sim.log.map((e) => e.text)).toContain('Condition 2 became true.');
