@@ -53,8 +53,8 @@ describe('simulator page (jsdom)', () => {
     const { root } = setup();
     expect(text(root.querySelector('.rs-title'))).toBe('Simulator');
     expect((root.querySelector('.rs-back') as HTMLElement).hidden).toBe(true);
-    expect((root.querySelector('[aria-label="Stop time"]') as HTMLInputElement).value).toBe('600 s');
-    expect((root.querySelector('[aria-label="Max step"]') as HTMLInputElement).value).toBe('1 s');
+    expect((root.querySelector('[aria-label="Run for"]') as HTMLInputElement).value).toBe('600 s');
+    expect((root.querySelector('[aria-label="Sample every"]') as HTMLInputElement).value).toBe('1 s');
     expect(text(root.querySelector('.rs-readout'))).toBe('250 s');
     // tags in first-seen order, tag formula coloured, signal in an input
     const rows = Array.from(root.querySelectorAll('.rs-tags .rs-row'));
@@ -70,7 +70,10 @@ describe('simulator page (jsdom)', () => {
     // the log has the fire
     const fired = root.querySelector('.rs-log .is-fired');
     expect(text(fired?.querySelector('.rs-time'))).toBe('180 s');
-    expect(text(fired?.querySelector('.rs-event'))).toMatch(/^Fired\. Condition 1 became true\. Publish MQTT camera\/record/);
+    // the change line names the condition, so the fire line does not repeat it
+    expect(text(fired?.previousElementSibling?.querySelector('.rs-event'))).toBe('Condition 1 became true.');
+    expect(text(fired?.querySelector('.rs-event'))).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical alarm “Press guard alarm on cell 3”');
+    expect(text(fired?.nextElementSibling?.querySelector('.rs-event'))).toBe('Cooldown: the rule cannot fire again before 225 s.');
     expect(root.querySelectorAll('.rs-fire')).toHaveLength(1);
   });
 
@@ -84,6 +87,10 @@ describe('simulator page (jsdom)', () => {
     const temp = lanes(root)[4];
     expect(Array.from(temp.querySelectorAll('.rs-axis span')).map(text)).toEqual(['56 °C', '42 °C']);
     expect(temp.querySelectorAll('.rs-threshold')).toHaveLength(1);
+    // a value that never moves gets one label, not a range around it
+    const { root: flat } = setup({ signals: { ...SIGNALS, 'vibration1/temperature': 'HOLD(20)' }, rule: { ...rule(), conditions: [{ expr: 'temp' }] } });
+    // the variable lane and its tag lane each carry the single label
+    expect(Array.from(flat.querySelectorAll('.rs-axis span')).map(text)).toEqual(['20 °C', '20 °C']);
     expect(temp.querySelector('.rs-trace')?.getAttribute('d')).toMatch(/^M0\.0 /);
     // discrete lane: bands labelled false then true, the true one tinted
     const cond = lanes(root)[0];
@@ -121,7 +128,7 @@ describe('simulator page (jsdom)', () => {
     let changes = 0;
     const { root, api } = setup({ onChange: () => changes++ });
     const before = changes;
-    const input = root.querySelector('[aria-label="Signal of plc1/AlarmActive"]') as HTMLInputElement;
+    const input = root.querySelector('[aria-label="Signal for plc1 AlarmActive"]') as HTMLInputElement;
     input.value = 'STEP(false, true, 400s)';
     input.dispatchEvent(new Event('input'));
     expect(changes).toBe(before); // a draft
@@ -131,12 +138,12 @@ describe('simulator page (jsdom)', () => {
     expect(api.getSimulation().fires).toEqual([343]);
     expect(api.getState().signals['plc1/AlarmActive']).toBe('STEP(false, true, 400s)');
     // a typed leading = is stripped
-    const again = root.querySelector('[aria-label="Signal of plc1/AlarmActive"]') as HTMLInputElement;
+    const again = root.querySelector('[aria-label="Signal for plc1 AlarmActive"]') as HTMLInputElement;
     again.value = '=STEP(false, true, 300s)';
     again.dispatchEvent(new Event('change'));
     expect(api.getState().signals['plc1/AlarmActive']).toBe('STEP(false, true, 300s)');
     // stop time: "10m" is a Go duration; the axis follows
-    const stop = root.querySelector('[aria-label="Stop time"]') as HTMLInputElement;
+    const stop = root.querySelector('[aria-label="Run for"]') as HTMLInputElement;
     stop.value = '20m';
     stop.dispatchEvent(new Event('change'));
     expect(api.getState().stop).toBe(1200);
@@ -147,7 +154,7 @@ describe('simulator page (jsdom)', () => {
     stop.dispatchEvent(new Event('change'));
     expect(api.getState().stop).toBe(1200);
     expect(stop.value).toBe('1200 s');
-    const step = root.querySelector('[aria-label="Max step"]') as HTMLInputElement;
+    const step = root.querySelector('[aria-label="Sample every"]') as HTMLInputElement;
     step.value = '10';
     step.dispatchEvent(new Event('change'));
     expect(api.getSimulation().times).toHaveLength(121);
@@ -163,7 +170,7 @@ describe('simulator page (jsdom)', () => {
   it('holds the catalog value for a tag with no signal', () => {
     const { root, api } = setup({ signals: {} });
     expect(api.getState().signals).toEqual({ 'plc1/AlarmActive': 'HOLD(false)', 'vibration1/temperature': 'HOLD(48.2)', 'bulk1/door_state': 'HOLD("closed")' });
-    expect(text(root.querySelector('.rs-log .rs-event'))).toBe('Nothing happened in this run.');
+    expect(text(root.querySelector('.rs-log .rs-event'))).toBe('No condition changed, and the rule did not fire.');
     expect(root.querySelectorAll('.rs-fire')).toHaveLength(0);
   });
 
@@ -207,6 +214,28 @@ describe('simulator page (jsdom)', () => {
     const touch = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch', clientX: 10 });
     plot.dispatchEvent(touch);
     expect(touch.defaultPrevented).toBe(false);
+  });
+
+  it('shortens the timeline headings where the column is narrow', () => {
+    const wide = setup().root;
+    expect(text(wide.querySelector('.rs-tl-head span'))).toBe('Condition › variable › tag');
+    expect(text(wide.querySelector('.rs-at'))).toBe('At 250 s');
+    const phone = setup({}, 360).root;
+    expect(text(phone.querySelector('.rs-tl-head span'))).toBe('Condition › tag');
+    expect((phone.querySelector('.rs-tl-head span') as HTMLElement).title).toBe('Condition › variable › tag');
+    expect(text(phone.querySelector('.rs-at'))).toBe('250 s');
+  });
+
+  it('opens one paragraph of help per section', () => {
+    const { root } = setup();
+    expect(Array.from(root.querySelectorAll('.rs-section')).map((h) => text(h).replace('ⓘ', '').trim())).toEqual(['Tags', 'Timeline', 'Log']);
+    const info = root.querySelector('[aria-label="Help on tags"]') as HTMLButtonElement;
+    const help = root.querySelector('.rs-help') as HTMLElement;
+    expect(help.hidden).toBe(true);
+    info.click();
+    expect(help.hidden).toBe(false);
+    expect(help.textContent).toMatch(/HOLD\(20\) holds one value/);
+    expect(info.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('reads seconds in the forms the header accepts', () => {

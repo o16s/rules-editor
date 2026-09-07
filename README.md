@@ -270,12 +270,13 @@ The page has three parts:
   a trace with a y-axis for numbers, a dashed line where a condition compares
   the value with a constant. Click or drag on the lanes to move the cursor.
   Dashed vertical lines mark where the rule fired.
-- **Log.** Condition changes, fires with the actions as sent (Then formulas
-  are evaluated with `condition.description`), and the next allowed fire after
-  a cooldown.
+- **Log.** Condition changes, fires with the messages as sent (Then formulas
+  are evaluated with `condition.description`), and the cooldown that blocks
+  the next fire.
 
-The header holds the stop time, the sample step and the cursor readout. The
-run repeats on every committed change. `simulate()` and `evaluateAt()` are
+The header reads "Run for 600 s", "Sample every 1 s" and the cursor position.
+Each section has a ⓘ button that opens one paragraph of help. The run repeats
+on every committed change, so "Run again" is only there to repeat it. `simulate()` and `evaluateAt()` are
 exported for a host that wants the numbers without the page. The evaluator
 follows the function list in `FUNCTIONS`: `RATE` is change per hour over the
 window, `CHANGED` is true in the sample where the value changed, `STALE` is

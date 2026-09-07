@@ -102,6 +102,16 @@ function thresholds(rule: Rule): Map<string, number[]> {
 
 const MAX_DEPTH = 8;
 
+/** Help, one paragraph per section, revealed by the ⓘ button next to its heading. */
+const HELP = {
+  tags:
+    'One row per tag the rule reads. The signal says how the tag behaves during the run: HOLD(20) holds one value, STEP(false, true, 180s) changes once, RAMP(42, 56, 600s) moves in a straight line, PULSE("closed", "open", 150s, 30s) repeats, and SINE(3.2, 0.6, 240s) swings around a mean. Times are seconds, or a duration such as 2min. A tag without a signal holds the value the gateway last reported. Nothing on this page is written to the gateway.',
+  timeline:
+    'Every condition opens to the variables it reads, and every variable to its tags. Click a row to fold it. The value column reads at the cursor, and a click or a drag across a lane moves the cursor. A dashed line marks each time the rule fired. A row shows a dash while it has no value, for example when RATE still waits for its window.',
+  log:
+    'What happened during the run, in order: a condition that changed, a fire with the messages as the gateway sends them, and the cooldown that blocks the next fire.',
+};
+
 export function initSimulator(root: HTMLElement, opts: SimulatorOptions): SimulatorHandle {
   injectStyles();
   root.classList.add('rs-root');
@@ -141,15 +151,16 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
   // ---- header ----
   const backBtn = el('button', { class: 'rs-back', type: 'button', onclick: () => opts.onBack?.() }, [`← ${rule.name || 'unnamed'}`]);
   backBtn.hidden = !opts.onBack;
-  const stopInput = numberInput(() => formatSeconds(state.stop), (v) => { if (v > 0) { state.stop = v; run(); } }, 'Stop time');
-  const stepInput = numberInput(() => formatSeconds(state.step), (v) => { if (v > 0) { state.step = v; run(); } }, 'Max step');
+  const stopInput = numberInput(() => formatSeconds(state.stop), (v) => { if (v > 0) { state.stop = v; run(); } }, 'Run for');
+  const stepInput = numberInput(() => formatSeconds(state.step), (v) => { if (v > 0) { state.step = v; run(); } }, 'Sample every');
   const cursorOut = el('span', { class: 'rs-readout', 'aria-label': 'Cursor' });
-  const runBtn = el('button', { class: 'rs-run', type: 'button', onclick: () => run() }, ['Run']);
+  // Every committed change runs again by itself, so the button repeats the run.
+  const runBtn = el('button', { class: 'rs-run', type: 'button', title: 'Run again with the signals below', onclick: () => run() }, ['Run again']);
   const top = el('div', { class: 'rs-top' }, [
     el('div', { class: 'rs-top-left' }, [backBtn, el('span', { class: 'rs-title' }, ['Simulator'])]),
     el('div', { class: 'rs-controls' }, [
-      el('label', { class: 'rs-control' }, ['Stop time', stopInput]),
-      el('label', { class: 'rs-control' }, ['Max step', stepInput]),
+      el('label', { class: 'rs-control' }, ['Run for', stopInput]),
+      el('label', { class: 'rs-control' }, ['Sample every', stepInput]),
       el('span', { class: 'rs-control' }, ['Cursor', cursorOut]),
       runBtn,
     ]),
@@ -180,7 +191,8 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
       const key = series.key;
       const text = state.signals[key] ?? '';
       let view = formulaView(text);
-      const input = identifierAttrs(el('input', { type: 'text', value: text, 'aria-label': `Signal of ${key}`, placeholder: 'HOLD(0)', autocomplete: 'off' }));
+      const who = series.ref.device ? `${series.ref.device} ${series.ref.tag}` : series.ref.tag;
+      const input = identifierAttrs(el('input', { type: 'text', value: text, 'aria-label': `Signal for ${who}`, placeholder: 'HOLD(0)', autocomplete: 'off' }));
       let committed = text;
       const commit = (): void => {
         const raw = input.value.startsWith('=') ? input.value.slice(1) : input.value;
@@ -205,7 +217,7 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
         cell,
       ]));
     });
-    if (sim.tags.length === 0) tagsSheet.append(el('div', { class: 'rs-row rs-row-empty' }, [el('span', { class: 'rs-gutter' }), el('span', { class: 'rs-empty' }, ['This rule reads no tags yet.'])]));
+    if (sim.tags.length === 0) tagsSheet.append(el('div', { class: 'rs-row rs-row-empty' }, [el('span', { class: 'rs-gutter' }), el('span', { class: 'rs-empty' }, ['This rule reads no tags. A row appears here for every TAG(…) in a variable or a condition.'])]));
   }
 
   /** The coloured, read-only view of a formula with the = prefix. */
@@ -276,6 +288,9 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
     });
   }
 
+  /** The value column's heading: "At 250 s", or the time alone where the column is narrow. */
+  const cursorLabel = (): string => `${root.classList.contains('is-narrow') ? '' : 'At '}${formatSeconds(state.cursor)}`;
+
   /** Tick intervals on the clock: fewer on a phone, where the lanes are short. */
   const tickCount = (): number => (root.classList.contains('is-narrow') ? 2 : root.classList.contains('is-medium') ? 4 : 5);
 
@@ -287,13 +302,15 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
       tick.style.left = `${(100 * k) / ticks}%`;
       axis.append(tick);
     }
-    atLabel.textContent = `At ${formatSeconds(state.cursor)}`;
-    treeHead.replaceChildren(el('span', {}, ['Condition › variable › tag']), atLabel, el('span'), axis);
+    atLabel.textContent = cursorLabel();
+    // The label column is too narrow on a phone for the whole path.
+    const heading = root.classList.contains('is-narrow') ? 'Condition › tag' : 'Condition › variable › tag';
+    treeHead.replaceChildren(el('span', { title: 'Condition › variable › tag' }, [heading]), atLabel, el('span'), axis);
     ticksDrawn = ticks;
     tree.replaceChildren();
     valueCells.length = 0;
     const nodes = buildTree();
-    if (nodes.length === 0) tree.append(el('div', { class: 'rs-lane rs-lane-empty' }, [el('span', { class: 'rs-empty' }, ['This rule has no condition yet.'])]));
+    if (nodes.length === 0) tree.append(el('div', { class: 'rs-lane rs-lane-empty' }, [el('span', { class: 'rs-empty' }, ['This rule has no conditions. Add one in the editor to see it here.'])]));
     const draw = (node: Node, first: boolean): void => {
       const lane = el('div', { class: `rs-lane is-${node.kind}${first ? ' is-first' : ''}` });
       const caret = el('span', { class: 'rs-caret' }, [node.children.length ? (closed.has(node.id) ? '▸' : '▾') : '']);
@@ -340,7 +357,9 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
     if (!analog) return svg;
     let min = Math.min(...analog.numbers, ...node.thresholds);
     let max = Math.max(...analog.numbers, ...node.thresholds);
-    if (max === min) { const pad = Math.abs(max) * 0.1 || 1; min -= pad; max += pad; }
+    // A value that never moves gets one label, not a made-up range around it.
+    const flat = max === min;
+    if (flat) { const pad = Math.abs(max) * 0.1 || 1; min -= pad; max += pad; }
     const y = (v: number): number => PAD + ((max - v) / (max - min)) * (H - 2 * PAD);
     for (const t of node.thresholds) line(0, y(t), W, y(t), 'rs-threshold');
     const n = node.series.length;
@@ -359,7 +378,9 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
     path.setAttribute('class', 'rs-trace');
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
-    analog.axisCol.replaceChildren(el('span', {}, [formatValue(max, node.unit)]), el('span', {}, [formatValue(min, node.unit)]));
+    analog.axisCol.replaceChildren(...(flat
+      ? [el('span', { class: 'rs-axis-flat' }, [formatValue(analog.numbers[0], node.unit)])]
+      : [el('span', {}, [formatValue(max, node.unit)]), el('span', {}, [formatValue(min, node.unit)])]));
     return svg;
   }
 
@@ -388,7 +409,7 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
   function updateCursor(): void {
     const i = state.step > 0 ? Math.min(sim.times.length - 1, Math.max(0, Math.round(state.cursor / state.step))) : 0;
     cursorOut.textContent = formatSeconds(state.cursor);
-    atLabel.textContent = `At ${formatSeconds(state.cursor)}`;
+    atLabel.textContent = cursorLabel();
     timeline.style.setProperty('--rs-frac', String(state.stop ? state.cursor / state.stop : 0));
     for (const { cell, node } of valueCells) cell.textContent = formatValue(node.series[i] ?? null, node.unit);
   }
@@ -427,7 +448,7 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
   const logSheet = el('div', { class: 'rs-sheet rs-log' });
   function renderLog(): void {
     logSheet.replaceChildren(el('div', { class: 'rs-head' }, [el('span', {}, ['Time']), el('span', {}, ['Event'])]));
-    if (sim.log.length === 0) logSheet.append(el('div', { class: 'rs-row' }, [el('span', { class: 'rs-time' }), el('span', { class: 'rs-event rs-empty' }, ['Nothing happened in this run.'])]));
+    if (sim.log.length === 0) logSheet.append(el('div', { class: 'rs-row' }, [el('span', { class: 'rs-time' }), el('span', { class: 'rs-event rs-empty' }, ['No condition changed, and the rule did not fire.'])]));
     for (const entry of sim.log) {
       const row = el('div', { class: `rs-row${entry.fired ? ' is-fired' : ''}` }, [
         el('span', { class: 'rs-time' }, [formatSeconds(entry.t)]),
@@ -454,9 +475,19 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
 
   const getState = (): SimulatorState => ({ ...state, signals: { ...state.signals } });
 
+  /** A section heading with a help toggle that reveals its paragraph on tap. */
+  function section(title: string, help: string): HTMLElement[] {
+    const text = el('p', { class: 'rs-help', hidden: true }, [help]);
+    const info = el('button', {
+      class: 'rs-info', type: 'button', 'aria-expanded': 'false', 'aria-label': `Help on ${title.toLowerCase()}`, title: help,
+      onclick: () => { text.hidden = !text.hidden; info.setAttribute('aria-expanded', String(!text.hidden)); },
+    }, ['ⓘ']);
+    return [el('h2', { class: 'rs-section' }, [title, info]), text];
+  }
+
   // ---- layout ----
-  const main = el('div', { class: 'rs-main' }, [el('h2', { class: 'rs-section' }, ['Tags']), tagsSheet, timeline]);
-  const side = el('div', { class: 'rs-side' }, [el('h2', { class: 'rs-section' }, ['Log']), logSheet]);
+  const main = el('div', { class: 'rs-main' }, [...section('Tags', HELP.tags), tagsSheet, ...section('Timeline', HELP.timeline), timeline]);
+  const side = el('div', { class: 'rs-side' }, [...section('Log', HELP.log), logSheet]);
   root.replaceChildren(top, el('div', { class: 'rs-body' }, [main, side]));
 
   let ticksDrawn = 0;
@@ -542,8 +573,11 @@ const STYLES = `
 .rs-run { font-size:12px; font-weight:500; color:#fff; background:var(--re-accent); border:1px solid var(--re-accent); border-radius:3px; padding:5px 13px; cursor:pointer; }
 .rs-body { display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:18px; padding:16px 18px 18px; }
 .rs-main, .rs-side { display:flex; flex-direction:column; gap:8px; min-width:0; }
-.rs-main > .rs-timeline { margin-top:8px; }
-.rs-section { margin:0; font-size:15px; font-weight:400; color:var(--re-muted); }
+.rs-main > .rs-section:not(:first-child) { margin-top:8px; }
+.rs-section { display:flex; align-items:baseline; gap:9px; margin:0; font-size:15px; font-weight:400; color:var(--re-muted); }
+.rs-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
+.rs-info[aria-expanded="true"] { color:var(--re-accent); }
+.rs-help { margin:0; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
 .rs-sheet, .rs-timeline { border:1px solid var(--re-line); border-radius:3px; overflow:hidden; background:var(--re-surface); }
 .rs-head { display:grid; background:var(--re-head); border-bottom:1px solid var(--re-line); }
 .rs-head > span { font-size:12px; color:var(--re-muted); padding:6px 9px; border-right:1px solid var(--re-grid); white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
@@ -592,6 +626,7 @@ const STYLES = `
 .rs-caret { width:10px; flex:none; font-size:10px; color:var(--re-muted); }
 .rs-name { overflow:hidden; text-overflow:ellipsis; }
 .rs-value { align-self:stretch; display:flex; align-items:center; padding:0 9px; font-size:12px; color:var(--re-reading); background:var(--re-result); border-right:1px solid var(--re-grid); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rs-axis-flat { margin:auto 0; }
 .rs-axis { align-self:stretch; display:flex; flex-direction:column; justify-content:space-between; padding:3px 6px 3px 0; text-align:right; font-size:10px; line-height:1; color:var(--re-muted); border-right:1px solid var(--re-grid); white-space:nowrap; overflow:hidden; }
 .rs-plot { position:relative; height:36px; min-width:0; cursor:col-resize; touch-action:pan-y; }
 .rs-plot svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
@@ -624,6 +659,8 @@ const STYLES = `
 .rs-root.is-narrow .rs-tags .rs-cell-formula .rs-formula-view { min-height:0; padding:5px 9px 3px; font-size:12px; }
 .rs-root.is-narrow .rs-tags .rs-cell-signal { grid-column:2; }
 .rs-root.is-narrow .rs-num { width:4.5em; }
+.rs-root.is-narrow .rs-info { min-width:32px; min-height:32px; font-size:15px; }
+@media (hover: hover) { .rs-info:hover { color:var(--re-accent); } }
 `;
 
 function injectStyles(): void {

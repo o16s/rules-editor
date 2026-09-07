@@ -70,9 +70,10 @@ describe('signals', () => {
     expect(at('"open"', 10)).toBe('open');
     expect(at('-5', 10)).toBe(-5);
     expect(() => parseSignal('TAG("a")')).toThrow(/not a signal/);
-    expect(() => parseSignal('STEP(1, 2)')).toThrow(/takes 3 arguments/);
-    expect(() => parseSignal('RAMP("a", 2, 10s)')).toThrow(/from must be a number/);
-    expect(() => parseSignal('STEP(a, b, 10s)')).toThrow(/every argument/);
+    expect(() => parseSignal('STEP(1, 2)')).toThrow('STEP takes 3 arguments: STEP(before, after, at).');
+    expect(() => parseSignal('RAMP("a", 2, 10s)')).toThrow('RAMP: from is a number of seconds, or a duration such as 180s.');
+    expect(() => parseSignal('STEP(a, b, 10s)')).toThrow('STEP: every argument is a fixed value. A signal cannot read a tag or a variable.');
+    expect(() => parseSignal('WOBBLE(1)')).toThrow('"WOBBLE" is not a signal. Use HOLD, STEP, RAMP, PULSE or SINE.');
     expect(() => parseSignal('temp >')).toThrow();
   });
 });
@@ -177,8 +178,9 @@ describe('simulate', () => {
     expect(sim.fires).toEqual([180]);
     const fired = sim.log.find((e) => e.fired)!;
     expect(fired.t).toBe(180);
-    expect(fired.text).toBe('Fired. Condition 1 became true. Publish MQTT camera/record {"duration":40} · Raise critical alarm “Press guard alarm on cell 3”');
-    expect(sim.log.map((e) => e.text)).toContain('Next fire allowed from 225 s.');
+    // the change line above already names condition 1, so the fire line does not repeat it
+    expect(fired.text).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical alarm “Press guard alarm on cell 3”');
+    expect(sim.log.map((e) => e.text)).toContain('Cooldown: the rule cannot fire again before 225 s.');
     expect(sim.log.map((e) => e.text)).toContain('Condition 1 became true.');
     expect(sim.log.map((e) => e.text)).toContain('Condition 2 became true.');
   });
@@ -193,7 +195,7 @@ describe('simulate', () => {
   it('evaluates Then formulas with the firing condition\'s description', () => {
     const r = rule({ actions: [{ topic: 'alarm/text', payload: '=condition.description & "!"' }], incident: null });
     const sim = simulate(r, { stop: 200, step: 1, signals: SIGNALS });
-    expect(sim.log.find((e) => e.fired)!.text).toContain('Publish MQTT alarm/text Cell 3 PLC raised its own alarm!');
+    expect(sim.log.find((e) => e.fired)!.text).toContain('Publish to alarm/text Cell 3 PLC raised its own alarm!');
   });
 
   it('reports a signal that does not parse and reads null for it', () => {
@@ -220,7 +222,7 @@ describe('simulate', () => {
   it('caps the log', () => {
     const sim = simulate(rule({ edge: undefined, cooldown: undefined, conditions: [{ expr: 'true' }] }), { stop: 600, step: 1, signals: SIGNALS });
     expect(sim.log).toHaveLength(201);
-    expect(sim.log[200].text).toMatch(/401 more entries/);
+    expect(sim.log[200].text).toBe('401 more events are not shown.');
   });
 });
 

@@ -156,9 +156,9 @@ export const EditSignal: Story = {
       await userEvent.clear(input);
       await userEvent.type(input, `${value}{enter}`);
     };
-    await set('Signal of vibration1/temperature', 'HOLD(45)');
-    await set('Signal of bulk1/door_state', 'HOLD("closed")');
-    const alarm = canvas.getByLabelText('Signal of plc1/AlarmActive') as HTMLInputElement;
+    await set('Signal for vibration1 temperature', 'HOLD(45)');
+    await set('Signal for bulk1 door_state', 'HOLD("closed")');
+    const alarm = canvas.getByLabelText('Signal for plc1 AlarmActive') as HTMLInputElement;
     await userEvent.clear(alarm);
     await userEvent.type(alarm, 'STEP(false, true, 400s){enter}');
     await expect(canvasElement.querySelector('.rs-log .is-fired .rs-time')?.textContent).toBe('400 s');
@@ -169,7 +169,7 @@ export const EditSignal: Story = {
 export const InvalidSignal: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const input = canvas.getByLabelText('Signal of plc1/StatusWord') as HTMLInputElement;
+    const input = canvas.getByLabelText('Signal for plc1 StatusWord') as HTMLInputElement;
     await userEvent.clear(input);
     await userEvent.type(input, 'RAMP(1){enter}');
     await expect(canvasElement.querySelector('.rs-cell-signal.is-invalid .rs-msg')?.textContent).toMatch(/takes 3 arguments/);

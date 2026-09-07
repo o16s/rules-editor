@@ -8,10 +8,10 @@ import { formulaRefs, parseFormula } from './formula.js';
  * language (180s, 2min, 1h) or plain seconds.
  */
 export const SIGNALS = [
-    { name: 'HOLD', minArgs: 1, maxArgs: 1, signature: 'HOLD(value)', doc: 'The value, for the whole run.' },
-    { name: 'STEP', minArgs: 3, maxArgs: 3, signature: 'STEP(before, after, at)', doc: 'The first value, then the second from the given time.' },
-    { name: 'RAMP', minArgs: 3, maxArgs: 3, signature: 'RAMP(from, to, over)', doc: 'A straight line from the first number to the second over the duration, then flat.' },
-    { name: 'PULSE', minArgs: 4, maxArgs: 4, signature: 'PULSE(low, high, period, width)', doc: 'The low value, with the high value for `width` at every `period`, the first at one period.' },
+    { name: 'HOLD', minArgs: 1, maxArgs: 1, signature: 'HOLD(value)', doc: 'The same value for the whole run.' },
+    { name: 'STEP', minArgs: 3, maxArgs: 3, signature: 'STEP(before, after, at)', doc: 'The first value, then the second one from the given time.' },
+    { name: 'RAMP', minArgs: 3, maxArgs: 3, signature: 'RAMP(from, to, over)', doc: 'A straight line from the first number to the second one. It is flat after that.' },
+    { name: 'PULSE', minArgs: 4, maxArgs: 4, signature: 'PULSE(low, high, period, width)', doc: 'The low value, and the high value for the width at every period. The first pulse is at one period.' },
     { name: 'SINE', minArgs: 3, maxArgs: 3, signature: 'SINE(mean, amplitude, period)', doc: 'A sine wave around the mean.' },
 ];
 const SIGNAL_BY_NAME = new Map(SIGNALS.map((s) => [s.name, s]));
@@ -35,19 +35,21 @@ export function parseSignal(text) {
     if (ast.kind !== 'call') {
         // A bare literal is a HOLD.
         if (literal(ast) === null)
-            throw new Error('A signal is HOLD, STEP, RAMP, PULSE or SINE, or one value.');
+            throw new Error('A signal is HOLD, STEP, RAMP, PULSE or SINE, or a single value such as 20.');
         return { kind: 'call', name: 'HOLD', args: [ast] };
     }
     const spec = SIGNAL_BY_NAME.get(ast.name);
-    if (!spec)
-        throw new Error(`"${ast.name}" is not a signal. Use ${SIGNALS.map((s) => s.name).join(', ')}.`);
+    if (!spec) {
+        const names = SIGNALS.map((s) => s.name);
+        throw new Error(`"${ast.name}" is not a signal. Use ${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}.`);
+    }
     if (ast.args.length < spec.minArgs || ast.args.length > spec.maxArgs)
-        throw new Error(`${spec.signature} takes ${spec.minArgs} argument${spec.minArgs === 1 ? '' : 's'}.`);
+        throw new Error(`${spec.name} takes ${spec.minArgs} argument${spec.minArgs === 1 ? '' : 's'}: ${spec.signature}.`);
     for (const a of ast.args)
         if (literal(a) === null)
-            throw new Error(`${spec.name}: every argument is a number, text, true/false or a duration.`);
+            throw new Error(`${spec.name}: every argument is a fixed value. A signal cannot read a tag or a variable.`);
     const num = (i, what) => { if (typeof literal(ast.args[i]) !== 'number')
-        throw new Error(`${spec.name}: ${what} must be a number or a duration.`); };
+        throw new Error(`${spec.name}: ${what} is a number of seconds, or a duration such as 180s.`); };
     if (ast.name === 'STEP')
         num(2, 'the time');
     if (ast.name === 'RAMP') {
@@ -365,11 +367,15 @@ export function simulate(rule, opts) {
     let allowedFrom = 0;
     for (let i = 0; i < count; i++) {
         const t = times[i];
+        // Which conditions the log already named at this time, so a fire does not repeat one.
+        const announced = new Set();
         if (i > 0) {
             conditions.forEach((c, k) => {
                 const now = c.values[i], before = c.values[i - 1];
-                if (now !== before && now !== null)
-                    say({ t, text: `Condition ${k + 1} became ${now}.` });
+                if (now === before || now === null)
+                    return;
+                say({ t, text: `Condition ${k + 1} became ${now}.` });
+                announced.add(k);
             });
         }
         const on = result[i] === true;
@@ -391,18 +397,19 @@ export function simulate(rule, opts) {
             return v === null ? '—' : String(v);
         };
         const actions = [
-            ...rule.actions.map((a) => `Publish MQTT ${text(a.topic)}${a.payload ? ` ${text(a.payload)}` : ''}`),
+            ...rule.actions.map((a) => `Publish to ${text(a.topic)}${a.payload ? ` ${text(a.payload)}` : ''}`),
             ...(rule.incident ? [`Raise ${rule.incident.severity} alarm “${text(rule.incident.summary)}”`] : []),
         ];
-        const why = firing >= 0 ? `Condition ${firing + 1} ${rising ? 'became' : 'is'} true.` : '';
+        // The line above already names a condition that just changed; do not repeat it.
+        const why = firing >= 0 && !announced.has(firing) ? `Condition ${firing + 1} is true.` : '';
         say({ t, text: [`Fired.`, why, actions.join(' · ')].filter(Boolean).join(' '), fired: true });
         if (cooldown > 0) {
             allowedFrom = t + cooldown;
-            say({ t, text: `Next fire allowed from ${formatSeconds(allowedFrom)}.` });
+            say({ t, text: `Cooldown: the rule cannot fire again before ${formatSeconds(allowedFrom)}.` });
         }
     }
     if (hidden)
-        log.push({ t: times[count - 1], text: `${hidden} more entries not shown.` });
+        log.push({ t: times[count - 1], text: `${hidden} more events are not shown.` });
     return { times, tags, variables, conditions, result, fires, log };
 }
 /** Seconds for display: "180 s"; fractions keep one decimal. */

@@ -408,8 +408,12 @@ Opened from the **Simulator** button in the editor's top bar (shown when the
 host passes `onSimulate`). It runs one rule against signals the user writes.
 Nothing is written to the gateway.
 
-- **Header.** `← rule name` (back), the title "Simulator", then Stop time,
-  Max step, a read-only Cursor readout, and Run.
+- **Header.** `← rule name` (back), the title "Simulator", then "Run for"
+  (the length of the run), "Sample every" (the time between samples), a
+  read-only "Cursor" readout, and "Run again". Every committed change runs
+  again by itself, so the button only repeats the run.
+- **Sections.** "Tags", "Timeline" and "Log", each with a ⓘ button that opens
+  one paragraph of help, as the editor's sheets do.
 - **Tags sheet.** Columns: Tag formula · Signal formula. One row per tag the
   rule reads. Signals: `HOLD`, `STEP`, `RAMP`, `PULSE`, `SINE`. A signal that
   is not one takes the amber wash with its message under the value, and its
@@ -422,8 +426,10 @@ Nothing is written to the gateway.
   in a narrow column, and dashed thresholds where a condition compares the
   value with a constant. One ink for every trace; the cursor (solid) and the
   fire marks (dashed) share the accent colour. Times are seconds.
-- **Log.** Time · Event. Condition changes, fires ("Fired." in bold, then the
-  actions as sent), and the next allowed fire after a cooldown.
+- **Log.** Time · Event. Condition changes ("Condition 1 became true."), fires
+  ("Fired." in bold, then the messages as sent), and the cooldown ("Cooldown:
+  the rule cannot fire again before 225 s."). A fire does not repeat a
+  condition the line above it already names.
 - **Widths.** Below 900px the log moves under the timeline and the label
   column narrows. Below 560px the tag formula sits above its signal.
 
