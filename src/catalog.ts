@@ -62,6 +62,16 @@ export function insideString(text: string, caret: number): boolean {
   return inString;
 }
 
+/** Index just past the closing quote of the string open at `from`, or null when it never closes. */
+function closingQuote(text: string, from: number): number | null {
+  for (let i = from; i < text.length; i++) {
+    if (text[i] !== '"') continue;
+    if (text[i + 1] === '"') { i++; continue; }
+    return i + 1;
+  }
+  return null;
+}
+
 /**
  * Where the caret is, when it is inside a string argument of TAG(...).
  * Scans `text` up to `caret`, tracking strings and the stack of open calls.
@@ -99,9 +109,9 @@ export function tagContext(text: string, caret: number): TagContext | null {
   if (!inString) return null;
   const top = stack[stack.length - 1];
   if (!top || top.name !== 'TAG' || top.argIndex > 1) return null;
-  // The literal may continue past the caret: take it up to its closing quote.
-  const rest = /^[^",)]*"/.exec(text.slice(caret));
-  const end = caret + (rest ? rest[0].length : 0);
+  // The literal may continue past the caret: take it up to its closing quote
+  // (a doubled quote is a quote inside the string). Unterminated: stop at the caret.
+  const end = closingQuote(text, caret) ?? caret;
   const ctx: TagContext = { arg: top.argIndex as 0 | 1, prefix: text.slice(stringStart + 1, caret), start: stringStart, end };
   if (top.argIndex === 1) {
     const first = /^\s*"((?:[^"]|"")*)"\s*$/.exec(text.slice(top.open + 1, text.lastIndexOf(',', stringStart)));

@@ -12,6 +12,10 @@ export type ThenRow = {
 export declare const THEN_LABEL: Record<ThenField, string>;
 /** The `field` name in a ValidationIssue for each Then field. */
 export declare const THEN_ISSUE_FIELD: Record<ThenField, ValidationIssue['field']>;
+/** Free-text fields: title, first step and cause. Topic, payload and source are names. */
+export declare const THEN_PROSE: ReadonlySet<ThenField>;
+/** True for the first row of an action: the one that carries the Action choice. */
+export declare const isGroupHead: (row: ThenRow) => boolean;
 export declare function thenRows(rule: Rule): ThenRow[];
 export declare function thenGet(rule: Rule, row: ThenRow): string;
 export declare function thenSet(rule: Rule, row: ThenRow, value: string): void;

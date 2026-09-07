@@ -12,7 +12,7 @@
 //
 // Layout: a rule rail on the left, and for the selected rule three sheets —
 // Variables (name / formula / result / description), When (condition / result
-// / description) and Then (action / field / formula / result) — in the
+// / description) and Then (action / field / formula) — in the
 // spreadsheet style of the design handoff. Colours and fonts read the host's
 // design tokens (--accent, --ink, --font-body, …) with fallbacks.
 //
@@ -50,9 +50,10 @@ export interface RulesEditorOptions {
    */
   initialXml?: string;
   /**
-   * Called once on mount and after every committed edit: a text cell commits
-   * on Enter, Tab, or when it loses focus; choices, Add, Delete and Import
-   * commit at once. Keystrokes inside a cell do not fire it.
+   * Called once on mount and after every committed edit that changes the file
+   * or its issues: a text cell commits on Enter, Tab, or when it loses focus;
+   * choices, Add, Delete and Import commit at once. Keystrokes inside a cell
+   * do not fire it, and neither does a change of the selected rule.
    */
   onChange?: (state: { model: RulesModel; xml: string; errors: string[] }) => void;
   /**
@@ -69,6 +70,11 @@ export interface RulesEditorOptions {
    * `setCatalog()`. Without a catalog the editor works as before.
    */
   catalog?: TagCatalog | (() => TagCatalog);
+  /**
+   * Shows a "Simulator" button next to "XML". Called with the index of the
+   * selected rule; the host opens the Simulator page (see `initSimulator`).
+   */
+  onSimulate?: (ruleIndex: number) => void;
 }
 
 export interface RulesEditorHandle {
@@ -97,6 +103,15 @@ export interface RulesEditorHandle {
 
 /** Editors mounted so far, for unique ids (tabs and their panels). */
 let instances = 0;
+
+/**
+ * A message shown on its own field: the rule it names is the one on screen,
+ * so the `Rule "x": ` prefix goes and the rest starts with a capital.
+ */
+export function shortMessage(message: string): string {
+  const rest = message.replace(/^(Rule "[^"]*"|Unnamed rule): /, '');
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
 
 const parseErrorText = (e: unknown): string => (e instanceof RulesParseError ? e.message : 'Could not parse XML.');
 
@@ -137,6 +152,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     return state.parseError ? [state.parseError, ...errs] : errs;
   };
 
+  /** The xml and issues last given to onChange, so a selection change does not repeat them. */
+  let lastNotified: string | null = null;
+
   const status = el('div', { class: 're-status', role: 'alert' });
   const pane = el('section', { class: 're-pane' });
   const xmlPanel = createXmlPanel({
@@ -171,6 +189,9 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     xmlPanel.sync(xml);
     xmlPanel.gate(errs.length);
     // onChange still carries the xml while invalid, so a host can autosave a draft.
+    const notified = `${xml}\u0000${errs.join('\n')}`;
+    if (notified === lastNotified) return;
+    lastNotified = notified;
     opts.onChange?.({ model: clone(state.model), xml, errors: errs });
   }
 
@@ -192,13 +213,13 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
       const messages = byLoc.get(loc);
       node.classList.toggle('is-invalid', messages !== undefined);
       // The message is text on the page, not a tooltip: touch has no hover.
-      // A cell's message goes under its row, across every column, so a narrow
-      // column never has to fit a sentence.
+      // A cell's message goes inside the cell, under its value, like a hint
+      // under a form field; the row grows with it and the grid stays whole.
       const shown = messageFor(node);
       if (messages) {
         node.title = messages.join(' ');
-        const p = shown ?? messageHost(node).appendChild(el('p', { class: 're-msg', 'data-for': loc }));
-        p.textContent = messages.join(' ');
+        const p = shown ?? node.appendChild(el('p', { class: 're-msg', 'data-for': loc }));
+        p.textContent = messages.map(shortMessage).join(' ');
       } else {
         node.removeAttribute('title');
         shown?.remove();
@@ -206,14 +227,10 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     }
   }
 
-  /** Where a node's message goes: under a cell's row, else inside the node. */
-  const messageHost = (node: HTMLElement): HTMLElement =>
-    node.classList.contains('re-cell') ? node.parentElement ?? node : node;
-
   /** The message element shown for a marked node, or null. */
   function messageFor(node: HTMLElement): HTMLElement | null {
     const loc = node.dataset.loc ?? '';
-    const found = Array.from(messageHost(node).children).find(
+    const found = Array.from(node.children).find(
       (c) => c.classList.contains('re-msg') && (c as HTMLElement).dataset.for === loc
     );
     return (found as HTMLElement | undefined) ?? null;
@@ -270,10 +287,11 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
   }
 
   function beginRender(): void {
-    measure();
     // A draft in the bar survives a structural change (Add, Delete) by being
-    // committed first. Its own refresh is skipped: endRender runs one.
+    // committed first. Its own refresh is skipped: endRender runs one. The
+    // width check is inside the batch too: crossing 560px also commits.
     state.batching = true;
+    measure();
     bar.commit();
     state.batching = false;
     bar.reset();
@@ -311,6 +329,7 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
     el('span', { class: 're-title' }, ['Rules']),
     el('div', { class: 're-top-actions' }, [
       el('button', { class: 're-btn', type: 'button', onclick: () => xmlPanel.toggle() }, ['XML']),
+      ...(opts.onSimulate ? [el('button', { class: 're-btn', type: 'button', onclick: () => opts.onSimulate?.(state.selected) }, ['Simulator'])] : []),
       el('button', { class: 're-btn-primary', type: 'button', onclick: () => {
         state.parseError = null;
         state.model.rules.push({ name: 'new-rule', variables: [], match: 'any', conditions: [{ expr: '' }], actions: [], incident: null });
@@ -351,6 +370,12 @@ export function initRulesEditor(root: HTMLElement, opts: RulesEditorOptions = {}
 }
 
 export type { Token };
+
+// ---- the Simulator page and its core ----
+export { initSimulator, parseSeconds } from './gui/simulator.js';
+export type { SimulatorOptions, SimulatorHandle, SimulatorState } from './gui/simulator.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value, Env } from './simulate.js';
 
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';

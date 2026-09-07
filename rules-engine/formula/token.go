@@ -164,7 +164,7 @@ func scanNumber(text string, i int, out *[]token) (int, *Error) {
 		}
 		unit := text[unitStart:i]
 		if _, ok := unitSeconds(unit); !ok {
-			return 0, &Error{Message: `Unknown unit "` + unit + `". Use ms, s, m, min, or h.`, Column: unitStart}
+			return 0, &Error{Message: `"` + unit + `" is not a unit of time. Use ms, s, m, min or h.`, Column: unitStart}
 		}
 		*out = append(*out, token{kind: tkDuration, text: text[start:i], start: start})
 		return i, nil

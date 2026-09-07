@@ -64,7 +64,7 @@ function parseRule(el: Element, catalog?: TagCatalog): Rule {
 
   const edgeAttr = el.getAttribute('edge') ?? undefined;
   if (edgeAttr && !(EDGES as readonly string[]).includes(edgeAttr)) {
-    throw new RulesParseError(`Rule "${name}": invalid edge "${edgeAttr}" (expected rising or none)`);
+    throw new RulesParseError(`Rule "${name}": edge is "${edgeAttr}". Write rising or none.`);
   }
 
   const children = elementChildren(el);
@@ -146,12 +146,12 @@ function foldGroup(el: Element, ruleName: string, depth: number, catalog?: TagCa
     throw new RulesParseError(`Rule "${ruleName}": unexpected condition element <${el.nodeName}>`);
   }
   if (depth > LIMITS.maxDepth - 1) {
-    throw new RulesParseError(`Rule "${ruleName}": condition nesting exceeds max depth of ${LIMITS.maxDepth}`);
+    throw new RulesParseError(`Rule "${ruleName}": conditions are nested deeper than ${LIMITS.maxDepth} levels.`);
   }
   const children = elementChildren(el);
   if (children.length === 0) throw new RulesParseError(`Rule "${ruleName}": <${el.nodeName}> group is empty`);
   if (children.length > LIMITS.maxChildren) {
-    throw new RulesParseError(`Rule "${ruleName}": <${el.nodeName}> has ${children.length} children (max ${LIMITS.maxChildren})`);
+    throw new RulesParseError(`Rule "${ruleName}": <${el.nodeName}> has ${children.length} children. The most is ${LIMITS.maxChildren}.`);
   }
   const parts = children.map((c) =>
     c.nodeName === 'cond' ? condRow(c, ruleName, catalog).expr : foldGroup(c, ruleName, depth + 1, catalog)
@@ -167,7 +167,7 @@ function condRow(el: Element, ruleName: string, catalog?: TagCatalog): Cond {
   const opRaw = el.getAttribute('op');
   const row: Cond = { expr: '' };
   if (expr) {
-    if (tag || opRaw) throw new RulesParseError(`Rule "${ruleName}": <cond> has both expr and tag/op; use one form`);
+    if (tag || opRaw) throw new RulesParseError(`Rule "${ruleName}": <cond> has both expr and tag/op. Use one of them.`);
     row.expr = formulaBody(expr);
   } else {
     if (!tag) throw new RulesParseError(`Rule "${ruleName}": <cond> is missing expr (or tag and op)`);
@@ -273,12 +273,12 @@ export function validateIssues(model: RulesModel): ValidationIssue[] {
     const at = (message: string, rest: Omit<ValidationIssue, 'message' | 'rule'> = {}) =>
       issues.push({ message, rule: index, ...rest });
 
-    if (!rule.name) at('A rule is missing a name.', { field: 'name' });
-    else if (seen.has(rule.name)) at(`Duplicate rule name "${rule.name}".`, { field: 'name' });
+    if (!rule.name) at('This rule has no name.', { field: 'name' });
+    else if (seen.has(rule.name)) at(`Another rule is already called "${rule.name}".`, { field: 'name' });
     else seen.add(rule.name);
 
     if (rule.cooldown !== undefined && !COOLDOWN_RE.test(rule.cooldown)) {
-      at(`${where}: cooldown "${rule.cooldown}" is not a Go duration (e.g. 30s, 1m30s, 500ms).`, { field: 'cooldown' });
+      at(`${where}: the cooldown "${rule.cooldown}" is not a time. Write 30s, 1m30s or 500ms.`, { field: 'cooldown' });
     }
 
     const scope = new RuleScope(rule);
@@ -286,33 +286,34 @@ export function validateIssues(model: RulesModel): ValidationIssue[] {
     validateConditions(rule, where, scope, at);
 
     if (rule.actions.length === 0 && !rule.incident) {
-      at(`${where}: must have <actions>, an <incident>, or both.`);
+      // The Then sheet's words, not the file's: the reader is looking at the sheet.
+      at(`${where}: add an action in Then. Publish a message, raise an incident, or both.`);
     }
     if (rule.actions.length > LIMITS.maxActions) {
       at(`${where}: has ${rule.actions.length} actions (max ${LIMITS.maxActions}).`, { field: 'topic' });
     }
     rule.actions.forEach((a, action) => {
-      if (!a.topic) at(`${where}: a publish action is missing a topic.`, { field: 'topic', action });
+      if (!a.topic) at(`${where}: a publish has no topic.`, { field: 'topic', action });
       else checkThenField(a.topic, `${where}: topic`, scope, (m) => at(m, { field: 'topic', action }));
       if (a.payload) checkThenField(a.payload, `${where}: payload`, scope, (m) => at(m, { field: 'payload', action }));
     });
     if (rule.incident) {
       const inc = rule.incident;
-      if (!inc.source) at(`${where}: incident is missing a source.`, { field: 'source' });
+      if (!inc.source) at(`${where}: the incident has no source.`, { field: 'source' });
       else checkThenField(inc.source, `${where}: source`, scope, (m) => at(m, { field: 'source' }));
-      if (!inc.summary) at(`${where}: incident is missing a title.`, { field: 'summary' });
+      if (!inc.summary) at(`${where}: the incident has no title.`, { field: 'summary' });
       else checkThenField(inc.summary, `${where}: title`, scope, (m) => at(m, { field: 'summary' }));
       // Count characters, not UTF-16 units, to match the XSD's maxLength.
       if (chars(inc.summary) > LIMITS.maxSummary) {
-        at(`${where}: incident title exceeds ${LIMITS.maxSummary} characters.`, { field: 'summary' });
+        at(`${where}: the incident title is longer than ${LIMITS.maxSummary} characters.`, { field: 'summary' });
       }
       if (inc.firstStep) {
         checkThenField(inc.firstStep, `${where}: first step`, scope, (m) => at(m, { field: 'first_step' }));
-        if (chars(inc.firstStep) > LIMITS.maxText) at(`${where}: first step exceeds ${LIMITS.maxText} characters.`, { field: 'first_step' });
+        if (chars(inc.firstStep) > LIMITS.maxText) at(`${where}: the first step is longer than ${LIMITS.maxText} characters.`, { field: 'first_step' });
       }
       if (inc.cause) {
         checkThenField(inc.cause, `${where}: cause`, scope, (m) => at(m, { field: 'cause' }));
-        if (chars(inc.cause) > LIMITS.maxText) at(`${where}: cause exceeds ${LIMITS.maxText} characters.`, { field: 'cause' });
+        if (chars(inc.cause) > LIMITS.maxText) at(`${where}: the cause is longer than ${LIMITS.maxText} characters.`, { field: 'cause' });
       }
     }
   });
@@ -421,7 +422,7 @@ function checkFormula(
 
 function validateVariables(rule: Rule, where: string, scope: RuleScope, at: At): void {
   if (rule.variables.length > LIMITS.maxVariables) {
-    at(`${where}: too many variables: ${rule.variables.length} (max ${LIMITS.maxVariables}).`, { field: 'variable' });
+    at(`${where}: this rule has ${rule.variables.length} variables. The most is ${LIMITS.maxVariables}.`, { field: 'variable' });
   }
   const names = new Set<string>();
   /** Members of a cycle already reported, so a cycle is reported once. */
@@ -430,25 +431,25 @@ function validateVariables(rule: Rule, where: string, scope: RuleScope, at: At):
     const label = v.name ? `${where}: variable "${v.name}"` : `${where}: variable ${variable + 1}`;
     if (!v.name) at(`${where}: variable ${variable + 1} has no name.`, { field: 'variable', variable });
     else if (!VARIABLE_NAME_RE.test(v.name)) {
-      at(`${label}: a name is letters, digits and underscores, and does not start with a digit.`, { field: 'variable', variable });
+      at(`${label}: use letters, digits and underscores. A name cannot start with a digit.`, { field: 'variable', variable });
     } else if (RESERVED_NAMES.includes(v.name.toUpperCase())) {
-      at(`${label}: "${v.name}" is a reserved word.`, { field: 'variable', variable });
-    } else if (names.has(v.name)) at(`${label}: duplicate variable name.`, { field: 'variable', variable });
+      at(`${label} is a reserved word. Pick another name.`, { field: 'variable', variable });
+    } else if (names.has(v.name)) at(`${label} is defined twice.`, { field: 'variable', variable });
     else names.add(v.name);
 
-    if (!v.formula) at(`${label}: has no formula.`, { field: 'formula', variable });
+    if (!v.formula) at(`${label} has no formula.`, { field: 'formula', variable });
     else {
       checkFormula(v.formula, label, scope, (m) => at(m, { field: 'formula', variable }), { allowContext: false });
       const cycle = v.name && names.has(v.name) && !onReportedCycle.has(v.name) ? scope.cycleFrom(v.name) : null;
       // Only the variable the cycle starts at reports it; one that merely
       // points into the cycle is fine once the cycle is fixed.
       if (cycle && cycle[0] === v.name) {
-        at(`${label}: refers to itself through ${cycle.join(' → ')}.`, { field: 'formula', variable });
+        at(`${label} refers to itself: ${cycle.join(' → ')}.`, { field: 'formula', variable });
         cycle.forEach((n) => onReportedCycle.add(n));
       }
     }
     if (v.description && chars(v.description) > LIMITS.maxText) {
-      at(`${label}: description exceeds ${LIMITS.maxText} characters.`, { field: 'description', variable });
+      at(`${label}: the description is longer than ${LIMITS.maxText} characters.`, { field: 'description', variable });
     }
   });
 }
@@ -456,7 +457,7 @@ function validateVariables(rule: Rule, where: string, scope: RuleScope, at: At):
 function validateConditions(rule: Rule, where: string, scope: RuleScope, at: At): void {
   if (rule.conditions.length === 0) at(`${where}: needs at least one condition.`, { field: 'condition' });
   if (rule.conditions.length > LIMITS.maxChildren) {
-    at(`${where}: has ${rule.conditions.length} conditions (max ${LIMITS.maxChildren}).`, { field: 'condition' });
+    at(`${where}: this rule has ${rule.conditions.length} conditions. The most is ${LIMITS.maxChildren}.`, { field: 'condition' });
   }
   rule.conditions.forEach((c, condition) => {
     const label = `${where}: condition ${condition + 1}`;
@@ -467,12 +468,12 @@ function validateConditions(rule: Rule, where: string, scope: RuleScope, at: At)
       if (ast) {
         const t = inferType(ast, scope.typeOf);
         if (t === 'number' || t === 'string' || t === 'duration') {
-          at(`${label}: must be true or false, but is a ${t}. Compare it, for example "${c.expr} > 0".`, { field: 'expr', condition });
+          at(`${label} must be true or false, but this is a ${t}. Compare it, for example "${c.expr} > 0".`, { field: 'expr', condition });
         }
       }
     }
     if (c.description && chars(c.description) > LIMITS.maxText) {
-      at(`${label}: description exceeds ${LIMITS.maxText} characters.`, { field: 'description', condition });
+      at(`${label}: the description is longer than ${LIMITS.maxText} characters.`, { field: 'description', condition });
     }
   });
 }

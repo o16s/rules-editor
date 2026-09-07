@@ -14,9 +14,10 @@ export interface RulesEditorOptions {
      */
     initialXml?: string;
     /**
-     * Called once on mount and after every committed edit: a text cell commits
-     * on Enter, Tab, or when it loses focus; choices, Add, Delete and Import
-     * commit at once. Keystrokes inside a cell do not fire it.
+     * Called once on mount and after every committed edit that changes the file
+     * or its issues: a text cell commits on Enter, Tab, or when it loses focus;
+     * choices, Add, Delete and Import commit at once. Keystrokes inside a cell
+     * do not fire it, and neither does a change of the selected rule.
      */
     onChange?: (state: {
         model: RulesModel;
@@ -37,6 +38,11 @@ export interface RulesEditorOptions {
      * `setCatalog()`. Without a catalog the editor works as before.
      */
     catalog?: TagCatalog | (() => TagCatalog);
+    /**
+     * Shows a "Simulator" button next to "XML". Called with the index of the
+     * selected rule; the host opens the Simulator page (see `initSimulator`).
+     */
+    onSimulate?: (ruleIndex: number) => void;
 }
 export interface RulesEditorHandle {
     /** Deep copy of the current model. */
@@ -61,8 +67,17 @@ export interface RulesEditorHandle {
     /** Tear down the editor (empties the container). */
     destroy(): void;
 }
+/**
+ * A message shown on its own field: the rule it names is the one on screen,
+ * so the `Rule "x": ` prefix goes and the rest starts with a capital.
+ */
+export declare function shortMessage(message: string): string;
 export declare function initRulesEditor(root: HTMLElement, opts?: RulesEditorOptions): RulesEditorHandle;
 export type { Token };
+export { initSimulator, parseSeconds } from './gui/simulator.js';
+export type { SimulatorOptions, SimulatorHandle, SimulatorState } from './gui/simulator.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value, Env } from './simulate.js';
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';
 export type { ValidationIssue } from './parse.js';

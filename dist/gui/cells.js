@@ -67,7 +67,7 @@ export function createCells(deps) {
         const c = el('div', { class: `re-cell ${cls}`, 'data-label': label }, children);
         if (loc)
             c.dataset.loc = locKey(loc);
-        bar.register(c, { address: info.address ?? label, input: info.input, formula: info.formula, remove: info.remove });
+        bar.register(c, { address: info.address ?? label, input: info.input, formula: info.formula, remove: info.remove, removeLabel: info.removeLabel });
         return c;
     }
     /**
@@ -90,7 +90,7 @@ export function createCells(deps) {
         }, {
             label: o.label,
             placeholder: o.placeholder,
-            prose: Boolean(o.thenField),
+            prose: o.prose ?? false,
             formula: true,
             onDraft: (raw) => {
                 const v = strip(raw);
@@ -103,7 +103,9 @@ export function createCells(deps) {
         });
         if (o.thenField)
             menu.markThenInput(input);
-        return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, formula: true, remove: o.remove });
+        // The body holds the view and the input over it; a message can follow below, uncovered.
+        const body = el('div', { class: 're-cell-body' }, [view, input]);
+        return cell('re-cell-formula', o.column, o.loc, [body], { address: o.address, input, formula: true, remove: o.remove, removeLabel: o.removeLabel });
     }
     const resultCell = (label, value, info = {}) => cell('re-cell-result', label, null, value ? [value] : [], info);
     /**
@@ -133,13 +135,13 @@ export function createCells(deps) {
         ]);
     }
     /** A sheet title with a help toggle that reveals its paragraph on tap. */
-    function sheetTitle(cls, help, children) {
+    function sheetTitle(cls, help, children, sheet) {
         const text = el('p', { class: 're-help', hidden: true }, [help]);
         const info = el('button', {
             class: 're-info',
             type: 'button',
             'aria-expanded': 'false',
-            'aria-label': 'Help',
+            'aria-label': `Help on ${sheet}`,
             title: help,
             onclick: () => {
                 text.hidden = !text.hidden;

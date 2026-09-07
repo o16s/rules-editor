@@ -31,13 +31,13 @@ const NARROW = `
   .re-root .re-info { min-width:32px; min-height:32px; font-size:15px; }
   .re-root .re-help, .re-root .re-msg { font-size:13px; }
   .re-root .re-tabs { display:flex; }
-  .re-root .re-sheet-vars .re-sheet-head, .re-root .re-sheet-vars .re-row { grid-template-columns:30px 110px 200px 90px 180px 30px; min-width:640px; }
-  .re-root .re-sheet-when .re-sheet-head, .re-root .re-sheet-when .re-row { grid-template-columns:30px 200px 90px 180px 30px; min-width:530px; }
-  .re-root .re-sheet-then .re-sheet-head, .re-root .re-sheet-then .re-row { grid-template-columns:30px 150px 80px 200px 180px 30px; min-width:670px; }
+  .re-root .re-sheet-vars .re-sheet-head, .re-root .re-sheet-vars .re-row { grid-template-columns:30px 110px 190px 90px 220px 30px; min-width:670px; }
+  .re-root .re-sheet-when .re-sheet-head, .re-root .re-sheet-when .re-row { grid-template-columns:30px 190px 90px 220px 30px; min-width:560px; }
+  .re-root .re-sheet-then .re-sheet-head, .re-root .re-sheet-then .re-row { grid-template-columns:30px 150px 80px 220px 30px; min-width:510px; }
   .re-root .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
   .re-root .re-formula-view, .re-root .re-cell input, .re-root .re-cell-result, .re-root .re-cell-field { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .re-root .re-formula-view { min-height:36px; line-height:22px; }
-  .re-root .re-row > .re-msg { display:none; }
+  .re-root .re-cell > .re-msg, .re-root .re-cell > .re-preview { display:none; }
 `;
 /**
  * Below this the pane padding and the When heading are the last things that
@@ -141,6 +141,9 @@ const STYLES = `
 .re-when-title .re-pick { font-size:15px; }
 .re-cell-pick .re-pick { display:flex; width:100%; justify-content:space-between; align-items:flex-start; padding:7px 9px; min-height:32px; }
 .re-cell-pick .re-pick-caret { padding-top:2px; }
+/* The rows of one action share its Action cell: the continuation rows paint over the grid line above them. */
+.re-cell-merged { position:relative; margin-top:-1px; border-right:1px solid var(--re-grid); background:var(--re-surface); }
+.re-cell-merged-end { border-right:none; }
 .re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
 .re-info[aria-expanded="true"] { color:var(--re-accent); }
 .re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }
@@ -152,9 +155,10 @@ const STYLES = `
 .re-tab[aria-selected="true"] { color:var(--re-ink); border-bottom-color:var(--re-reading); font-weight:500; }
 .re-tab-count { color:var(--re-muted); margin-left:5px; font-weight:400; }
 .re-sheet-head, .re-row { display:grid; align-items:stretch; }
-.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(200px,1fr) 100px 220px 30px; min-width:704px; }
-.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(200px,1fr) 110px 280px 30px; min-width:650px; }
-.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(200px,1fr) 220px 30px; min-width:764px; }
+/* The formula column stops at 300px; the description takes what is left, because it holds sentences. */
+.re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(220px,300px) 100px minmax(220px,1fr) 30px; min-width:724px; }
+.re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(220px,300px) 110px minmax(220px,1fr) 30px; min-width:710px; }
+.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(220px,1fr) 30px; min-width:564px; }
 .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
 .re-sheet-head { background:var(--re-head); border-bottom:1px solid #e4e0d9; }
 .re-sheet-head > span { font-size:12px; color:var(--re-muted); padding:6px 9px; border-right:1px solid var(--re-grid); }
@@ -200,8 +204,10 @@ const STYLES = `
 /* Touch feedback: iOS shows no active state unless one is styled. */
 .re-btn:active, .re-btn-primary:active, .re-tab:active, .re-add:active, .re-icon-btn:active, .re-bar-btn:active { filter:brightness(0.94); }
 .re-tab, .re-rail-row, .re-gutter, .re-sheet-head, .re-pick, .re-bar-btn { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
-.re-cell { position:relative; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
-.re-cell input { width:100%; height:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
+/* A cell stacks its value and, when marked, its message; the value fills the row height. */
+.re-cell { position:relative; display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--re-grid); font-size:13px; }
+.re-cell > input, .re-cell > .re-cell-body, .re-cell > .re-pick { flex:1 1 auto; }
+.re-cell input { width:100%; min-height:32px; border:none; background:none; padding:7px 9px; font-size:13px; color:var(--re-ink); text-overflow:ellipsis; }
 .re-cell input:focus { outline:2px solid var(--re-reading); outline-offset:-2px; background:var(--re-surface); }
 .re-cell input::placeholder { color:var(--re-muted); }
 .re-cell-text { color:var(--re-text); }
@@ -210,6 +216,7 @@ const STYLES = `
 .re-cell-result:empty::before { content:"—"; color:var(--re-muted); }
 /* The view is in flow, so a wrapped formula sets the row height; the input
    sits over it, transparent until focused, when it takes over the cell. */
+.re-cell-body { position:relative; }
 .re-cell-formula .re-formula-view { display:block; min-height:32px; padding:7px 9px; white-space:pre-wrap; overflow-wrap:anywhere; pointer-events:none; }
 .re-cell-formula input { position:absolute; left:0; right:0; bottom:0; top:0; color:transparent; caret-color:var(--re-ink); }
 .re-cell-formula input:focus { color:var(--re-ink); }
@@ -220,8 +227,12 @@ const STYLES = `
 .re-tok-error { color:var(--re-critical); text-decoration:underline wavy; }
 .re-cell.is-invalid { background:var(--re-warn-wash); }
 .re-cell.is-invalid .re-formula-view { background:var(--re-warn-wash); }
-.re-msg { grid-column:1 / -1; margin:0; padding:4px 9px 6px 39px; font-size:12px; line-height:1.45; color:var(--re-warn); background:var(--re-warn-wash); }
-.re-pane-head > .re-msg, .re-sheet-block > .re-msg { padding:6px 9px; border-radius:3px; margin-top:6px; }
+.re-msg { margin:0; padding:6px 9px; font-size:12px; line-height:1.45; color:var(--re-warn); background:var(--re-warn-wash); border-radius:3px; }
+.re-pane-head > .re-msg, .re-sheet-block > .re-msg { margin-top:6px; }
+/* What a Then formula resolves to, under its value, in the reading colour of a result. */
+.re-preview { margin:0; padding:0 9px 7px; font-size:12px; line-height:1.45; color:var(--re-reading); overflow-wrap:anywhere; }
+/* Inside a cell the wash is already on the cell: the message is a hint line under the value. */
+.re-cell > .re-msg { padding:0 9px 7px; background:none; border-radius:0; overflow-wrap:anywhere; }
 .re-remove { background:none; border:none; cursor:pointer; color:var(--re-muted); display:flex; align-items:center; justify-content:center; padding:0; }
 /* Sticky, so Add stays in view while the sheet is scrolled sideways. */
 .re-add { grid-column:2; justify-self:start; position:sticky; left:30px; text-align:left; background:none; border:none; padding:7px 9px; font-size:13px; color:var(--re-muted); cursor:text; }

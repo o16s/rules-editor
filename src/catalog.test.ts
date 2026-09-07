@@ -53,6 +53,16 @@ describe('tagContext', () => {
   });
 });
 
+describe('tagContext end', () => {
+  it('runs to the closing quote, past a comma or bracket inside the literal', () => {
+    expect(at('TAG("a|,b")')).toMatchObject({ start: 4, end: 9 });
+    expect(at('TAG("a|)b") > 1')).toMatchObject({ start: 4, end: 9 });
+    expect(at('TAG("a|""b")')).toMatchObject({ start: 4, end: 10 });
+    // unterminated: the literal ends at the caret
+    expect(at('TAG("a|, 1')).toMatchObject({ start: 4, end: 6 });
+  });
+});
+
 describe('tagChoices', () => {
   it('offers devices and the implicit device\'s tags for the first argument, best first', () => {
     const ctx = tagContext('TAG("', 5)!;

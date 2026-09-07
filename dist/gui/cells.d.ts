@@ -24,9 +24,13 @@ export interface FormulaOptions {
     loc: Loc;
     /** Literal text unless the value starts with "=". */
     thenField?: boolean;
+    /** Free text: the phone keyboard keeps autocorrect. Off for names, topics and payloads. */
+    prose?: boolean;
     placeholder?: string;
     address?: string;
     remove?: () => void;
+    /** What the bar's delete button says, when "Delete row" is not what happens. */
+    removeLabel?: string;
 }
 export interface Cells {
     textInput(value: string, onCommit: (v: string) => void, o: TextOptions): HTMLInputElement;
@@ -42,7 +46,7 @@ export interface Cells {
     gutter(n: number): HTMLElement;
     addRow(n: number, label: string, fn: () => void, disabledWhy?: string): HTMLElement;
     sheetHead(cols: string[], titles?: string[]): HTMLElement;
-    sheetTitle(cls: string, help: string, children: Array<Node | string>): {
+    sheetTitle(cls: string, help: string, children: Array<Node | string>, sheet: string): {
         title: HTMLElement;
         help: HTMLElement;
     };

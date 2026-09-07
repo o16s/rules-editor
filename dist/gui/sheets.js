@@ -2,14 +2,15 @@
 // the spreadsheet style of the design handoff. Wide, the three stack; narrow,
 // tabs show one at a time.
 import { LIMITS } from '../model.js';
+import { isFormula } from '../formula.js';
 import { el, pickInput, selectInput } from './dom.js';
 import { exampleModel } from './example.js';
 import { ACTION_OPTIONS, EDGE_OPTIONS, HELP, MATCH_OPTIONS } from './labels.js';
-import { previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD, THEN_LABEL } from './then-rows.js';
+import { isGroupHead, previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD, THEN_LABEL, THEN_PROSE } from './then-rows.js';
 import { locKey } from './state.js';
 export function createSheets(deps) {
     const { state, pane, cells, uid } = deps;
-    const { textInput, cell, formulaCell, resultCell, liveCell, removeBtn, gutter, addRow, sheetHead, sheetTitle } = cells;
+    const { textInput, cell, formulaCell, liveCell, removeBtn, gutter, addRow, sheetHead, sheetTitle } = cells;
     /** Then result cells of the current pane and how to recompute their preview. */
     const previews = new Set();
     function render() {
@@ -87,9 +88,9 @@ export function createSheets(deps) {
         deps.render();
     }
     function renderVariables(rule, index) {
-        const { title, help } = sheetTitle('', HELP.variables, ['Variables']);
+        const { title, help } = sheetTitle('', HELP.variables, ['Variables'], 'Variables');
         const sheet = el('div', { class: 're-sheet re-sheet-vars' }, [
-            sheetHead(['Name', 'Formula', 'Formula result', 'Description'], ['Letters, digits and underscores', 'An Excel-style formula', 'Live value from the host', 'What the value means']),
+            sheetHead(['Name', 'Formula', 'Formula result', 'Description'], ['Letters, digits and underscores', 'An Excel-style formula', 'Live value from the gateway', 'What the value means']),
         ]);
         rule.variables.forEach((v, i) => sheet.append(variableRow(v, i, rule, index)));
         const full = rule.variables.length >= LIMITS.maxVariables;
@@ -103,6 +104,7 @@ export function createSheets(deps) {
     }
     function variableRow(v, i, rule, index) {
         const remove = () => { rule.variables.splice(i, 1); deps.render(); };
+        const removeLabel = 'Delete variable';
         const who = v.name || `Row ${i + 1}`;
         const nameInput = textInput(v.name, (val) => { v.name = val; }, { label: `Name of variable ${i + 1}`, placeholder: 'name' });
         const descInput = textInput(v.description ?? '', (val) => { if (val)
@@ -111,10 +113,10 @@ export function createSheets(deps) {
             delete v.description; }, { label: `Description of variable ${i + 1}`, prose: true });
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
-            cell('', 'Name', { rule: index, field: 'variable', variable: i }, [nameInput], { address: `${who} · Name`, input: nameInput, remove }),
-            formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")', address: `${who} · Formula`, remove }),
-            liveCell('Formula result', () => ({ rule: index, kind: 'variable', name: v.name }), { address: `${who} · Formula result`, remove }),
-            cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
+            cell('', 'Name', { rule: index, field: 'variable', variable: i }, [nameInput], { address: `${who} · Name`, input: nameInput, remove, removeLabel }),
+            formulaCell(v.formula, (val) => { v.formula = val; }, { label: `Formula of variable ${i + 1}`, column: 'Formula', loc: { rule: index, field: 'formula', variable: i }, placeholder: 'TAG("device", "tag")', address: `${who} · Formula`, remove, removeLabel }),
+            liveCell('Formula result', () => ({ rule: index, kind: 'variable', name: v.name }), { address: `${who} · Formula result`, remove, removeLabel }),
+            cell('re-cell-text', 'Description', { rule: index, field: 'description', variable: i }, [descInput], { address: `${who} · Description`, input: descInput, remove, removeLabel }),
             removeBtn('Delete variable', remove),
         ]);
     }
@@ -124,9 +126,9 @@ export function createSheets(deps) {
             delete rule.edge;
         else
             rule.edge = v; deps.refresh(); }, 'Trigger');
-        const { title, help } = sheetTitle('re-when-title', HELP.when, ['When', match, 'of these', edge]);
+        const { title, help } = sheetTitle('re-when-title', HELP.when, ['When', match, 'of these', edge], 'When');
         const sheet = el('div', { class: 're-sheet re-sheet-when' }, [
-            sheetHead(['Condition', 'Condition result', 'Description'], ['A formula that is true or false', 'Live value from the host', 'What the row means; the alarm can quote it']),
+            sheetHead(['Condition', 'Condition result', 'Description'], ['A formula that is true or false', 'Live value from the gateway', 'What the row means. The incident can quote it.']),
         ]);
         rule.conditions.forEach((c, i) => sheet.append(conditionRow(c, i, rule, index)));
         const full = rule.conditions.length >= LIMITS.maxChildren;
@@ -140,6 +142,7 @@ export function createSheets(deps) {
     }
     function conditionRow(c, i, rule, index) {
         const remove = () => { rule.conditions.splice(i, 1); deps.render(); };
+        const removeLabel = 'Delete condition';
         const who = `Row ${i + 1}`;
         const descInput = textInput(c.description ?? '', (val) => { if (val)
             c.description = val;
@@ -147,16 +150,16 @@ export function createSheets(deps) {
             delete c.description; }, { label: `Description of condition ${i + 1}`, prose: true });
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
-            formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50', address: `${who} · Condition`, remove }),
-            liveCell('Condition result', () => ({ rule: index, kind: 'condition', index: i }), { address: `${who} · Condition result`, remove }),
-            cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [descInput], { address: `${who} · Description`, input: descInput, remove }),
+            formulaCell(c.expr, (val) => { c.expr = val; }, { label: `Condition ${i + 1}`, column: 'Condition', loc: { rule: index, field: 'expr', condition: i }, placeholder: 'temp > 50', address: `${who} · Condition`, remove, removeLabel }),
+            liveCell('Condition result', () => ({ rule: index, kind: 'condition', index: i }), { address: `${who} · Condition result`, remove, removeLabel }),
+            cell('re-cell-text', 'Description', { rule: index, field: 'description', condition: i }, [descInput], { address: `${who} · Description`, input: descInput, remove, removeLabel }),
             removeBtn('Delete condition', remove),
         ]);
     }
     function renderThen(rule, index) {
-        const { title, help } = sheetTitle('', HELP.then, ['Then']);
+        const { title, help } = sheetTitle('', HELP.then, ['Then'], 'Then');
         const sheet = el('div', { class: 're-sheet re-sheet-then' }, [
-            sheetHead(['Action', 'Field', 'Formula', 'Formula result'], ['What happens when the rule fires', 'The field of the action', 'Text, or a formula when it starts with =', 'What the gateway sends']),
+            sheetHead(['Action', 'Field', 'Formula'], ['What happens when the rule fires', 'The field of the action', 'Text as sent, or a formula when it starts with =']),
         ]);
         const rows = thenRows(rule);
         rows.forEach((row, i) => sheet.append(thenRow(row, i, rule, index)));
@@ -168,7 +171,7 @@ export function createSheets(deps) {
             rule.cooldown = v;
         else
             delete rule.cooldown; }, { label: 'Cooldown', placeholder: '0s' });
-        cooldown.title = 'A Go duration: 30s, 1m30s, 500ms. Units ns, us, ms, s, m, h. Blank fires every time.';
+        cooldown.title = 'A time: 30s, 1m30s, 500ms. Units: ns, us, ms, s, m, h. Leave it blank to fire every time.';
         const cool = el('div', { class: 're-cool' }, ['Actions are fired at most once every', cooldown]);
         cool.dataset.loc = locKey({ rule: index, field: 'cooldown' });
         sheet.append(cool);
@@ -176,12 +179,11 @@ export function createSheets(deps) {
     }
     function thenRow(row, i, rule, index) {
         const current = row.kind === 'publish' ? 'publish' : rule.incident.severity;
-        const action = pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`);
         const value = thenGet(rule, row);
         const loc = row.kind === 'publish'
             ? { rule: index, field: THEN_ISSUE_FIELD[row.field], action: row.index }
             : { rule: index, field: THEN_ISSUE_FIELD[row.field] };
-        const placeholder = row.field === 'topic' ? 'camera/record' : row.field === 'payload' ? '{}' : row.field === 'summary' ? 'Eight words, lead with the fix' : '';
+        const placeholder = row.field === 'topic' ? 'camera/record' : row.field === 'payload' ? '{}' : row.field === 'summary' ? 'Lead with the fix, in a few words' : '';
         const remove = () => {
             if (row.kind === 'publish')
                 rule.actions.splice(row.index, 1);
@@ -189,20 +191,42 @@ export function createSheets(deps) {
                 rule.incident = null;
             deps.render();
         };
+        // Every row of an action goes with it, so the button never says "row".
+        const removeLabel = row.kind === 'publish' ? 'Delete action' : 'Delete incident';
         const who = THEN_LABEL[row.field];
-        const result = resultCell('Formula result', previewThen(value, rule), { address: `${who} · Formula result`, remove });
-        // Recomputed on every refresh: the preview also reads condition 1's description.
-        previews.add(() => { result.textContent = previewThen(thenGet(rule, row), rule) ?? ''; });
+        const formula = formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove, removeLabel });
+        // A formula shows what it resolves to as a line under the value; literal
+        // text is sent as written and needs no preview. Recomputed on every
+        // refresh: the preview also reads condition 1's description.
+        const preview = el('p', { class: 're-preview', hidden: true });
+        formula.append(preview);
+        const updatePreview = () => {
+            const text = thenGet(rule, row);
+            const shown = isFormula(text) ? previewThen(text, rule) : null;
+            preview.hidden = shown === null;
+            preview.textContent = shown ?? '';
+        };
+        updatePreview();
+        previews.add(updatePreview);
+        // One Action cell and one delete button per action, like merged cells: the
+        // first row holds them, the rows under it continue the cells. Delete
+        // removes the whole action, so one button says so.
+        const head = isGroupHead(row);
+        const action = head
+            ? cell('re-cell-pick', 'Action', null, [pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`)], { address: `${who} · Action`, remove, removeLabel })
+            : el('div', { class: 're-cell-merged', 'aria-hidden': 'true' });
+        const trash = head
+            ? removeBtn(removeLabel, remove)
+            : el('div', { class: 're-cell-merged re-cell-merged-end', 'aria-hidden': 'true' });
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
-            cell('re-cell-pick', 'Action', null, [action], { address: `${who} · Action`, remove }),
-            cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
-            formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, placeholder, address: `${who} · Formula`, remove }),
-            result,
-            removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', remove),
+            action,
+            cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove, removeLabel }),
+            formula,
+            trash,
         ]);
     }
-    /** The Action select changed: convert between a publish and the alarm, or change severity. */
+    /** The Action select changed: convert between a publish and the incident, or change severity. */
     function setAction(row, value, rule) {
         if (value === 'publish') {
             if (row.kind === 'publish')

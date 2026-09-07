@@ -12,18 +12,20 @@ export const EDGE_OPTIONS: Opt[] = [
   { value: 'rising', label: 'becomes true' },
   { value: 'none', label: 'is true' },
 ];
-export const EDGE_META: Record<Edge, string> = { rising: 'rising edge', none: 'every cycle' };
+/** Under a rail row: the same words as the Trigger choice, so one setting has one name. */
+export const EDGE_META: Record<Edge, string> = { rising: 'when it becomes true', none: 'while it is true' };
 export const ACTION_OPTIONS: Opt[] = [
   { value: 'publish', label: 'Publish MQTT message' },
-  ...SEVERITIES.map((s) => ({ value: s, label: `Raise ${s} alarm` })),
+  // "Incident" is the octaview word for what a rule raises. One word, everywhere.
+  ...SEVERITIES.map((s) => ({ value: s, label: `Raise ${s} incident` })),
 ];
 
 // Help, one paragraph per sheet.
 export const HELP = {
   variables:
-    'One named formula per row. Name: letters, digits and underscores. Formula: TAG("device", "tag") reads a field; RATE(x, 30min), CHANGED(x), BITAND(x, mask), HEX2DEC("FF") and the comparison operators build on it. Formula result: the live value, when the host supplies one. Description: what the value means, for the operator.',
+    'One named formula per row. The name takes letters, digits and underscores. The formula reads a field with TAG("device", "tag"). RATE(x, 30min), CHANGED(x), BITAND(x, mask), HEX2DEC("FF") and the comparison operators build on it. Formula result is the live value from the gateway, when it is connected. The description says what the value means, for the operator.',
   when:
-    'One condition per row, written with the variable names, for example temp > 50 or AND(milk_temp > 3.6, door_changed). "any" fires when one row is true, "all" when every row is true. "becomes true" fires once on the false-to-true change; "is true" fires on every cycle while true. Description: quoted by the alarm as condition.description.',
+    'One condition per row, written with the variable names, for example temp > 50 or AND(milk_temp > 3.6, door_changed). "any" fires when one row is true, and "all" fires when every row is true. "becomes true" fires once, when the rows turn from false to true. "is true" fires again on every cycle while they stay true. The incident can quote a description as condition.description.',
   then:
-    'One row per field of an action. Publish MQTT message: topic and payload. Raise alarm: source (the device the alarm is attributed to), title (at most 120 characters), first step (what the operator does first) and cause (why it fired, and where the boundary of what we read sits). A field that starts with = is a formula and can use condition.description. Cooldown: a Go duration such as 30s, 1m30s or 500ms; blank fires every time.',
+    'One row per field of an action. A publish has a topic and a payload. An incident has a source (the device it belongs to), a title (at most 120 characters), a first step (what the operator does first) and a cause (why it fired, and how far what we read goes). A field that starts with = is a formula, and it can use condition.description. The cooldown is a time such as 30s, 1m30s or 500ms. Leave it blank to fire every time.',
 };

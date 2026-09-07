@@ -33,9 +33,13 @@ export interface FormulaOptions {
   loc: Loc;
   /** Literal text unless the value starts with "=". */
   thenField?: boolean;
+  /** Free text: the phone keyboard keeps autocorrect. Off for names, topics and payloads. */
+  prose?: boolean;
   placeholder?: string;
   address?: string;
   remove?: () => void;
+  /** What the bar's delete button says, when "Delete row" is not what happens. */
+  removeLabel?: string;
 }
 
 export interface Cells {
@@ -52,7 +56,7 @@ export interface Cells {
   gutter(n: number): HTMLElement;
   addRow(n: number, label: string, fn: () => void, disabledWhy?: string): HTMLElement;
   sheetHead(cols: string[], titles?: string[]): HTMLElement;
-  sheetTitle(cls: string, help: string, children: Array<Node | string>): { title: HTMLElement; help: HTMLElement };
+  sheetTitle(cls: string, help: string, children: Array<Node | string>, sheet: string): { title: HTMLElement; help: HTMLElement };
 }
 
 /** The coloured, read-only view of a formula, shown while the cell is not focused. */
@@ -108,7 +112,7 @@ export function createCells(deps: CellsDeps): Cells {
   function cell(cls: string, label: string, loc: Loc | null, children: Array<Node | string>, info: Partial<CellInfo> = {}): HTMLElement {
     const c = el('div', { class: `re-cell ${cls}`, 'data-label': label }, children);
     if (loc) c.dataset.loc = locKey(loc);
-    bar.register(c, { address: info.address ?? label, input: info.input, formula: info.formula, remove: info.remove });
+    bar.register(c, { address: info.address ?? label, input: info.input, formula: info.formula, remove: info.remove, removeLabel: info.removeLabel });
     return c;
   }
 
@@ -131,7 +135,7 @@ export function createCells(deps: CellsDeps): Cells {
     }, {
       label: o.label,
       placeholder: o.placeholder,
-      prose: Boolean(o.thenField),
+      prose: o.prose ?? false,
       formula: true,
       onDraft: (raw) => {
         const v = strip(raw);
@@ -142,7 +146,9 @@ export function createCells(deps: CellsDeps): Cells {
       },
     });
     if (o.thenField) menu.markThenInput(input);
-    return cell('re-cell-formula', o.column, o.loc, [view, input], { address: o.address, input, formula: true, remove: o.remove });
+    // The body holds the view and the input over it; a message can follow below, uncovered.
+    const body = el('div', { class: 're-cell-body' }, [view, input]);
+    return cell('re-cell-formula', o.column, o.loc, [body], { address: o.address, input, formula: true, remove: o.remove, removeLabel: o.removeLabel });
   }
 
   const resultCell = (label: string, value: string | null | undefined, info: Partial<CellInfo> = {}): HTMLElement =>
@@ -179,13 +185,13 @@ export function createCells(deps: CellsDeps): Cells {
   }
 
   /** A sheet title with a help toggle that reveals its paragraph on tap. */
-  function sheetTitle(cls: string, help: string, children: Array<Node | string>): { title: HTMLElement; help: HTMLElement } {
+  function sheetTitle(cls: string, help: string, children: Array<Node | string>, sheet: string): { title: HTMLElement; help: HTMLElement } {
     const text = el('p', { class: 're-help', hidden: true }, [help]);
     const info = el('button', {
       class: 're-info',
       type: 'button',
       'aria-expanded': 'false',
-      'aria-label': 'Help',
+      'aria-label': `Help on ${sheet}`,
       title: help,
       onclick: () => {
         text.hidden = !text.hidden;

@@ -330,7 +330,7 @@
     "text": "30days",
     "error": {
       "column": 2,
-      "message": "Unknown unit \"days\". Use ms, s, m, min, or h."
+      "message": "\"days\" is not a unit of time. Use ms, s, m, min or h."
     }
   },
   {

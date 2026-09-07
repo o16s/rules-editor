@@ -268,3 +268,13 @@ export const NESTED_V02_XML = `<rules>
     </actions>
   </rule>
 </rules>`;
+
+/** The signals of design 14a, one per tag the alarm-camera rule reads, keyed "device/tag". */
+export const DESIGN_SIGNALS: Record<string, string> = {
+  'plc1/AlarmActive': 'STEP(false, true, 180s)',
+  'vibration1/temperature': 'RAMP(42, 56, 600s)',
+  'bulk1/milk_temperature': 'SINE(3.2, 0.6, 240s)',
+  'bulk1/door_state': 'PULSE("closed", "open", 150s, 30s)',
+  'plc1/StatusWord': 'HOLD(20)',
+  'plc1/AlarmFlags': 'HOLD(0)',
+};

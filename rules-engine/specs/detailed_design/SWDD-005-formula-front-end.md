@@ -52,7 +52,7 @@ func InferType(n *Node, lookup func(string) Type) Type
 
 ## Error Handling & Edge Cases
 
-- Duration units: `ms`, `s`, `m`, `min`, `h`. An unknown unit is `Unknown unit "x". Use ms, s, m, min, or h.` at the unit column.
+- Duration units: `ms`, `s`, `m`, `min`, `h`. An unknown unit is `"x" is not a unit of time. Use ms, s, m, min or h.` at the unit column.
 - `""` inside a string is one quote. An unterminated string is `Missing closing quote.` at the opening quote.
 - A depth over 64 is `The formula is too deep.` This message does not exist in the editor. The editor has no depth limit, and 64 is beyond any real formula.
 

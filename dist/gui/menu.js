@@ -151,19 +151,20 @@ export function createMenu(deps) {
         menu.style.top = below ? `${Math.round(r.bottom)}px` : '';
         menu.style.bottom = below ? '' : `${Math.round(window.innerHeight - r.top)}px`;
     }
+    /** Apply a choice; false when it would change nothing (the name is already complete). */
     function pick(i) {
         const input = menuFor;
         const current = menuState;
         const choice = menuItems[i];
         if (!input || !current || !choice)
-            return;
+            return false;
         const r = current.mode === 'tag' && (choice.kind === 'device' || choice.kind === 'tag')
             ? applyTagChoice(input.value, current.ctx, choice)
             : current.mode === 'name' && (choice.kind === 'variable' || choice.kind === 'function')
                 ? applyNameChoice(input.value, current.ctx, choice)
                 : null;
-        if (!r)
-            return;
+        if (!r || r.text === input.value)
+            return false;
         input.value = r.text;
         input.setSelectionRange(r.caret, r.caret);
         // The input event redraws the view and, when there is a next step, reopens the menu.
@@ -171,6 +172,7 @@ export function createMenu(deps) {
         input.dispatchEvent(new Event('input'));
         if (!r.more)
             close();
+        return true;
     }
     function key(input, e) {
         if (menu.hidden || menuFor !== input)
@@ -184,9 +186,13 @@ export function createMenu(deps) {
                 menuIndex = (menuIndex + menuItems.length - 1) % menuItems.length;
                 draw();
                 break;
+            // A complete name has nothing to pick: the key commits or moves on as usual.
             case 'Enter':
             case 'Tab':
-                pick(menuIndex);
+                if (!pick(menuIndex)) {
+                    close();
+                    return false;
+                }
                 break;
             case 'Escape':
                 close();

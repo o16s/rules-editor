@@ -1,4 +1,4 @@
-# rules-editor — repo guide
+# rules-editor: repo guide
 
 Framework-free editor for octaview Edge Hub `rules.xml`, plus the
 parse/serialize/validate core and the formula language. Vanilla TypeScript,
@@ -6,11 +6,11 @@ parse/serialize/validate core and the formula language. Vanilla TypeScript,
 octaview website and edge-hub.
 
 ## Layout
-- `src/` — source of truth.
-  - `gui.ts` — the `initRulesEditor` component **and** the re-exports of the core
+- `src/`: source of truth.
+  - `gui.ts`: the `initRulesEditor` component **and** the re-exports of the core
     (this is the public surface). It owns the options and handle types, the
     shared state, validation marking and the render cycle, and wires the parts.
-  - `gui/` — the parts of the editor, each a factory that takes its
+  - `gui/`: the parts of the editor, each a factory that takes its
     dependencies: `rail.ts` (the rule list), `sheets.ts` (Variables, When and
     Then for the selected rule), `cells.ts` (text and formula cells with commit
     semantics), `bar.ts` (cell selection and the formula bar of the phone
@@ -18,34 +18,43 @@ octaview website and edge-hub.
     download, import), `styles.ts` (the scoped stylesheet), `state.ts` (the
     shared state object and small types), `dom.ts` (element builder, icons,
     choice controls), `labels.ts` (options and help text), `then-rows.ts` (the
-    Then sheet's row model and preview), `example.ts` (the default file).
-  - `model.ts` — types + constants. `formula.ts` — the formula language:
+    Then sheet's row model and preview), `example.ts` (the default file),
+    `simulator.ts` (the Simulator page of design 14a: signals per tag, the
+    condition › variable › tag timeline, the log).
+  - `simulate.ts`: the simulator core: signal generators, a formula
+    evaluator over a clock (`evaluateAt`), and the rule's firing (`simulate`).
+  - `model.ts`: types and constants. `formula.ts`: the formula language,
     tokenizer, parser, printer, static checks, function registry.
-    `serialize.ts` — model → xml. `parse.ts` — xml → model + `validate`.
-  - `index.ts` — barrel (`export * from './gui.js'`), the package entry.
-  - `*.test.ts` — vitest specs (jsdom).
-- `dist/` — built ESM + `.d.ts`, **committed** so git-tag installs need no build.
-- `stories/` + `.storybook/` — Storybook (dev only, never shipped: outside
+    `serialize.ts`: model → xml. `parse.ts`: xml → model plus `validate`.
+  - `index.ts`: barrel (`export * from './gui.js'`), the package entry.
+  - `*.test.ts`: vitest specs (jsdom).
+- `dist/`: built ESM and `.d.ts`, **committed** so git-tag installs need no build.
+- `stories/` and `.storybook/`: Storybook (dev only, never shipped: outside
   `tsconfig` `rootDir`, so it cannot leak into `dist/`). Stories import
   `../src/*.ts` directly, so a save in `src/` hot-reloads without a build.
 
 ## Workflow
 - After editing `src/`, run `npm run build` and **commit the updated `dist/`**.
 - `npm test` (vitest + jsdom) · `npm run typecheck`.
-- `npm run storybook` — dev server on `0.0.0.0:6100`, for working on the
+- `npm run storybook`: dev server on `0.0.0.0:6100`, for working on the
   component (widths, themes, error states). `npm run build-storybook` for a
   static bundle in `storybook-static/` (gitignored).
-- Keep the API in `gui.ts` (`gui/` is internal); `index.ts` just re-exports it. One import for
-  consumers: `initRulesEditor`, `parse`, `serialize`, `validate`, the formula
-  functions, model types.
+- Keep the API in `gui.ts` (`gui/` is internal). `index.ts` only re-exports it,
+  so a consumer has one import: `initRulesEditor`, `parse`, `serialize`,
+  `validate`, the formula functions, the model types.
 
 ## Conventions
-- **No runtime dependencies** — keep it that way.
+- **No runtime dependencies**. Keep it that way.
 - `parse()` uses the browser `DOMParser` global (tests run under jsdom); it is
   not usable in bare Node.
 - Styles inject once as `#octaview-rules-editor-styles`, scoped under `.re-root`,
   themeable via host CSS custom properties (`--accent`, `--ink`, `--font-body`, …)
   with fallbacks. Class names are `re-*`.
+- **Words on screen.** One word per meaning, in the operator's language, not
+  the file's. What a rule raises is an **incident**, never an "alarm". A
+  message says "the cooldown is not a time", not "not a Go duration", and
+  names no XML element the sheets do not show. A cell drops the `Rule "x":`
+  prefix, so a message must read as a sentence without it.
 - The condition form the editor writes is `<cond expr="…"/>`. The 0.2 form
   `<cond tag op value/>` and nested `<and>`/`<or>` groups are read-only input:
   `parse()` turns them into formula rows, and `serialize()` never writes them.

@@ -129,7 +129,7 @@ describe('parse', () => {
     const bad = (body: string, re: RegExp) => expect(() => parse(`<rules><rule name="r">${body}</rule></rules>`)).toThrow(re);
     bad('<and><or/></and>', /empty/);
     bad(`<and><or>${'<cond expr="x"/>'.repeat(17)}</or></and>`, /17 children/);
-    bad('<and><and><and><and><cond expr="x"/></and></and></and></and>', /depth/);
+    bad('<and><and><and><and><cond expr="x"/></and></and></and></and>', /nested deeper than 4 levels/);
   });
 
   it('throws on a var without name or formula', () => {
@@ -206,7 +206,7 @@ describe('validate', () => {
 
   it('flags a rule with neither actions nor incident', () => {
     const errs = validate(wrap({ actions: [], incident: null }));
-    expect(errs.join('\n')).toMatch(/actions.*incident|incident.*actions/i);
+    expect(errs.join('\n')).toMatch(/add an action in Then/);
   });
 
   it('flags a rule with no condition, and one with too many', () => {
@@ -220,7 +220,7 @@ describe('validate', () => {
 
   it('flags duplicate rule names', () => {
     const m: RulesModel = { rules: [rule({ name: 'dup' }), rule({ name: 'dup' })] };
-    expect(validate(m).join('\n')).toMatch(/duplicate/i);
+    expect(validate(m).join('\n')).toMatch(/Another rule is already called "dup"/);
   });
 
   it('flags a formula that does not parse, with its column', () => {
@@ -235,14 +235,14 @@ describe('validate', () => {
   });
 
   it('flags unknown functions and wrong argument counts', () => {
-    expect(validate(wrap({ conditions: [{ expr: 'NOPE(1)' }] })).join('\n')).toMatch(/Unknown function NOPE/);
+    expect(validate(wrap({ conditions: [{ expr: 'NOPE(1)' }] })).join('\n')).toMatch(/There is no function called NOPE\(\)/);
     expect(validate(wrap({ conditions: [{ expr: 'NOT(a, b)' }] })).join('\n')).toMatch(/NOT\(\) takes 1 argument/);
-    expect(validate(wrap({ conditions: [{ expr: 'AND(TAG("a"))' }] })).join('\n')).toMatch(/AND\(\) takes 2 to 16 arguments, got 1/);
+    expect(validate(wrap({ conditions: [{ expr: 'AND(TAG("a"))' }] })).join('\n')).toMatch(/AND\(\) takes 2 to 16 arguments, not 1/);
   });
 
   it('flags a condition that is not a boolean', () => {
     const m = wrap({ variables: [{ name: 'temp', formula: 'TAG("t")' }], conditions: [{ expr: 'temp + 1' }] });
-    expect(validate(m).join('\n')).toMatch(/must be true or false, but is a number/);
+    expect(validate(m).join('\n')).toMatch(/must be true or false, but this is a number/);
     expect(validate(wrap({ conditions: [{ expr: '"open"' }] })).join('\n')).toMatch(/is a string/);
     // A bare TAG or an unknown-typed variable passes: it can be a boolean field.
     expect(validate(wrap({ conditions: [{ expr: 'TAG("AlarmActive")' }] }))).toEqual([]);
@@ -271,13 +271,13 @@ describe('validate', () => {
     expect(v('true')).toMatch(/reserved word/);
     expect(v('')).toMatch(/has no name/);
     const dup = wrap({ variables: [{ name: 'a', formula: '1' }, { name: 'a', formula: '2' }] });
-    expect(validate(dup).join('\n')).toMatch(/duplicate variable name/);
+    expect(validate(dup).join('\n')).toMatch(/variable "a" is defined twice/);
     expect(validate(wrap({ variables: [{ name: 'a', formula: '' }] })).join('\n')).toMatch(/has no formula/);
   });
 
   it('flags too many variables', () => {
     const many = Array.from({ length: 65 }, (_, i) => ({ name: `v${i}`, formula: '1' }));
-    expect(validate(wrap({ variables: many })).join('\n')).toMatch(/too many variables: 65/);
+    expect(validate(wrap({ variables: many })).join('\n')).toMatch(/this rule has 65 variables\. The most is 64/);
   });
 
   it('flags a variable cycle once, on its first variable', () => {
@@ -291,7 +291,7 @@ describe('validate', () => {
     });
     const errs = validate(m).filter((e) => /refers to itself/.test(e));
     expect(errs).toHaveLength(1);
-    expect(errs[0]).toMatch(/variable "a": refers to itself through a → b → c → a/);
+    expect(errs[0]).toMatch(/variable "a" refers to itself: a → b → c → a/);
     expect(validate(wrap({ variables: [{ name: 'x', formula: 'x' }] })).join('\n')).toMatch(/x → x/);
   });
 
@@ -306,11 +306,11 @@ describe('validate', () => {
   it('flags a title over 120 characters, and text fields over 240', () => {
     const inc = (over: object) => validate(wrap({ incident: { source: 's', severity: 'info', summary: 'x', ...over } })).join('\n');
     expect(inc({ summary: 'x'.repeat(121) })).toMatch(/120/);
-    expect(inc({ firstStep: 'x'.repeat(241) })).toMatch(/first step exceeds 240/);
-    expect(inc({ cause: 'x'.repeat(241) })).toMatch(/cause exceeds 240/);
+    expect(inc({ firstStep: 'x'.repeat(241) })).toMatch(/the first step is longer than 240/);
+    expect(inc({ cause: 'x'.repeat(241) })).toMatch(/the cause is longer than 240/);
     expect(inc({ cause: 'x'.repeat(240) })).toBe('');
-    expect(validate(wrap({ conditions: [{ expr: 'a = 1', description: 'x'.repeat(241) }] })).join('\n')).toMatch(/condition 1: description exceeds 240/);
-    expect(validate(wrap({ variables: [{ name: 'a', formula: '1', description: 'x'.repeat(241) }] })).join('\n')).toMatch(/variable "a": description exceeds 240/);
+    expect(validate(wrap({ conditions: [{ expr: 'a = 1', description: 'x'.repeat(241) }] })).join('\n')).toMatch(/condition 1: the description is longer than 240/);
+    expect(validate(wrap({ variables: [{ name: 'a', formula: '1', description: 'x'.repeat(241) }] })).join('\n')).toMatch(/variable "a": the description is longer than 240/);
   });
 
   it('flags a cooldown that is not a Go duration', () => {

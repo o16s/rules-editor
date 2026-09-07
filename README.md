@@ -7,7 +7,7 @@ parse / serialize / validate core and the formula language. Vanilla TypeScript,
 ## Install
 
 ```bash
-# HTTPS release tarball — works everywhere, including CI (no SSH key required)
+# HTTPS release tarball: works everywhere, including CI (no SSH key required)
 npm install "https://github.com/o16s/rules-editor/archive/refs/tags/v0.3.0.tar.gz"
 ```
 
@@ -37,7 +37,7 @@ right shows the selected rule as three sheets:
 |-------|---------|------------|
 | Variables | Name · Formula · Formula result · Description | a named formula, for example `temp = TAG("vibration1", "temperature")` |
 | When | Condition · Condition result · Description | a formula that must be true, for example `temp > 50` |
-| Then | Action · Field · Formula · Formula result | one field of an action: an MQTT topic or payload, or the alarm's source, title, first step, or cause |
+| Then | Action · Field · Formula | one field of an action: an MQTT topic or payload, or the incident's source, title, first step, or cause |
 
 The When heading reads "When **any** of these **becomes true**". The first
 control is the match mode (`any` or `all`). The second is the trigger
@@ -47,9 +47,9 @@ most once every `45s`".
 
 The result columns show live values when the host supplies them (see `monitor`
 below). Without a host value the cell shows a dash. A Then field that is plain
-text shows itself as its result. A Then field that is a formula shows a
-preview: constants are folded and `condition.description` is read from the
-first condition.
+text is sent as written and has no result. A Then field that is a formula shows
+a preview under its value: constants are folded and `condition.description` is
+read from the first condition.
 
 ## Use the editor
 
@@ -61,7 +61,7 @@ so it looks native inside octaview and works standalone.
 import { initRulesEditor } from '@octanis/rules-editor';
 
 const editor = initRulesEditor(document.getElementById('app')!, {
-  // start from a file on disk — parse errors are reported, not thrown:
+  // start from a file on disk. A parse error is reported, not thrown:
   initialXml: await (await fetch('/rules.xml')).text(),
   onChange: ({ xml, errors }) => {
     if (errors.length === 0) save(xml);
@@ -96,7 +96,7 @@ editor.destroy();    // tear down
 `setModel()` and `setXml()` keep the selected rule when it still exists.
 `setXml()` returns the validation messages, and a malformed file is reported
 there and leaves the editor unchanged. `refreshValues()` re-reads `monitor` for
-every result cell without a re-render; call it when your live values change (a
+every result cell without a re-render. Call it when your live values change (a
 poll, an MQTT message). `setMonitor()` and `setCatalog()` replace the callbacks
 given at mount.
 
@@ -132,7 +132,7 @@ tag closes the call.
 
 Typing a bare name in any formula cell lists the rule's **variables** (with
 their live value from `monitor`) and then the **functions** (with their
-signature). Picking a variable completes the name; picking a function writes
+signature). Picking a variable completes the name. Picking a function writes
 `NAME(`, and `TAG` goes straight on to the device list. This needs no catalog.
 In a Then field it applies once the field starts with `=`.
 
@@ -199,18 +199,19 @@ The same shape works in Vue, Svelte or plain DOM: mount once, then call
 The editor works down to 320px wide. It measures **its own container** with a
 `ResizeObserver` and sets `is-medium` (900px or less), `is-narrow` (560px or
 less) and `is-tight` (430px or less) on its root. Every responsive style keys
-off those classes; there is no media query. So it reflows when embedded in a
-narrow column on a wide screen, and a host that fixes it wider than a phone
-gets the wide layout with a sideways scroll, by design. Below 900px the rule
+off those classes, and there is no media query. So it reflows when it sits in a
+narrow column on a wide screen. A host that fixes it wider than the phone
+gets the wide layout and a sideways scroll, by design. Below 900px the rule
 rail folds into a select above the sheets.
 
 Below 560px the editor follows the phone model of Google Sheets. The sheet
 stays a sheet: columns keep their widths, the sheet scrolls sideways inside
 its frame, and the row numbers stay frozen on the left. Tabs show one sheet
 at a time (Variables, When, Then). A tap selects a cell. A formula bar at the
-bottom of the editor shows the cell's address and content; you edit there,
-and confirm with the tick or cancel with the cross. The bar also offers
-"Delete row" and shows the cell's validation message. Choice cells (Action,
+bottom of the editor shows the cell's address and content. You edit there, and
+confirm with the tick or cancel with the cross. The bar also offers a
+delete button that names what it removes ("Delete variable", "Delete action"),
+and it shows the cell's validation message. Choice cells (Action,
 match, trigger) open the native picker in place. Every control a finger can
 focus is 16px or larger, and the small ones have a 44px touch target.
 
@@ -231,8 +232,59 @@ appear in the cell they belong to, so both work without a mouse hover.
 Validation runs when a cell is committed, not while you type. On a desktop a
 cell commits on Enter, Tab, or when it loses focus, and Escape restores what
 it held. On a phone the bar commits on the tick, Enter, or when you tap
-another cell or a tab; the cross discards the draft. After a commit with an
+another cell or a tab. The cross discards the draft. After a commit with an
 error the bar stays open and shows the message.
+
+## Simulator
+
+The Simulator page (design 14a) runs one rule against signals you write, so
+a fault can be staged without touching the plant. Nothing on the page is
+written to the gateway.
+
+```ts
+import { initSimulator } from '@octanis/rules-editor';
+
+const sim = initSimulator(document.getElementById('sim'), {
+  rule: editor.getModel().rules[0],
+  catalog,                      // units and default values for the tags
+  signals: { 'plc1/AlarmActive': 'STEP(false, true, 180s)' },
+  stop: 600,                    // seconds
+  step: 1,                      // seconds between samples
+  onBack: () => showEditor(),   // shows "← rule name" at the top left
+});
+```
+
+The editor shows a **Simulator** button next to **XML** when you pass
+`onSimulate: (ruleIndex) => …` in its options. The host opens the page. The
+Storybook story "From editor" shows the flow.
+
+The page has three parts:
+
+- **Tags.** One row per tag the rule reads, with its signal formula. A signal
+  is one of `HOLD(value)`, `STEP(before, after, at)`, `RAMP(from, to, over)`,
+  `PULSE(low, high, period, width)` or `SINE(mean, amplitude, period)`. Times
+  are durations of the formula language (`180s`, `2min`, `1h`) or plain
+  seconds. A tag without a signal holds its catalog value.
+- **Timeline.** A tree: each condition opens to the variables it reads, each
+  variable to its tags. Every row shows its value at the cursor and a lane on
+  the shared clock: state bands with their text for true/false and text values,
+  a trace with a y-axis for numbers, a dashed line where a condition compares
+  the value with a constant. Click or drag on the lanes to move the cursor.
+  Dashed vertical lines mark where the rule fired.
+- **Log.** Condition changes, fires with the messages as sent (Then formulas
+  are evaluated with `condition.description`), and the cooldown that blocks
+  the next fire.
+
+The header reads "Run for 600 s", "Sample every 1 s" and the cursor position.
+Each section has a ⓘ button that opens one paragraph of help. The run repeats
+on every committed change, so "Run again" only repeats it.
+
+`simulate()` and `evaluateAt()` are exported for a host that wants the numbers
+without the page. The evaluator follows the function list in `FUNCTIONS`:
+`RATE` is the change per hour over the window, `CHANGED` is true in the sample
+where the value changed, `STALE` is true when the value did not change within
+the window, and `AVG` is the mean over the window. A time function without
+enough history reads nothing, and the cell shows a dash.
 
 ## Formulas
 
@@ -249,7 +301,7 @@ is plain text unless it starts with `=`; then it is a formula.
 | Field | `TAG("tag")` or `TAG("device", "tag")` |
 | Comparison | `=` `!=` `<` `<=` `>` `>=` (`<>` and `==` are accepted) |
 | Arithmetic | `+` `-` `*` `/`, and unary `-` |
-| Text | `&` joins strings; `""` inside a string is one quote |
+| Text | `&` joins strings. `""` inside a string is one quote |
 | Context | `condition.description`, the description of the condition that fired. Then fields only. |
 
 Functions, with the number of arguments:
@@ -268,11 +320,14 @@ Functions, with the number of arguments:
 Precedence, lowest first: `&`, comparisons, `+ -`, `* /`, unary `-`. Function
 names are case-insensitive and print upper-case.
 
-`validate()` checks that every formula parses, that every function exists with
-the right number of arguments, that every name resolves to a variable of the
-same rule, that variables do not refer to each other in a cycle, and that a
-condition is a boolean (a comparison, a logic function, or a field of unknown
-type), not a number or a string.
+`validate()` checks that:
+
+- every formula parses,
+- every function exists and has the right number of arguments,
+- every name resolves to a variable of the same rule,
+- no variable refers to itself through the others,
+- every condition is a boolean, not a number or a string. A comparison, a logic
+  function, or a field of unknown type counts as a boolean.
 
 The editor does not evaluate formulas. The gateway does. `FUNCTIONS` in
 `formula.ts` is the registry the gateway must implement.
@@ -286,7 +341,7 @@ import { parse, serialize, validate, RulesParseError } from '@octanis/rules-edit
 import type { RulesModel } from '@octanis/rules-editor';
 
 const model: RulesModel = parse(xml);   // throws RulesParseError on malformed input
-const errors = validate(model);         // string[]; [] means valid
+const errors = validate(model);         // string[], empty when the file is valid
 const xml = serialize(model);           // back to rules.xml
 ```
 
@@ -307,7 +362,7 @@ interface Rule {
 
 `validateIssues(model)` runs the same checks and returns the same messages, each
 with the place it belongs to: the rule index, the field, and the index of the
-variable, condition, or action. The editor uses it to mark the cell at fault; a
+variable, condition, or action. The editor uses it to mark the cell at fault, and a
 host can use it for the same purpose.
 
 ```ts
@@ -384,7 +439,7 @@ const xsd = readFileSync(new URL(RULES_XSD_PATH), 'utf8'); // file: URL in Node
   `device` are still accepted as input. A nested `<and>`/`<or>` (which folds
   into one row) can carry a `description` too; the top-level group cannot,
   because it is the match mode and has no row to keep one.
-- `<incident first_step="…" cause="…"/>`. `summary` is the alarm title and keeps
+- `<incident first_step="…" cause="…"/>`. `summary` is the incident title and keeps
   its 120-character cap. `first_step`, `cause`, and every `description` hold at
   most 240 characters.
 - A Then attribute that starts with `=` is a formula.
@@ -439,7 +494,7 @@ The editor writes at most one level: a bare `<cond>`, or one `<and>`/`<or>`
 with `<cond>` rows. Files from 0.2 can nest groups up to four levels deep.
 `parse()` folds a nested group into one row whose formula is `AND(…)` or
 `OR(…)`. The XSD unrolls the content model into four named levels to enforce
-that depth; a fifth level has no matching type. A description on a leaf inside
+that depth, and a fifth level has no matching type. A description on a leaf inside
 a folded group is dropped.
 
 ## The Go engine
@@ -477,26 +532,32 @@ and can deploy any branch by hand through "Run workflow". The repo's Pages
 source must be set to "GitHub Actions" once (Settings → Pages).
 
 `npm run storybook` serves on `0.0.0.0:6100`, so you can also open it from a
-phone on the same network — useful, since the layout responds to the width of
-the **container** it is mounted in, not the browser window.
+phone on the same network. That is useful, because the layout follows the width
+of the **container** the editor is mounted in, not the browser window.
 
 Stories live in `stories/` and import `src/` directly, so editing the component
-hot-reloads without `npm run build`. Every story has four harness controls:
+hot-reloads without `npm run build`. There are two sections, **Rules editor**
+and **Simulator**. The editor stories share five harness controls:
 
 | Control | What it is for |
 |---------|----------------|
 | `containerWidth` | Mount width (320, 360, 560, 800, 1180 px, or fluid). 560 and below is the phone model, 900 and below folds the rail. |
 | `theme` | Swap the host design tokens (`--accent`, `--ink`, `--font-body`, `--grid`, `--sheet-head`, …), which are the entire theming surface. |
-| `showOutput` | Live `rules.xml` + validation messages beside the editor. |
-| `liveValues` | Feed the result columns from a fixed set of values, as a host would through `monitor`. |
+| `showOutput` | Live `rules.xml` and validation messages beside the editor. |
+| `liveValues` | Feed the result columns from a fixed set of values, the way a host feeds them through `monitor`. |
+| `catalog` | Supply the devices and tags, so `TAG("` opens its menu. |
 
-The stories cover the design at desktop, tablet and phone widths, the empty and
-invalid states, a v0.2 and a v0.3 file, 50 rules, and a dark theme. The play
-stories (`PhoneFormulaBar`, `PhoneInvalidFormula`, `ActionToAlarm`, `XmlPanel`)
-drive the editor and check the XML, so they double as browser tests.
+The editor stories cover the design at desktop, tablet and phone widths, the
+empty and invalid states, a v0.2 and a v0.3 file, 50 rules, and a dark theme.
+The Simulator stories cover the page from design 14a, the same page at a phone
+width, a rule with no signals yet, and the flow from the editor's **Simulator**
+button. The play stories drive the UI and check the result, so they double as
+browser tests: `PhoneFormulaBar`, `PhoneInvalidFormula`, `Autocomplete`,
+`PhoneAutocomplete`, `ActionToIncident` and `XmlPanel` for the editor, and
+`FromEditor`, `EditSignal` and `InvalidSignal` for the Simulator.
 
-The mounted `RulesEditorHandle` is on `window.editor` in the preview frame, so
-`editor.getXml()` works from the browser console.
+The mounted handles are on `window.editor` and `window.simulator` in the
+preview frame, so `editor.getXml()` works from the browser console.
 
 Storybook is dev-only: it sits outside the `tsconfig` `rootDir`, so it never
 reaches `dist/` or the published package.

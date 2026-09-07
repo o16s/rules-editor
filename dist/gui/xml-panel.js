@@ -5,11 +5,14 @@ import { el, identifierAttrs } from './dom.js';
 export function createXmlPanel(deps) {
     const panel = el('div', { class: 're-xml', hidden: true });
     let textarea = null;
+    /** What the panel last wrote into the textarea; a different value is the user's paste. */
+    let synced = '';
     const copyBtn = el('button', { class: 're-link', type: 'button', onclick: () => copy() }, ['Copy XML']);
     const exportBtn = el('button', { class: 're-link', type: 'button', onclick: () => download() }, ['Download rules.xml']);
     function open() {
         const ta = identifierAttrs(el('textarea', { rows: 14, 'aria-label': 'rules.xml', spellcheck: false }));
         ta.value = deps.xml();
+        synced = ta.value;
         textarea = ta;
         const msg = el('div', { class: 're-xml-msg' });
         const file = el('input', { type: 'file', accept: '.xml,text/xml,application/xml', 'aria-label': 'Open a rules.xml file' });
@@ -65,7 +68,7 @@ export function createXmlPanel(deps) {
                 textarea.focus();
                 textarea.select();
             }
-            say('Selected, press copy');
+            say('Selected. Press Ctrl+C.');
         }
     }
     return {
@@ -77,8 +80,10 @@ export function createXmlPanel(deps) {
         else
             panel.hidden = true; },
         sync: (xml) => {
-            if (textarea && !panel.hidden && document.activeElement !== textarea)
-                textarea.value = xml;
+            if (!textarea || panel.hidden || document.activeElement === textarea || textarea.value !== synced)
+                return;
+            textarea.value = xml;
+            synced = xml;
         },
         gate: (issues) => {
             for (const btn of [copyBtn, exportBtn]) {

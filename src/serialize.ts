@@ -6,19 +6,28 @@ import type { Cond, Publish, Rule, RulesModel, Variable } from './model.js';
 
 const INDENT = '  ';
 
-/** Escape for a double-quoted attribute value. */
-function escDouble(v: string): string {
+/**
+ * Escape the characters every attribute value needs. Line breaks and tabs
+ * become character references: a parser turns a literal one into a space
+ * (attribute-value normalization), so a two-line cause would come back as one.
+ */
+function escText(v: string): string {
   return v
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/\n/g, '&#10;')
+    .replace(/\r/g, '&#13;')
+    .replace(/\t/g, '&#9;');
+}
+
+/** Escape for a double-quoted attribute value. */
+function escDouble(v: string): string {
+  return escText(v).replace(/"/g, '&quot;');
 }
 
 /** Escape for a single-quoted attribute value (quotes kept literal). */
-function escSingle(v: string): string {
-  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+const escSingle = escText;
 
 /**
  * Render `name="value"`, preferring single quotes when the value contains a

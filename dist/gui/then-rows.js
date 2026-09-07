@@ -7,6 +7,10 @@ export const THEN_LABEL = { topic: 'topic', payload: 'payload', source: 'source'
 export const THEN_ISSUE_FIELD = {
     topic: 'topic', payload: 'payload', source: 'source', summary: 'summary', firstStep: 'first_step', cause: 'cause',
 };
+/** Free-text fields: title, first step and cause. Topic, payload and source are names. */
+export const THEN_PROSE = new Set(['summary', 'firstStep', 'cause']);
+/** True for the first row of an action: the one that carries the Action choice. */
+export const isGroupHead = (row) => row.field === 'topic' || row.field === 'source';
 export function thenRows(rule) {
     const rows = [];
     rule.actions.forEach((_, index) => rows.push({ kind: 'publish', index, field: 'topic' }, { kind: 'publish', index, field: 'payload' }));

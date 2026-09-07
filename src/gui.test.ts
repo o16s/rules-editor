@@ -121,11 +121,49 @@ describe('rules editor component (jsdom)', () => {
     const rows = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'));
     const fields = rows.map((r) => r.querySelector('.re-cell-field')?.textContent);
     expect(fields).toEqual(['topic', 'payload', 'source', 'title', 'first step', 'cause']);
-    expect(rows[0].querySelector('.re-cell-result')?.textContent).toBe('camera/record');
+    // no result column: a literal is sent as written, a formula shows its preview under the value
+    expect(rows[0].querySelector('.re-cell-result')).toBeNull();
+    expect((rows[0].querySelector('.re-preview') as HTMLElement).hidden).toBe(true);
+    // one Action choice per action, on its first row; the rows under it continue the cell
     expect(rows[0].querySelector('select')?.value).toBe('publish');
-    expect(rows[3].querySelector('select')?.value).toBe('critical');
+    expect(rows[2].querySelector('select')?.value).toBe('critical');
+    expect(rows.map((r) => Boolean(r.querySelector('.re-cell-merged')))).toEqual([false, true, false, true, true, true]);
+    expect(rows[1].querySelector('select')).toBeNull();
+    expect(rows.map((r) => Boolean(r.querySelector('.re-remove')))).toEqual([true, false, true, false, false, false]);
     // cause = condition.description & "…" previews with the first condition's description
-    expect(rows[5].querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
+    const preview = rows[5].querySelector('.re-preview') as HTMLElement;
+    expect(preview.hidden).toBe(false);
+    expect(preview.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
+  });
+
+  it('keeps the phone keyboard off names, topics and payloads in the Then sheet; prose keeps it', () => {
+    const { root } = setup();
+    const off = (label: string) => inputByLabel(root, label).getAttribute('autocapitalize') === 'off';
+    expect(off('topic of row 1')).toBe(true);
+    expect(off('payload of row 2')).toBe(true);
+    expect(off('source of row 3')).toBe(true);
+    expect(off('title of row 4')).toBe(false);
+    expect(off('cause of row 6')).toBe(false);
+  });
+
+  it('does not fire onChange for a change of the selected rule', () => {
+    let changes = 0;
+    const { root } = setup({ onChange: () => changes++ });
+    expect(changes).toBe(1);
+    (root.querySelectorAll<HTMLElement>('.re-rail-row')[2]).click();
+    (root.querySelectorAll<HTMLElement>('.re-rail-row')[0]).click();
+    expect(changes).toBe(1);
+    type(inputByLabel(root, 'Condition 1'), 'temp > 61');
+    expect(changes).toBe(2);
+  });
+
+  it('the XML panel does not overwrite a pasted file that is not imported yet', () => {
+    const { root } = setup({ initialModel: wrap() });
+    button(root, 'XML').click();
+    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+    ta.value = '<rules/>';
+    type(inputByLabel(root, 'Condition 1'), 'temp > 61');
+    expect(ta.value).toBe('<rules/>');
   });
 
   it('fills result cells from the monitor callback, and shows a dash without one', () => {
@@ -162,8 +200,8 @@ describe('rules editor component (jsdom)', () => {
     button(root, 'Add rule').click();
     expect(root.querySelectorAll('.re-rail-row').length).toBe(7);
     expect(api.getModel().rules[6].name).toBe('new-rule');
-    expect(root.querySelector('.re-rail-row.is-selected .re-rail-meta')?.textContent).toBe('every cycle');
-    expect(root.querySelector('.re-rail-row .re-rail-meta')?.textContent).toBe('rising edge');
+    expect(root.querySelector('.re-rail-row.is-selected .re-rail-meta')?.textContent).toBe('while it is true');
+    expect(root.querySelector('.re-rail-row .re-rail-meta')?.textContent).toBe('when it becomes true');
   });
 
   it('duplicates a rule with a unique name and deletes from the rail', () => {
@@ -204,7 +242,9 @@ describe('rules editor component (jsdom)', () => {
     expect(api.getModel().rules[0].variables).toHaveLength(1);
     buttons(root, 'Delete condition')[1].click();
     expect(api.getModel().rules[0].conditions).toHaveLength(1);
-    buttons(root, 'Delete action')[2].click();
+    // one Delete per action, on its first row
+    expect(buttons(root, 'Delete action')).toHaveLength(2);
+    buttons(root, 'Delete action')[1].click();
     expect(api.getModel().rules[0].actions).toHaveLength(1);
   });
 
@@ -339,9 +379,9 @@ describe('rules editor component (jsdom)', () => {
   it('the Then preview follows a change of condition 1 description', () => {
     const { root } = setup();
     const cause = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'))[5];
-    expect(cause.querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\./);
+    expect(cause.querySelector('.re-preview')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\./);
     type(inputByLabel(root, 'Description of condition 1'), 'Alarm bit set');
-    expect(cause.querySelector('.re-cell-result')?.textContent).toMatch(/^Alarm bit set\./);
+    expect(cause.querySelector('.re-preview')?.textContent).toMatch(/^Alarm bit set\./);
   });
 
   it('refreshValues re-reads the monitor in place; setModel keeps the selected rule', () => {
@@ -389,12 +429,13 @@ describe('rules editor component (jsdom)', () => {
     const cellEl = input.closest('.re-cell') as HTMLElement;
     type(input, 'temp >');
     expect(cellEl.classList.contains('is-invalid')).toBe(true);
-    // the message sits under the row, across every column, not inside the cell
+    // the message sits inside the cell, under the value, and names no rule: the rule is on screen
     const row = cellEl.parentElement as HTMLElement;
-    const msg = row.querySelector(':scope > .re-msg') as HTMLElement;
-    expect(msg.textContent).toMatch(/column 7/);
+    const msg = cellEl.querySelector(':scope > .re-msg') as HTMLElement;
+    expect(msg.textContent).toMatch(/^Condition 1: .*column 7/);
+    expect(msg.textContent).not.toMatch(/Rule "/);
     expect(msg.hidden).toBe(false);
-    expect(cellEl.querySelector('.re-msg')).toBeNull();
+    expect(row.querySelector(':scope > .re-msg')).toBeNull();
     expect(root.querySelector('.re-rail-issues')?.textContent).toBe('1 issue');
     type(input, 'temp > 1');
     expect(cellEl.classList.contains('is-invalid')).toBe(false);
@@ -422,7 +463,7 @@ describe('rules editor component (jsdom)', () => {
     const { root } = setup({ initialModel: wrap({ conditions: [], actions: [], incident: null }) });
     expect(root.querySelector('.re-sheet-block.is-invalid .re-sheet-when')).toBeTruthy();
     expect(root.querySelector('.re-pane-body.is-invalid')).toBeTruthy();
-    expect(root.querySelector('.re-pane-body > .re-msg')?.textContent).toMatch(/actions.*incident/i);
+    expect(root.querySelector('.re-pane-body > .re-msg')?.textContent).toMatch(/add an action in Then/i);
   });
 
   it('keeps whole-file issues on the status line', () => {
@@ -572,14 +613,15 @@ describe('rules editor component (jsdom)', () => {
     const { root } = setup();
     const labels = new Set(Array.from(root.querySelectorAll('.re-cell')).map((c) => c.getAttribute('data-label')));
     expect([...labels].sort()).toEqual(['Action', 'Condition', 'Condition result', 'Description', 'Field', 'Formula', 'Formula result', 'Name']);
+    expect(root.querySelector('.re-sheet-then .re-cell-result')).toBeNull();
   });
 
   it('shows the error as text, not only as a hover tooltip', () => {
     const { root } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: '' }] }) });
-    const field = inputByLabel(root, 'Formula of variable 1').closest('.re-row') as HTMLElement;
+    const field = inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement;
     const msg = field.querySelector('.re-msg') as HTMLElement;
     expect(msg, 'no visible message under the field').toBeTruthy();
-    expect(msg.textContent).toMatch(/no formula/);
+    expect(msg.textContent).toBe('Variable "temp" has no formula.');
     expect(msg.hidden).toBe(false);
   });
 
@@ -621,6 +663,8 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
   const visibleBlocks = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>('.re-sheet-block')).filter((b) => !b.hidden);
   const bar = (root: HTMLElement) => root.querySelector('.re-bar') as HTMLElement;
   const barInput = (root: HTMLElement) => root.querySelector('.re-bar input') as HTMLInputElement;
+  /** A button of the formula bar; the sheets have delete buttons with the same names. */
+  const barButton = (root: HTMLElement, label: string) => button(bar(root), label);
   const tab = (root: HTMLElement, name: string) => Array.from(root.querySelectorAll<HTMLButtonElement>('.re-tab')).find((t) => t.textContent?.startsWith(name))!;
 
   it('sets is-narrow from the container width, and not when wide', () => {
@@ -661,6 +705,18 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(barInput(root).getAttribute('autocapitalize')).toBe('off');
     // the keyboard does not open on tap: nothing inside the cell has focus
     expect(cellEl.contains(document.activeElement)).toBe(false);
+  });
+
+  it('tapping the selected cell again keeps the value Cancel goes back to', () => {
+    const { root, api } = narrowSetup({ initialModel: wrap() });
+    const cellEl = inputByLabel(root, 'Condition 1').closest('.re-cell') as HTMLElement;
+    cellEl.click();
+    draft(barInput(root), 'temp > 99');
+    cellEl.click();
+    expect(barInput(root).value).toBe('temp > 99');
+    button(root, 'Cancel').click();
+    expect(cellEl.querySelector('.re-formula-view')?.textContent).toBe('=temp > 50');
+    expect(api.getXml()).toContain('expr="temp &gt; 50"');
   });
 
   it('the bar holds a draft; the cross discards it, the tick or Enter commits it', () => {
@@ -764,7 +820,7 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(barInput(root).value).toBe('48.2 °C');
     expect(button(root, 'Done').hidden).toBe(true);
     expect(button(root, 'Cancel').hidden).toBe(true);
-    expect(button(root, 'Delete row').hidden).toBe(false);
+    expect(barButton(root, 'Delete variable').hidden).toBe(false);
   });
 
   it('a choice cell keeps its native picker and does not open the bar', () => {
@@ -774,11 +830,25 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(bar(root).classList.contains('is-open')).toBe(false);
   });
 
-  it('Delete row in the bar removes the selected row', () => {
+  it('the bar says what Delete removes: a row, or the whole action', () => {
+    const { root } = narrowSetup();
+    const cellOf = (label: string) => inputByLabel(root, label).closest('.re-cell') as HTMLElement;
+    cellOf('Name of variable 1').click();
+    expect(barButton(root, 'Delete variable').hidden).toBe(false);
+    cellOf('Condition 1').click();
+    expect(barButton(root, 'Delete condition').hidden).toBe(false);
+    // a Then field belongs to its action, and Delete removes the action
+    cellOf('payload of row 2').click();
+    expect(barButton(root, 'Delete action').hidden).toBe(false);
+    cellOf('cause of row 6').click();
+    expect(barButton(root, 'Delete incident').hidden).toBe(false);
+  });
+
+  it('the bar delete removes the selected row', () => {
     const { root, api } = narrowSetup({ initialModel: wrap({ variables: [{ name: 'a', formula: '1' }, { name: 'b', formula: '2' }], conditions: [{ expr: 'a = 1' }] }) });
     (inputByLabel(root, 'Name of variable 2').closest('.re-cell') as HTMLElement).click();
     expect(root.querySelector('.re-bar-address')?.textContent).toBe('b · Name');
-    button(root, 'Delete row').click();
+    barButton(root, 'Delete variable').click();
     expect(api.getModel().rules[0].variables.map((v) => v.name)).toEqual(['a']);
     expect(bar(root).classList.contains('is-open')).toBe(false);
   });
@@ -822,7 +892,7 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(select.value).toBe('publish');
     choose(select, 'warning');
     // the label follows the choice, and the model too
-    expect((root.querySelector('.re-sheet-then .re-cell-pick .re-pick-label') as HTMLElement).textContent).toBe('Raise warning alarm');
+    expect((root.querySelector('.re-sheet-then .re-cell-pick .re-pick-label') as HTMLElement).textContent).toBe('Raise warning incident');
     const css = document.getElementById('octaview-rules-editor-styles')!.textContent ?? '';
     expect(css).toMatch(/\.re-pick select\s*\{[^}]*opacity:\s*0/);
     expect(css).toMatch(/\.re-pick select\s*\{[^}]*font-size:\s*16px/);
@@ -933,6 +1003,17 @@ describe('TAG("…") autocomplete', () => {
     const outside = css.replace(hoverBlock, '');
     expect(outside).not.toMatch(/:hover/);
     expect(input.getAttribute('autocomplete')).toBe('off');
+  });
+
+  it('a complete name has nothing to pick: Enter commits it even while a longer name is listed', () => {
+    const { root, api } = setup({ initialModel: wrap({ variables: [{ name: 'temp', formula: 'TAG("t")' }, { name: 'temp_rate', formula: 'RATE(temp, 30min)' }] }) });
+    const input = inputByLabel(root, 'Condition 1');
+    typeAt(input, 'temp');
+    expect(items(root)).toEqual(['temp', 'temp_rate']);
+    key(input, 'Enter');
+    expect(menu(root).hidden).toBe(true);
+    expect(input.value).toBe('temp');
+    expect(api.getXml()).toContain('expr="temp"');
   });
 
   it('completes the rule\'s variables and the functions in a bare name; Tab accepts; TAG chains into the device list', () => {
