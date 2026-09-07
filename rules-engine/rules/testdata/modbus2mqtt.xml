@@ -1,0 +1,47 @@
+<!-- Example rules file for modbus2mqtt.
+     Device names must match config.yaml device names.
+     Tag names must match the driver's decoded field names.
+     See driver.DiscoverFieldTypes() for available fields per driver. -->
+<rules>
+
+  <!-- NeoPool flow-detection bypass: ALWAYS_ON (1) means the hydrolysis cell
+       runs without flow supervision. This is the safety-bypass state the
+       gateway must alarm on. -->
+  <rule name="pool1-flow-bypass" edge="rising">
+    <cond device="pool1" tag="flow_signal" op="eq" value="1"/>
+    <incident source="pool1" severity="critical"
+              summary="Hydrolysis flow detection bypassed (ALWAYS_ON)"/>
+  </rule>
+
+  <!-- pH out of band while the measurement is valid. -->
+  <rule name="pool1-ph-high" cooldown="10m" edge="rising">
+    <and>
+      <cond device="pool1" tag="ph_valid" op="eq" value="true"/>
+      <cond device="pool1" tag="ph" op="gt" value="7.8"/>
+    </and>
+    <incident source="pool1" severity="warning"
+              summary="Pool pH above 7.8"/>
+  </rule>
+
+  <!-- Pump fault: any non-zero error code raises an incident and stops the
+       pump via its own command topic. -->
+  <rule name="pump1-fault" cooldown="60s" edge="rising">
+    <cond device="pump1" tag="error_code" op="neq" value="0"/>
+    <actions>
+      <publish topic="modbus/pump1/param/set_running" payload='{"value": false}'/>
+    </actions>
+    <incident source="pump1" severity="error"
+              summary="BADU pump reports a fault"/>
+  </rule>
+
+  <!-- Cold water + heating on: plausibility check across two devices. -->
+  <rule name="pool1-heating-ineffective" cooldown="30m" edge="rising">
+    <and>
+      <cond device="pool1" tag="heating_on" op="eq" value="true"/>
+      <cond device="pool1" tag="temperature_c" op="lt" value="10"/>
+    </and>
+    <incident source="pool1" severity="warning"
+              summary="Heating on but water below 10 C"/>
+  </rule>
+
+</rules>

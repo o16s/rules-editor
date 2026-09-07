@@ -1,0 +1,59 @@
+<!-- Example rules file for tsend2mqtt.
+     Tag names must match the .udt field names exactly.
+     See docs/rules.md for the full schema reference.
+     See docs/events-protocol.md for the incident protocol spec. -->
+<rules>
+
+  <!-- Action + incident: trigger camera recording AND notify humans. -->
+  <rule name="alarm-camera" cooldown="45s" edge="rising">
+    <cond tag="Bool137" op="eq" value="true"/>
+    <actions>
+      <publish topic="camera/record" payload='{"duration":40}'/>
+    </actions>
+    <incident severity="critical" summary="PLC alarm Bool137 active"/>
+  </rule>
+
+  <!-- Multiple actions from one rule: trigger 4 cameras simultaneously. -->
+  <rule name="alarm-all-cams" cooldown="45s" edge="rising">
+    <and>
+      <cond tag="Int93" op="changed"/>
+      <cond tag="Int93" op="neq" value="0"/>
+    </and>
+    <actions>
+      <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"alarm"}'/>
+      <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"alarm"}'/>
+      <publish topic="sensingcam/sick3/trigger" payload='{"event_name":"alarm"}'/>
+      <publish topic="sensingcam/sick4/trigger" payload='{"event_name":"alarm"}'/>
+    </actions>
+  </rule>
+
+  <!-- Compound AND with incident: alarm active AND temperature high. -->
+  <rule name="alarm-hot" cooldown="30s" edge="rising">
+    <and>
+      <cond tag="Bool137" op="eq" value="true"/>
+      <cond tag="Real70" op="geq" value="85.0"/>
+    </and>
+    <actions>
+      <publish topic="alerts/critical" payload='{"alert":"hot_alarm"}'/>
+    </actions>
+    <incident severity="critical" summary="Alarm active while temperature high"/>
+  </rule>
+
+  <!-- Incident only: alert humans, no local side-effect. -->
+  <rule name="high-temp-alert" cooldown="60s">
+    <cond tag="Real70" op="geq" value="90.0"/>
+    <incident severity="warning" summary="Temperature exceeds 90C"/>
+  </rule>
+
+  <!-- Action only: forward data to another topic, no human notification. -->
+  <rule name="any-alert" cooldown="10s">
+    <or>
+      <cond tag="Bool137" op="eq" value="true"/>
+      <cond tag="Int93" op="geq" value="100"/>
+    </or>
+    <actions>
+      <publish topic="alerts/any" payload='{"alert":"any"}'/>
+    </actions>
+  </rule>
+
+</rules>

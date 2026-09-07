@@ -1,0 +1,64 @@
+<!-- Example rules file for iolinkmaster2mqtt.
+     Device names must match config.yaml port names.
+     Tag names must match the driver's decoded field names.
+     See driver.DiscoverFieldTypes() for available fields per driver.
+
+     MPB10 alert bits: alert_vrms_max, alert_vrms_prewarn, alert_acc_peak, alert_temp
+     Reset command:    iolink/<name>/param/reset_alerts with payload {} -->
+<rules>
+
+  <!-- vibration1: any vibration/shock alarm triggers all cameras, then resets. -->
+  <rule name="vibration1-alarm" cooldown="30s" edge="rising">
+    <or>
+      <cond device="vibration1" tag="alert_vrms_max" op="eq" value="true"/>
+      <cond device="vibration1" tag="alert_vrms_prewarn" op="eq" value="true"/>
+      <cond device="vibration1" tag="alert_acc_peak" op="eq" value="true"/>
+    </or>
+    <actions>
+      <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"vibration1_alarm"}'/>
+      <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"vibration1_alarm"}'/>
+      <publish topic="sensingcam/sick3/trigger" payload='{"event_name":"vibration1_alarm"}'/>
+      <publish topic="sensingcam/sick4/trigger" payload='{"event_name":"vibration1_alarm"}'/>
+      <publish topic="iolink/vibration1/param/reset_alerts" payload='{}'/>
+    </actions>
+    <incident source="vibration1" severity="warning"
+              summary="Vibration1 alarm triggered"/>
+  </rule>
+
+  <!-- vibration2 -->
+  <rule name="vibration2-alarm" cooldown="30s" edge="rising">
+    <or>
+      <cond device="vibration2" tag="alert_vrms_max" op="eq" value="true"/>
+      <cond device="vibration2" tag="alert_vrms_prewarn" op="eq" value="true"/>
+      <cond device="vibration2" tag="alert_acc_peak" op="eq" value="true"/>
+    </or>
+    <actions>
+      <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"vibration2_alarm"}'/>
+      <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"vibration2_alarm"}'/>
+      <publish topic="sensingcam/sick3/trigger" payload='{"event_name":"vibration2_alarm"}'/>
+      <publish topic="sensingcam/sick4/trigger" payload='{"event_name":"vibration2_alarm"}'/>
+      <publish topic="iolink/vibration2/param/reset_alerts" payload='{}'/>
+    </actions>
+    <incident source="vibration2" severity="warning"
+              summary="Vibration2 alarm triggered"/>
+  </rule>
+
+  <!-- vibration3 -->
+  <rule name="vibration3-alarm" cooldown="30s" edge="rising">
+    <or>
+      <cond device="vibration3" tag="alert_vrms_max" op="eq" value="true"/>
+      <cond device="vibration3" tag="alert_vrms_prewarn" op="eq" value="true"/>
+      <cond device="vibration3" tag="alert_acc_peak" op="eq" value="true"/>
+    </or>
+    <actions>
+      <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"vibration3_alarm"}'/>
+      <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"vibration3_alarm"}'/>
+      <publish topic="sensingcam/sick3/trigger" payload='{"event_name":"vibration3_alarm"}'/>
+      <publish topic="sensingcam/sick4/trigger" payload='{"event_name":"vibration3_alarm"}'/>
+      <publish topic="iolink/vibration3/param/reset_alerts" payload='{}'/>
+    </actions>
+    <incident source="vibration3" severity="warning"
+              summary="Vibration3 alarm triggered"/>
+  </rule>
+
+</rules>
