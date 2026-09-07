@@ -412,6 +412,8 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
   };
   tree.addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement).closest('.rs-label')) return;
+    // A drag moves the cursor; it must not start a text selection across the rows.
+    if (e.pointerType === 'mouse') e.preventDefault();
     dragging = true;
     tree.setPointerCapture?.(e.pointerId);
     cursorFromEvent(e);
@@ -574,6 +576,8 @@ const STYLES = `
 .rs-tick { position:absolute; top:6px; transform:translateX(-50%); font-size:11px; color:var(--re-muted); white-space:nowrap; }
 .rs-tick.is-first { transform:translateX(4px); }
 .rs-tick.is-last { transform:translateX(calc(-100% - 4px)); }
+/* The lanes are a scrub surface: no text selection while the cursor is dragged. */
+.rs-tree, .rs-tl-head { user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
 .rs-lane { display:grid; align-items:center; border-bottom:1px solid var(--re-grid); }
 .rs-lane:last-child { border-bottom:none; }
 .rs-lane.is-condition { background:var(--re-paper); }

@@ -195,6 +195,20 @@ describe('simulator page (jsdom)', () => {
     expect(document.getElementById('octaview-rules-simulator-styles')).toBeTruthy();
   });
 
+  it('does not select text while the cursor is dragged', () => {
+    const { root } = setup();
+    const css = document.getElementById('octaview-rules-simulator-styles')?.textContent ?? '';
+    expect(css).toMatch(/\.rs-tree, \.rs-tl-head \{[^}]*user-select:none/);
+    const plot = root.querySelector('.rs-plot') as HTMLElement;
+    const down = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', clientX: 10 });
+    plot.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    // a touch keeps its default, so the page can still scroll
+    const touch = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch', clientX: 10 });
+    plot.dispatchEvent(touch);
+    expect(touch.defaultPrevented).toBe(false);
+  });
+
   it('reads seconds in the forms the header accepts', () => {
     expect(parseSeconds('600 s')).toBe(600);
     expect(parseSeconds('600')).toBe(600);
