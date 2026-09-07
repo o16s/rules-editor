@@ -103,10 +103,10 @@ the lifecycle links to the module README, so one text describes one behavior.
 
 ## 6. Order of the work
 
-1. Merge the engine branch in rules-editor and tag `rules-engine/v0.3.1`.
-2. Let edge-hub adopt schema 0.3.1, so the hub and the services agree on what a file may hold (SYSREQ-016).
-3. modbus2mqtt, then iolinkmaster2mqtt, then tsend2mqtt. Each is one pull request: adapter, rule file, documentation and the behavior test of SWREQ-017.
-4. Deploy one service, watch its incidents for a day, then the next.
+1. Merge the engine branch in rules-editor and tag `rules-engine/v0.3.1`. **Done.**
+2. Let edge-hub adopt the schema version, so the hub and the services agree on what a file may hold (SYSREQ-016).
+3. modbus2mqtt, then iolinkmaster2mqtt, then tsend2mqtt. Each is one branch: adapter, rule file, documentation and the behavior test of SWREQ-017. **All three done, on `rules-engine/v0.4.2`.**
+4. Deploy one service, watch its incidents for a day, then the next. **Open.**
 
 ## 7. Tests each service adds
 
