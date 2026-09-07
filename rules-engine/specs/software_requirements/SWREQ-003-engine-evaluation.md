@@ -51,12 +51,21 @@ Per rule:
 - The incident state machine of SWREQ-004 comes after the actions.
 - `FieldRefs` and `HasTime` come from the condition program only. A slot that only a Then field references does not make the rule due.
 
+### Which rules evaluate
+
+A rule evaluates when one of its slots moved, when it reads a clock, or when
+its edge is `EdgeNone` (ADR-025). A pulse re-arms the edge of a rule only when
+the row that made the rule true is itself a pulse.
+
 ## Acceptance Criteria
 
 - Every `TestEngine_*` and `TestEngineEval_*` test of the three services passes.
 - A rule with two changed slots in one call is evaluated once.
 - Two rules that fire in one call return their actions in document order, whatever the slot order.
-- A rule with no changed slot and no time function is not evaluated.
+- A rule with a rising edge, no changed slot and no time function is not evaluated.
+- A rule without a rising edge and with a cooldown fires once per cooldown while its condition holds, on a value that never moves again.
+- A rule whose level rose once, and which has a pulse row elsewhere, fires once.
+- A rule whose only row is a pulse fires on every pulse.
 - `Eval(nil, now)` returns `nil, nil`.
 - 0 allocs/op in the benchmark of SYSREQ-008.
 

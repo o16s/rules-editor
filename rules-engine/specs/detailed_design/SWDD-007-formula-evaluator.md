@@ -56,6 +56,20 @@ func (v Value) Truth() bool  // Bool true only; everything else false
 - `Unknown` in a comparison gives `Unknown`. `AND(Unknown, false)` is `false`. `OR(Unknown, true)` is `true`. Other mixes give `Unknown`.
 - The stack cannot overflow: `depth` is computed at compile time and checked in `NewEngine`.
 
+## The short-circuit and memory
+
+`AND` and `OR` compile to a fold per argument, and each fold jumps to the end
+of the call once an argument decides the answer.
+
+A call whose arguments reserved memory keeps its folds pointing at the next
+instruction instead, so every argument runs every time (ADR-023). `CHANGED`,
+`PREV` and `EWMA` answer from what they saw at every evaluation, and a skipped
+evaluation is a hole in that memory.
+
+The fold carries the rule that makes this safe: an accumulator that already
+decided the answer absorbs what follows it, so `AND(false, unknown)` stays
+false and `OR(true, unknown)` stays true.
+
 ## Notes
 
 ADR-011.

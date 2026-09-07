@@ -1,65 +1,111 @@
 ---
 id: "SWDD-008"
 type: software_detailed_design
-name: "Time windows: bucket rings and last-change times"
+name: "Time windows: bucket rings, smoothed values and last-change times"
 description: >
-  Each STALE, RATE or AVG node owns a ring of 64 buckets. The engine updates
-  the rings on every Eval before the rules.
+  Each window node owns a ring of 64 buckets, each EWMA node owns one number,
+  and the engine advances both on every Eval before the rules run.
 satisfies:
   - "SWREQ-010"
 ---
 
-# Software Implementation: Time windows: bucket rings and last-change times
+# Software Implementation: Time windows: bucket rings, smoothed values and last-change times
 
 ## Overview
 
 A ring is fixed memory for one slot and one window. `Load` collects the
-distinct pairs of slot and window over all rules, at most 256, and
-`NewEngine` allocates one ring per pair. Nothing grows after that.
+distinct pairs of slot and window over all rules, at most 256, and `NewEngine`
+allocates one ring per pair. A smoothed value is one number for one pair of a
+slot and a time constant, at most 256 of those. Nothing grows after that.
+
+The engine and the editor's simulator share one implementation of this, the
+`history` type, so the two cannot advance the past differently.
 
 ## Static View (Structure)
 
 ```go
-type bucket struct { start time.Time; first, last, sum float64; count int32 }
-type ring struct {
+type bucket struct {
+    start                        time.Time
+    first, last, sum, sumSq      float64
+    min, max                     float64
+    count                        int32
+}
+
+type Window struct {
     slot   int
     window time.Duration
-    width  time.Duration   // max(window / 64, Period)
-    n      int             // buckets in use: window / width, at most 64
+    width  time.Duration // max(window/64, Catalog.Period)
+    n      int           // buckets in use, at most 64
+    head   int
     b      [64]bucket
-    head   int             // bucket of the newest sample
+}
+
+type Ewma struct {
+    slot  int
+    tau   time.Duration
+    value float64
+    last  time.Time
+    set   bool
+}
+
+// history is what the engine remembers between two evaluations. The engine
+// owns one; so does rules.SimResolver, which the Simulator page compiles
+// against.
+type history struct {
+    lastChange    []time.Time
+    prevValues    []any
+    windows       []*formula.Window
+    windowsBySlot [][]int
+    ewmas         []*formula.Ewma
+    ewmasBySlot   [][]int
+    changed       []bool
 }
 ```
 
-`Engine.lastChange []time.Time` has one entry per slot.
+A bucket carries enough to answer every window function without keeping the
+readings, so the memory of a window does not depend on the poll rate. It is
+about 5 KB, and 256 of them are about 1.3 MB.
 
 ## Dynamic View (Logic)
 
-On each `Eval`, before the rules: for each ring, compute the bucket index of
-`now`. Advance `head` and clear the buckets between the old head and the new
-one, bounded by 64. If the slot changed in this call and is numeric, add the
-value to the head bucket. Then:
+`history.advance(values, now)`, once per `Eval`, before any rule runs:
 
-- `STALE(x, d)`: `Slots[x] == nil || now.Sub(lastChange[x]) >= d`. `d` is `DefaultStaleWindow`, 4h, when the formula names none.
-- `RATE(x, w)`: find the oldest non-empty bucket in the window and the newest. `(newest.last - oldest.first) / w.Hours()`. With fewer than two samples, Unknown. The scan for the oldest bucket stops before it wraps onto the head, so a window whose samples all sit in one bucket is handled by the head-only branch. The divisor is the nominal window, so a ramp reads short by up to one bucket, which is one part in 64.
-- `AVG(x, w)`: `sum(sum) / sum(count)` over non-empty buckets. `Unknown` when the count is 0.
+1. Move every ring to `now`. A bucket that left the window is cleared. A clock that moved backwards resets the ring.
+2. For each slot, in order:
+   - a reading the engine cannot read counts as unsupported and is skipped;
+   - the reading is recorded in every window that follows the slot, and folded into every smoothed value that follows it, **whether or not it moved** (ADR-022);
+   - if it moved, `lastChange` is set and the slot is marked changed.
 
-Time rules evaluate on every call, so a ring that only expires still moves
-the result.
+The windows and the smoothed values are indexed by slot, so a slot that carries
+neither costs one length check. Without that index the cost would be the
+product of slots and windows on every call.
+
+`history.keep(values)` copies the readings after the rules have run, so the
+next call can tell what moved.
+
+Reading a window:
+
+- `Rate` = `(newest.last - oldest.first) / hours(newest.start - oldest.start)`. The span is the time between the two readings used, not the width of the window (ADR-022), so a window that is not yet full reports the rate of what it holds. Readings in one bucket give no span.
+- `Avg`, `Count`, `Min`, `Max`, `StdDev` and `ZScore` fold the buckets. `Delta` reads the first of the oldest and the last of the newest.
+- `Slope` fits a least-squares line through one point per filled bucket, at the middle of the bucket, weighted by the readings in it. The loop is bounded by the 64 buckets.
+- `Forecast` is the current reading plus the slope times the horizon.
+
+`Ewma.Add` weights a reading by the time since the one before it:
+`alpha = 1 - exp(-dt / tau)`. The first reading becomes the average itself.
 
 ## Interface & API Definitions
 
-`formula.Window` holds the ring, because the evaluator reads it: `NewWindow`,
-`Advance`, `Add`, `Reset`, `Rate` and `Avg`. `STALE` needs no ring; it reads
-`Env.LastChange`, which the engine keeps per slot. The `rules` package
-allocates one `Window` per specification the loader collected.
+`formula.Window` and `formula.Ewma` are exported so the compiler can name
+them. `rules.SimResolver` exposes `Env`, `Advance` and `Stack` for the
+Simulator page, and adds no behavior of its own.
 
 ## Error Handling & Edge Cases
 
-- A clock that moves backwards clears the ring, resets `lastChange` to `now`, and increments `Stats.ClockStepsBack`.
-- A window shorter than 64 periods uses fewer buckets. `Catalog.Period` of zero with a time function is a `Load` problem.
-- A `Reset` clears every ring.
+- A window with no reading answers `Unknown` for everything except `Count`, which answers 0.
+- `ZScore` against a window with no spread is `Unknown`, not an infinity.
+- `Reset` clears every ring and every smoothed value: a reconnect cannot vouch for what happened while it was not reading.
+- A window shorter than 64 periods gets fewer buckets. Nothing is logged.
 
 ## Notes
 
-ADR-005 gives the meaning of `STALE`.
+ADR-022 records the window model and the denominator of `RATE`.

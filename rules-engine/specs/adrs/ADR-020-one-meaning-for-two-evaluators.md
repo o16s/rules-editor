@@ -5,7 +5,7 @@ name: "One meaning for two evaluators"
 description: >
   The editor simulates a rule in TypeScript and the gateway runs it in Go. A
   shared case file holds both to one answer.
-status: accepted
+status: superseded
 deciders:
   - "octanis engineering"
 justifies:

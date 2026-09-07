@@ -13,12 +13,12 @@ The module has no dependency outside the Go standard library.
 ## Install
 
 ```bash
-go get github.com/o16s/rules-editor/rules-engine@v0.3.1
+go get github.com/o16s/rules-editor/rules-engine@v0.4.0
 ```
 
-The module lives in a subdirectory, so its git tag is `rules-engine/v0.3.1`.
+The module lives in a subdirectory, so its git tag is `rules-engine/v0.4.0`.
 Go maps the path suffix to that tag prefix by itself, so the version string
-stays `v0.3.1`. Do not write `@rules-engine/v0.3.1`: Go rejects it as an
+stays `v0.4.0`. Do not write `@rules-engine/v0.4.0`: Go rejects it as an
 invalid version. The npm package keeps the plain `vX.Y.Z` tags.
 
 The repository is public, so a build needs no credential. For a private fork,
@@ -82,12 +82,12 @@ Copy what you keep.
 
 | Subject | Rule |
 |---------|------|
-| When a rule runs | One of the slots its condition reads changed, or its condition uses `STALE`, `RATE` or `AVG`. |
+| When a rule runs | One of the slots its condition reads changed, or its condition reads a clock, or it has no rising edge. |
 | Order | The rules of one evaluation fire in the order of the file. The actions of one rule fire in the order of the document. |
-| `edge="none"` | Fires on every evaluation where the condition is true. |
+| `edge="none"` | Fires on every evaluation where the condition is true, subject to the cooldown. |
 | `edge="rising"` | Fires on the change from false to true. |
 | `cooldown` | The minimum time between two firings. It covers the actions and the incident trigger. It never delays a resolve. A rising edge inside the cooldown is consumed, so a rule that resets its own condition needs a second rule without a cooldown. |
-| `CHANGED` | True when the value differs from the last known value. The first value after a start is not a change, and neither is a value going unknown. |
+| `CHANGED` | True when the value differs from the last known value. The first value after a start is not a change, and neither is a value going unknown. A rule that fires on a pulse re-arms its edge, and only the row that fired decides that. |
 | Incident | Triggers on a rising edge outside the cooldown, resolves on a falling edge while it is open, whatever `edge` says. |
 | After a restart | Every incident rule starts active. The first evaluation resolves an alarm whose cause is gone, and triggers one whose cause is still there. |
 | Unknown values | Every comparison with an unknown value is false. A rule whose device went offline resolves its incident. |
@@ -95,38 +95,89 @@ Copy what you keep.
 
 ## The formula language
 
-The registry is `../schema/formula-functions.json`.
-`../schema/formula-cases.json` holds the text both this module and the editor
-must read the same way, and `../schema/eval-cases.json` the answers both must
-give: the editor simulates a rule in TypeScript before it reaches a gateway,
-and this module then runs it (ADR-020).
+The registry is `../schema/formula-functions.json`, and it carries the help
+text and a small example for each function, so the editor and this module
+describe a function the same way. `../schema/formula-cases.json` holds the text
+both must read the same way, and `../schema/eval-cases.json` the answers this
+module must give. The editor runs this module, compiled to WebAssembly, so
+there is one implementation and those cases are its specification test
+(ADR-024).
+
+### Values and logic
 
 | Function | Result |
 |----------|--------|
 | `TAG(tag)`, `TAG(device, tag)` | the current value of a field |
 | `AND(a, b, …)`, `OR(a, b, …)`, `NOT(a)` | boolean logic, with short-circuit evaluation |
-| `CHANGED(x)` | true in the cycle where `x` changed |
-| `STALE(x, 4h)` | true when `x` is unknown, or did not change within the duration. Without a duration it uses 4h |
-| `RATE(x, 30min)` | the change of `x` per hour over the window, and unknown while the window holds fewer than two samples |
-| `AVG(x, 10min)` | the mean of `x` over the window |
 | `BITAND`, `BITOR`, `BITXOR`, `HEX2DEC` | integer operations |
 
 Operators, lowest precedence first: `&`, then `= != < <= > >=`, then `+ -`,
 then `* /`, then unary `-`. `&` joins text.
 
-A comparison between kinds that have no common meaning is unknown, which
-reads as false in a condition. A boolean compared with `1` or `0` keeps the
-meaning of the 0.2 form, and a boolean compared with any other number is
-false. Two strings order by code point.
+A comparison between kinds that have no common meaning is unknown, which reads
+as false in a condition. A boolean compared with `1` or `0` keeps the meaning
+of the 0.2 form, and a boolean compared with any other number is false. Two
+strings order by code point.
 
-The editor's simulator evaluates the same language in TypeScript.
-`../schema/eval-cases.json` holds the answers both implementations must give,
-and both test suites read it (ADR-020).
+### History
 
-`STALE`, `RATE` and `AVG` need a field, not an expression, and a literal
-duration. Their history is a ring of at most 64 buckets per field and
-duration, allocated once. A rate divides by the nominal window, so a ramp
-reads short by up to one bucket.
+These read what the field did, not only what it reads now.
+
+| Function | Result |
+|----------|--------|
+| `CHANGED(x)` | true in the evaluation where `x` changed |
+| `PREV(x)` | the value `x` held before its last change |
+| `SINCE(x)` | seconds since `x` last changed |
+| `STALE(x, 4h)` | true when `x` is unknown, or did not change within the duration. Without a duration it uses 4h |
+
+### Over a window
+
+| Function | Result |
+|----------|--------|
+| `AVG(x, 10min)` | the mean of the readings |
+| `MIN(x, 10min)`, `MAX(x, 10min)` | the smallest and the largest reading; a peak one poll would miss |
+| `COUNT(x, 1h)` | how many readings the window holds |
+| `DELTA(x, 15min)` | the newest reading minus the oldest |
+| `RATE(x, 30min)` | the change per hour between those two readings |
+| `STDDEV(x, 30min)` | how much the readings spread around their mean |
+| `ZSCORE(x, 2h)` | how unusual the current reading is against that spread |
+| `SLOPE(x, 1h)` | the trend per hour, fitted through every reading |
+| `FORECAST(x, 1h, 8h)` | where the value lands after the horizon, if the trend holds |
+| `EWMA(x, 5min)` | a smoothed value; recent readings weigh more |
+
+A window function needs a field, not an expression, and a literal duration.
+
+**A window holds one reading per evaluation, not one per change.** A mean over
+ten minutes is the mean of the readings (ADR-022). The history is a ring of at
+most 64 buckets per field and duration, allocated once, about 5 KB each and at
+most 256 of them. `EWMA` keeps one number instead of a ring, so it costs
+almost nothing and answers on the first reading.
+
+`RATE` divides by the time between the two readings it used, not by the width
+of the window, so a window that is not yet full reports the rate of what it
+holds. The two moments are the starts of their buckets, so the span is exact to
+one bucket.
+
+Every one of them answers **unknown, never zero**, when there is nothing to
+answer from: a zero would satisfy a threshold such as `< 5` on a service that
+has just started. `COUNT` is the exception, because no readings is a number an
+operator can compare against.
+
+### A short-circuit and memory
+
+`AND` and `OR` stop at the argument that decides the answer, except when an
+argument carries memory. `CHANGED`, `PREV` and `EWMA` answer from what they saw
+at every evaluation, so a call containing one runs all of its arguments
+(ADR-023). A decided answer still absorbs an unknown after it, so
+`AND(false, unknown)` is false.
+
+## In the browser
+
+`npm run build:engine` in the parent directory builds this module for the
+browser and writes `dist/rules-engine.wasm` and `dist/wasm_exec.js`. The
+editor's Simulator page loads it, so what an operator sees before deploying a
+file is what the gateway does with it (ADR-024). `cmd/wasm` is the entry point;
+it is not part of a gateway build.
 
 ## Limits
 
@@ -140,6 +191,7 @@ reads short by up to one bucket.
 | Incident summary | 120 characters |
 | `description`, `first_step`, `cause` | 240 characters |
 | Time windows per file | 256 |
+| Smoothed values per file | 256 |
 | Actions or incidents per evaluation | 100 |
 | Rendered Then fields per rule | 4096 bytes |
 
@@ -160,9 +212,10 @@ carried. `specs/` holds the requirements and the design as a
 
 ## Release
 
-The schema version and the module version move together.
+The schema version, the npm package version and the module version move
+together, so one version number names one language.
 
-1. Change `../schema/rules.xsd`, `../package.json` and the editor, and release the npm package.
+1. Change `../schema/rules.xsd`, `../package.json` and the editor. Build the browser module and release the npm package.
 2. Let edge-hub adopt the schema version, so the hub and the services agree on what a file may contain.
-3. Tag `rules-engine/vX.Y.Z` here.
+3. Tag `rules-engine/vX.Y.Z` and `vX.Y.Z` on the same commit.
 4. Each service updates one line in its `go.mod` and re-records its replay goldens.

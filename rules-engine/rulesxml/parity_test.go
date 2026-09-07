@@ -213,8 +213,8 @@ func TestSchemaVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	if !strings.Contains(string(raw), `version="0.3.`) {
-		t.Error("the schema is not a 0.3.x version; update this test and the module tag together")
+	if !strings.Contains(string(raw), `version="0.4.`) {
+		t.Error("the schema is not a 0.4.x version; update this test and the module tag together")
 	}
 }
 

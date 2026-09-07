@@ -1,51 +1,55 @@
 ---
 id: "SWREQ-019"
 type: software_requirement
-name: "The simulator answers as the engine does"
+name: "The editor's simulator runs the engine"
 description: >
-  The editor's simulator and the Go engine must give the same answer for every
-  case in the shared file.
+  The Simulator page loads the engine compiled to WebAssembly and draws its
+  answer, instead of evaluating the rules itself.
 specification: >
-  The editor's simulator and the engine must give the same answer for every
-  case in schema/eval-cases.json, and both test suites must read that file.
+  The editor must evaluate no rule of its own. The Simulator page must load
+  `dist/rules-engine.wasm` and draw what it answers, including the firing, the
+  cooldown, the incident lifecycle and the rendered Then fields.
 derives_from:
   - "SYSARCH-001"
 depends_on:
-  - "SWREQ-009"
   - "SWREQ-012"
 ---
 
-# Software Requirement: The simulator answers as the engine does
+# Software Requirement: The editor's simulator runs the engine
 
 ## Requirement Specification
 
-> The editor's simulator and the engine must give the same answer for every case in `schema/eval-cases.json`, and both test suites must read that file.
+> The editor must evaluate no rule of its own. The Simulator page must load `dist/rules-engine.wasm` and draw what it answers, including the firing, the cooldown, the incident lifecycle and the rendered Then fields.
 
 ## Rationale
 
-An operator stages a fault in the simulator to see what a rule will do. The
-gateway then does it. Two answers for one rule make the simulator worse than
-none, because it is trusted.
+The page exists to tell an operator what a file will do on the plant. A page
+that answers from its own reading of the rules can only approximate that, and
+did: the window model differed for the whole life of v0.3.1 (ADR-022, ADR-024).
 
 ## Logic & Interface Details
 
-- `schema/eval-cases.json` is a list of cases. Each has a name, a formula, the type of every tag it reads, an optional `step_seconds`, and the steps.
-- A step gives the values of the tags that changed, and the answer the formula must give at that moment. A value of `null` means the field is not known.
-- `src/simulate.test.ts` drives `evaluateAt` over the steps. `rules-engine/formula/eval_cases_test.go` compiles the formula and drives `Program.Eval`.
-- The cases cover every operator, both sides of every unknown, the rendering of a join, and one time series each for `CHANGED`, `STALE`, `RATE` and `AVG`.
-- A number and an integer of the same value are the same answer: the case file has one number type.
+- `rules-engine/cmd/wasm` builds the engine for the browser. `npm run build:engine` writes `dist/rules-engine.wasm` and `dist/wasm_exec.js`, and both are committed, as `dist/` already is.
+- The page sends the fields a service decodes, one reading per field per step, the variables and the condition rows, the sources an incident may name, how the rows combine, and the rule as a `rules.xml` document.
+- The engine answers with every line of the timeline, the combined result, what the rule fired, and any problem the file has. The firing comes from `Load` and `Engine`, so edge, cooldown, the incident lifecycle and the rendered payloads are the gateway's.
+- A formula that does not compile keeps its place in the timeline and carries its problem, so the page draws the rest while an operator is typing.
+- `src/formula.ts` keeps the tokenizer, the parser, the printer and the static checks. The cells need them on every keystroke and cannot wait for a call. It evaluates nothing.
+- `simulate()` is asynchronous. The page draws an empty run until the module has loaded, and a newer run wins over one still in flight.
 
 ## Acceptance Criteria
 
-- Both suites pass every case.
-- Reverting one alignment fix fails the matching case, in that language, on that commit.
-- A new function in the registry arrives with at least one case.
+- `src/simulate.ts` contains no evaluator, no edge or cooldown logic, and no Then renderer.
+- Every case in `../schema/eval-cases.json` passes through the module in the editor's suite.
+- The page shows the startup resolve, the cooldown and the payloads the engine rendered.
+- A rule file with a fault shows the fault, in the words the service logs.
 
 ## Verification Plan
 
-- **Method**: test and demonstration.
-- **Procedure**: Both suites in CI. Once, by hand: undo one fix and watch the case fail.
+- **Method**: test.
+- **Procedure**: `src/engine.test.ts` loads the module under jsdom and checks its answers. `src/simulate.test.ts` and `src/simulator.test.ts` drive the page through it.
 
 ## Notes
 
-ADR-020 records the seven answers and why each side won.
+ADR-024. This requirement replaces the parity arrangement of ADR-020: there is
+one implementation now, and the shared cases are its specification test rather
+than a second opinion.

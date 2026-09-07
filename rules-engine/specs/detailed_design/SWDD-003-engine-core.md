@@ -69,6 +69,22 @@ problem.
 - A slot with a dynamic type outside the list increments `Stats.UnknownSlotTypes` and reads as `nil`.
 - The action loop per rule is bounded by `MaxActions = 64`.
 
+## Which rules evaluate, and when a pulse re-arms
+
+A rule joins the change-driven index by the slots it reads. It joins the
+time-driven set when it reads a clock **or** when its edge is `EdgeNone`
+(ADR-025): `EdgeNone` fires on every evaluation where the condition is true, so
+a steady value must not silence it. A rule with a rising edge keeps the index
+alone, because it can only fire when something moves.
+
+A pulse row is true only in the evaluation where its input moved, and is never
+seen as false, so a rule that fires on one re-arms its edge. The row model
+carries whether a row reads `CHANGED`, and only the row that made the rule true
+decides the re-arm: the first true row of an "any" rule, or any row of an "all"
+rule, since those are all true together. Re-arming because some other row reads
+`CHANGED` turned a level into a pulse, and the rule fired once per cooldown for
+as long as the level stood.
+
 ## Notes
 
 The shared `lastFired` between actions and trigger stays (ADR-004). The slot

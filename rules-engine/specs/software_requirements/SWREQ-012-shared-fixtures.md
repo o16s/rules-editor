@@ -38,7 +38,7 @@ schema/
 - `src/xsd.test.ts` reads `fixtures/` instead of its inline tables. A test compares the fixture file names with the previous inline table once, then the table is deleted.
 - `rules-engine/rulesxml/parity_test.go` reads `../../schema/rules.xsd` and `../../schema/fixtures/`. It requires `xmllint` and fails, not skips, when `CI=true`.
 - `src/formula.test.ts` and `rules-engine/formula/parse_test.go` read `formula-cases.json`.
-- `src/simulate.test.ts` and `rules-engine/formula/eval_cases_test.go` read `eval-cases.json`, which holds the answers, not the text (SWREQ-019).
+- `src/simulate.test.ts` and `rules-engine/formula/eval_cases_test.go` read `eval-cases.json`, which holds the answers, not the text. The editor no longer has an evaluator of its own (ADR-024), so its side runs the cases through the module: that proves the module in the page is the module the Go suite tested (SWREQ-019).
 - A `vitest` test writes `formula-functions.json` from `FUNCTIONS` and fails when the file differs. The Go test reads it and fails when a function has no implementation.
 
 ## Acceptance Criteria

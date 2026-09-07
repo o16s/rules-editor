@@ -38,6 +38,15 @@ not load on any service.
 - A 0.2 file and its 0.3 rewrite by the editor produce the same actions and incidents for the same value sequence.
 - A formula that the editor rejects is rejected by `Load` with a problem.
 
+### The function set
+
+The registry is `../schema/formula-functions.json`, and it carries the help
+text and a small example for each function, so one text describes one function
+in the editor and in the engine. Beside the value, logic, bit and text
+functions it holds the history functions: `CHANGED`, `STALE`, `SINCE`, `PREV`,
+`RATE`, `AVG`, `MIN`, `MAX`, `COUNT`, `DELTA`, `STDDEV`, `ZSCORE`, `SLOPE`,
+`FORECAST` and `EWMA` (SWREQ-010).
+
 ## Verification Plan
 
 - **Method**: test.

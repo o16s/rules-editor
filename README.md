@@ -8,7 +8,7 @@ parse / serialize / validate core and the formula language. Vanilla TypeScript,
 
 ```bash
 # HTTPS release tarball: works everywhere, including CI (no SSH key required)
-npm install "https://github.com/o16s/rules-editor/archive/refs/tags/v0.3.0.tar.gz"
+npm install "https://github.com/o16s/rules-editor/archive/refs/tags/v0.4.0.tar.gz"
 ```
 
 Prefer the tarball: prebuilt `dist/` is committed, so there is **no build step on
@@ -18,7 +18,7 @@ install** and **zero runtime dependencies** are pulled in.
 <summary>git shorthand (needs SSH configured)</summary>
 
 ```bash
-npm install github:o16s/rules-editor#v0.3.0
+npm install github:o16s/rules-editor#v0.4.0
 ```
 
 Convenient for local dev, but npm resolves `github:` to a `git+ssh://` URL, so it
@@ -279,12 +279,18 @@ The header reads "Run for 600 s", "Sample every 1 s" and the cursor position.
 Each section has a ⓘ button that opens one paragraph of help. The run repeats
 on every committed change, so "Run again" only repeats it.
 
-`simulate()` and `evaluateAt()` are exported for a host that wants the numbers
-without the page. The evaluator follows the function list in `FUNCTIONS`:
-`RATE` is the change per hour over the window, `CHANGED` is true in the sample
-where the value changed, `STALE` is true when the value did not change within
-the window, and `AVG` is the mean over the window. A time function without
-enough history reads nothing, and the cell shows a dash.
+The page does not read the rule a second time. It runs the gateway's own
+engine, compiled to WebAssembly from
+[`rules-engine/`](rules-engine/README.md), so a formula cannot mean one thing
+here and another on the plant. `dist/rules-engine.wasm` and `dist/wasm_exec.js`
+ship with the package, and the page loads them once on the first run.
+
+`simulate()` is exported for a host that wants the numbers without the page.
+It is asynchronous, because it waits for the engine. `loadEngine()`,
+`runEngine()` and `engineAssets` are exported too: a host that serves the
+package from another path sets `engineAssets.wasm` and `engineAssets.glue`
+before the first run. A function without enough history reads nothing, and the
+cell shows a dash.
 
 ## Formulas
 
@@ -310,12 +316,38 @@ Functions, with the number of arguments:
 |----------|--------|
 | `TAG(tag)`, `TAG(device, tag)` | the current value of a decoded field |
 | `AND(a, b, …)`, `OR(a, b, …)`, `NOT(a)` | boolean logic, 2 to 16 arguments for AND and OR |
-| `CHANGED(x)` | true in the cycle where `x` changed |
-| `STALE(x, 4h)` | true when `x` did not update within the duration |
-| `RATE(x, 30min)` | change of `x` per hour over the window |
-| `AVG(x, 10min)` | mean of `x` over the window |
 | `BITAND(x, mask)`, `BITOR(x, mask)`, `BITXOR(x, mask)` | bitwise operations on integers |
 | `HEX2DEC("FF")` | the integer value of a hex string |
+
+These read what a field did before, not only what it reads now:
+
+| Function | Result |
+|----------|--------|
+| `CHANGED(x)` | true in the cycle where `x` changed |
+| `PREV(x)` | the value `x` held before its last change |
+| `SINCE(x)` | seconds since `x` last changed |
+| `STALE(x, 4h)` | true when `x` is unknown, or did not change within the duration |
+
+These read a window of past readings. Each one needs a field, not an
+expression, and a literal duration:
+
+| Function | Result |
+|----------|--------|
+| `AVG(x, 10min)` | the mean of the readings |
+| `MIN(x, 10min)`, `MAX(x, 10min)` | the smallest and the largest reading |
+| `COUNT(x, 1h)` | how many readings the window holds |
+| `DELTA(x, 15min)` | the newest reading minus the oldest |
+| `RATE(x, 30min)` | the change per hour between those two readings |
+| `STDDEV(x, 30min)` | how much the readings spread around their mean |
+| `ZSCORE(x, 2h)` | how unusual the current reading is against that spread |
+| `SLOPE(x, 1h)` | the trend per hour, fitted through every reading |
+| `FORECAST(x, 1h, 8h)` | where the value lands after the horizon, if the trend holds |
+| `EWMA(x, 5min)` | a smoothed value; recent readings weigh more |
+
+A window holds one reading per evaluation, not one per change, so a mean over
+ten minutes is the mean of the readings. Every window function answers
+unknown, never zero, when it has nothing to answer from. `COUNT` is the
+exception, because no readings is a number you can compare against.
 
 Precedence, lowest first: `&`, comparisons, `+ -`, `* /`, unary `-`. Function
 names are case-insensitive and print upper-case.
@@ -505,12 +537,12 @@ that the schema, the fixtures, the formula language and the engine change in
 one commit:
 
 ```bash
-go get github.com/o16s/rules-editor/rules-engine@v0.3.1
+go get github.com/o16s/rules-editor/rules-engine@v0.4.0
 ```
 
-The git tag is `rules-engine/v0.3.1`, because the module sits in a
+The git tag is `rules-engine/v0.4.0`, because the module sits in a
 subdirectory. Go maps the path suffix to that tag prefix by itself, so the
-version string stays `v0.3.1`.
+version string stays `v0.4.0`.
 
 `schema/fixtures/`, `schema/formula-cases.json` and
 `schema/formula-functions.json` are read by both test suites. A change to the
@@ -521,11 +553,16 @@ side, on the same commit.
 
 ```bash
 npm install
-npm run build      # -> dist/*.js + *.d.ts (commit the result)
-npm test           # vitest (jsdom)
+npm run build         # -> dist/*.js + *.d.ts (commit the result)
+npm run build:engine  # -> dist/rules-engine.wasm + wasm_exec.js (needs Go)
+npm test              # vitest (jsdom)
 npm run typecheck
-npm run storybook  # component workbench on http://0.0.0.0:6100
+npm run storybook     # component workbench on http://0.0.0.0:6100
 ```
+
+`build:engine` compiles `rules-engine/cmd/wasm` for the browser. The two files
+it writes are committed, so a plain `npm install` of the package needs no Go
+toolchain. Run it again after a change in `rules-engine/`.
 
 ### Storybook
 

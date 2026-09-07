@@ -18,7 +18,8 @@ engine change are one commit.
 |---------|--------------|
 | `rulesxml` | Validates the structure of a `rules.xml` document. Reports every fault with a path such as `rules/rule[2]/and/cond[1]@expr`. |
 | `formula` | The formula language: tokenizer, parser, printer, static checks, compiler to a program, evaluator, time windows. |
-| `rules` | The public surface: `Catalog`, `Load`, `Engine`, `Action`, `Incident`. |
+| `rules` | The public surface: `Catalog`, `Load`, `Engine`, `Action`, `Incident`, and `SimResolver` for the editor. |
+| `cmd/wasm` | The browser build. `npm run build:engine` in the parent directory writes `../dist/rules-engine.wasm`, and the editor's Simulator page runs it (ADR-024). It carries a `js && wasm` build tag, so a gateway build never sees it. |
 
 ## Coding Guidelines (Power of Ten Rules)
 
@@ -76,7 +77,7 @@ reads the same files:
 | `../schema/rules.xsd` | The published schema. `rulesxml/parity_test.go` holds `Validate` to it with `xmllint`. |
 | `../schema/fixtures/**` | One file per case, in four classes: `valid`, `invalid`, `app-level`, `xsd-stricter`. `reasons.json` carries the reason of each divergence. |
 | `../schema/formula-cases.json`, `../schema/formula-functions.json` | The formula parity cases and the function registry. |
-| `../schema/eval-cases.json` | The answers the engine and the editor's simulator must both give. |
+| `../schema/eval-cases.json` | The answers this module must give. The editor runs this module, so the cases are its specification test, not a parity test. |
 
 `//go:embed` cannot reach a parent directory, so the tests read them with
 `os.ReadFile` and a relative path.
@@ -95,7 +96,11 @@ sara check                                    # the specification graph
 
 ## Release
 
-1. Bump the schema and the package version in the parent repository.
-2. Tag `rules-engine/vX.Y.Z`. The `X.Y` follows the schema version.
-3. The hub adopts the schema version before the services (SYSREQ-016).
-4. Services update one line in `go.mod` and re-record their replay goldens.
+1. Bump `version` in `../package.json` and `xs:schema version` in
+   `../schema/rules.xsd`. The three versions move together, and
+   `src/xsd.test.ts` fails when they do not.
+2. Run `npm run build:engine` in the parent directory and commit the wasm file,
+   so the editor ships the engine it documents.
+3. Tag `rules-engine/vX.Y.Z` and `vX.Y.Z` on the same commit.
+4. The hub adopts the schema version before the services (SYSREQ-016).
+5. Services update one line in `go.mod` and re-record their replay goldens.

@@ -21,8 +21,12 @@ octaview website and edge-hub.
     Then sheet's row model and preview), `example.ts` (the default file),
     `simulator.ts` (the Simulator page of design 14a: signals per tag, the
     condition › variable › tag timeline, the log).
-  - `simulate.ts`: the simulator core: signal generators, a formula
-    evaluator over a clock (`evaluateAt`), and the rule's firing (`simulate`).
+  - `simulate.ts`: the simulator core: signal generators, and `simulate()`,
+    which builds one request for the engine and words the log from what the
+    engine answers. It evaluates no formula of its own.
+  - `engine.ts`: loads `dist/rules-engine.wasm`, the gateway's Go engine
+    compiled for the browser, and calls it (`loadEngine`, `runEngine`,
+    `engineAssets`). One implementation of the language, not two (ADR-024).
   - `model.ts`: types and constants. `formula.ts`: the formula language,
     tokenizer, parser, printer, static checks, function registry.
     `serialize.ts`: model → xml. `parse.ts`: xml → model plus `validate`.
@@ -35,6 +39,9 @@ octaview website and edge-hub.
 
 ## Workflow
 - After editing `src/`, run `npm run build` and **commit the updated `dist/`**.
+- After editing `rules-engine/`, run `npm run build:engine` and **commit the
+  updated `dist/rules-engine.wasm`**. It needs a Go toolchain; a consumer of
+  the package does not, because the file is committed.
 - `npm test` (vitest + jsdom) · `npm run typecheck`.
 - `npm run storybook`: dev server on `0.0.0.0:6100`, for working on the
   component (widths, themes, error states). `npm run build-storybook` for a
@@ -58,8 +65,11 @@ octaview website and edge-hub.
 - The condition form the editor writes is `<cond expr="…"/>`. The 0.2 form
   `<cond tag op value/>` and nested `<and>`/`<or>` groups are read-only input:
   `parse()` turns them into formula rows, and `serialize()` never writes them.
-- A new formula function is one line in `FUNCTIONS` in `formula.ts`. The
-  gateway must implement it before it does anything at runtime.
+- A new formula function is one entry in `schema/formula-functions.json`, with
+  its help text and a small example, plus the Go implementation in
+  `rules-engine/formula/`. Both suites read the registry, so the editor and the
+  gateway describe a function the same way. The gateway must implement it
+  before the editor offers it.
 - `schema/rules.xsd` and `src/xsd.test.ts` must stay in lockstep with
   `parse()`/`validate()`: every new rule gets a fixture in `VALID`, `INVALID`,
   `APP_LEVEL`, or `XSD_STRICTER`.
@@ -67,9 +77,12 @@ octaview website and edge-hub.
   https://octaview.ai/en/docs/edge-hub/rules
 
 ## Release
-1. Bump `version` in `package.json` and in `schema/rules.xsd` (`xs:schema version`).
-2. `npm run build` (updates `dist/`).
-3. Commit, `git tag -a vX.Y.Z -m vX.Y.Z`, `git push --follow-tags`.
+1. Bump `version` in `package.json` and `xs:schema version` in
+   `schema/rules.xsd`. They must match: `src/xsd.test.ts` checks it.
+2. `npm run build`, and `npm run build:engine` if `rules-engine/` changed.
+3. Commit, `git tag -a vX.Y.Z -m vX.Y.Z`, `git push --follow-tags`. Tag
+   `rules-engine/vX.Y.Z` with the same version, so one commit carries one
+   version of the language.
 4. Consumers install the release tarball (CI-safe, HTTPS, no SSH):
    `npm install "https://github.com/o16s/rules-editor/archive/refs/tags/vX.Y.Z.tar.gz"`
    (The `github:o16s/rules-editor#vX.Y.Z` shorthand also works, but resolves to

@@ -1,54 +1,73 @@
 ---
 id: "SWDD-017"
 type: software_detailed_design
-name: "The shared evaluation cases"
+name: "The engine in the browser"
 description: >
-  The format of schema/eval-cases.json, and the two readers that drive the
-  simulator and the engine through it.
+  cmd/wasm, the loader in src/engine.ts, and what the page still owns.
 satisfies:
   - "SWREQ-019"
 ---
 
-# Software Implementation: The shared evaluation cases
+# Software Implementation: The engine in the browser
 
 ## Overview
 
-One file and two readers, the same shape as the parser cases of SWDD-010.
+One Go entry point, one TypeScript loader, and a page that draws.
 
 ## Static View (Structure)
 
-```json
-{ "name": "a different value after an outage is a change",
-  "formula": "CHANGED(TAG(\"n\"))",
-  "types": { "n": "number" },
-  "step_seconds": 60,
-  "steps": [ { "values": { "n": 1 },    "want": false },
-             { "values": { "n": null }, "want": false },
-             { "values": { "n": 2 },    "want": true } ] }
+```
+rules-engine/cmd/wasm/main.go    the request, the response, the engine
+rules-engine/cmd/wasm/probe.go   one line per variable and per row
+rules-engine/rules/simresolver.go  compile and evaluate against the engine's history
+scripts/build-engine.sh          GOOS=js GOARCH=wasm, plus Go's wasm_exec.js
+dist/rules-engine.wasm           committed, about 3.9 MB
+src/engine.ts                    loads once, in a browser or in Node
+src/simulate.ts                  signals, the request, the log wording
 ```
 
-```mermaid
-graph LR
-    F["schema/eval-cases.json"] --> TS["src/simulate.test.ts → evaluateAt"]
-    F --> GO["formula/eval_cases_test.go → Program.Eval"]
-```
+`main.go` exposes one function, `octaviewRulesSimulate(requestJSON) string`.
+`probe.go` compiles each variable and each row on its own, so a row that does
+not compile keeps its place and carries its problem. It applies the same
+boolean check the loader applies, so the page refuses a numeric condition with
+the same words the gateway uses.
+
+`rules.SimResolver` gives the probe the engine's own `history`, so the lines
+and the firing advance the past identically. It adds no behavior.
 
 ## Dynamic View (Logic)
 
-- The TypeScript reader builds the value of every tag at every step, so a time function can look back, and calls `evaluateAt(ast, i, env)` once per step.
-- The Go reader compiles the formula against a resolver built from the `types` map, in name order, so a slot means the same thing on every step. Before each step it advances the windows, writes the values, records what changed, and feeds the numeric changes to the rings, which is what the engine does before it evaluates.
-- A missing key in `values` keeps the value of the step before.
+```mermaid
+sequenceDiagram
+    participant P as Simulator page
+    participant S as src/simulate.ts
+    participant W as rules-engine.wasm
+    P->>S: simulate(rule, signals)
+    S->>S: generate one series per tag
+    S->>W: fields, readings per step, variables, rows, rule XML
+    W->>W: probe compiles the lines; Load and Engine take the rule
+    W->>W: for each step: advance the history, evaluate, Eval
+    W-->>S: lines, result, firings, problems
+    S->>S: word the log
+    S-->>P: Simulation
+```
 
 ## Interface & API Definitions
 
-Test only, in both languages.
+`loadEngine()` reads the two files and starts the module once. In a browser it
+fetches them; under Node it reads them from `dist/`, because a test runner
+rewrites `import.meta.url` to its own address. `engineAssets` lets a host that
+serves the package from elsewhere say where they are.
+
+`SimulatorHandle` gained `ready()` and an awaitable `setRule()`.
 
 ## Error Handling & Edge Cases
 
-- A case with a device in its `TAG` call is not supported: the readers bind one implicit source.
-- An expected number matches an integer of the same value on the Go side.
+- The module never panics into JavaScript: a fault comes back as a message in the response.
+- A rule file with a problem gives no engine, and the page still draws its lines.
+- A simulator must not refuse a device the operator has but has not wired into this run, so the page sends the sources the rule names.
 
 ## Notes
 
-ADR-020. The parser cases are SWDD-010; this is the same mechanism one level
-up, from text to answers.
+ADR-024. The page keeps the signal generators, which exist only to make test
+data, and the wording of the log. Every fact in the log comes from the engine.
