@@ -1,1 +1,1 @@
-{"version":3,"file":"styles.d.ts","sourceRoot":"","sources":["../../src/gui/styles.ts"],"names":[],"mappings":"AAIA,eAAO,MAAM,QAAQ,iCAAiC,CAAC;AAoDvD,mFAAmF;AACnF,eAAO,MAAM,aAAa,EAAE,KAAK,CAAC,CAAC,MAAM,EAAE,MAAM,CAAC,CAA+D,CAAC;AA6LlH,wBAAgB,YAAY,IAAI,IAAI,CAMnC"}
+{"version":3,"file":"styles.d.ts","sourceRoot":"","sources":["../../src/gui/styles.ts"],"names":[],"mappings":"AAIA,eAAO,MAAM,QAAQ,iCAAiC,CAAC;AAoDvD,mFAAmF;AACnF,eAAO,MAAM,aAAa,EAAE,KAAK,CAAC,CAAC,MAAM,EAAE,MAAM,CAAC,CAA+D,CAAC;AA+LlH,wBAAgB,YAAY,IAAI,IAAI,CAMnC"}

@@ -37,7 +37,7 @@ right shows the selected rule as three sheets:
 |-------|---------|------------|
 | Variables | Name · Formula · Formula result · Description | a named formula, for example `temp = TAG("vibration1", "temperature")` |
 | When | Condition · Condition result · Description | a formula that must be true, for example `temp > 50` |
-| Then | Action · Field · Formula · Formula result | one field of an action: an MQTT topic or payload, or the alarm's source, title, first step, or cause |
+| Then | Action · Field · Formula | one field of an action: an MQTT topic or payload, or the alarm's source, title, first step, or cause |
 
 The When heading reads "When **any** of these **becomes true**". The first
 control is the match mode (`any` or `all`). The second is the trigger
@@ -47,9 +47,9 @@ most once every `45s`".
 
 The result columns show live values when the host supplies them (see `monitor`
 below). Without a host value the cell shows a dash. A Then field that is plain
-text shows itself as its result. A Then field that is a formula shows a
-preview: constants are folded and `condition.description` is read from the
-first condition.
+text is sent as written and has no result. A Then field that is a formula shows
+a preview under its value: constants are folded and `condition.description` is
+read from the first condition.
 
 ## Use the editor
 

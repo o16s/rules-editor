@@ -121,7 +121,9 @@ describe('rules editor component (jsdom)', () => {
     const rows = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'));
     const fields = rows.map((r) => r.querySelector('.re-cell-field')?.textContent);
     expect(fields).toEqual(['topic', 'payload', 'source', 'title', 'first step', 'cause']);
-    expect(rows[0].querySelector('.re-cell-result')?.textContent).toBe('camera/record');
+    // no result column: a literal is sent as written, a formula shows its preview under the value
+    expect(rows[0].querySelector('.re-cell-result')).toBeNull();
+    expect((rows[0].querySelector('.re-preview') as HTMLElement).hidden).toBe(true);
     // one Action choice per action, on its first row; the rows under it continue the cell
     expect(rows[0].querySelector('select')?.value).toBe('publish');
     expect(rows[2].querySelector('select')?.value).toBe('critical');
@@ -129,7 +131,9 @@ describe('rules editor component (jsdom)', () => {
     expect(rows[1].querySelector('select')).toBeNull();
     expect(rows.map((r) => Boolean(r.querySelector('.re-remove')))).toEqual([true, false, true, false, false, false]);
     // cause = condition.description & "…" previews with the first condition's description
-    expect(rows[5].querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
+    const preview = rows[5].querySelector('.re-preview') as HTMLElement;
+    expect(preview.hidden).toBe(false);
+    expect(preview.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
   });
 
   it('keeps the phone keyboard off names, topics and payloads in the Then sheet; prose keeps it', () => {
@@ -375,9 +379,9 @@ describe('rules editor component (jsdom)', () => {
   it('the Then preview follows a change of condition 1 description', () => {
     const { root } = setup();
     const cause = Array.from(root.querySelectorAll('.re-sheet-then .re-row:not(.re-row-add)'))[5];
-    expect(cause.querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\./);
+    expect(cause.querySelector('.re-preview')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\./);
     type(inputByLabel(root, 'Description of condition 1'), 'Alarm bit set');
-    expect(cause.querySelector('.re-cell-result')?.textContent).toMatch(/^Alarm bit set\./);
+    expect(cause.querySelector('.re-preview')?.textContent).toMatch(/^Alarm bit set\./);
   });
 
   it('refreshValues re-reads the monitor in place; setModel keeps the selected rule', () => {
@@ -609,6 +613,7 @@ describe('rules editor component (jsdom)', () => {
     const { root } = setup();
     const labels = new Set(Array.from(root.querySelectorAll('.re-cell')).map((c) => c.getAttribute('data-label')));
     expect([...labels].sort()).toEqual(['Action', 'Condition', 'Condition result', 'Description', 'Field', 'Formula', 'Formula result', 'Name']);
+    expect(root.querySelector('.re-sheet-then .re-cell-result')).toBeNull();
   });
 
   it('shows the error as text, not only as a hover tooltip', () => {

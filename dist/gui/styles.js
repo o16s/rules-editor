@@ -33,11 +33,11 @@ const NARROW = `
   .re-root .re-tabs { display:flex; }
   .re-root .re-sheet-vars .re-sheet-head, .re-root .re-sheet-vars .re-row { grid-template-columns:30px 110px 190px 90px 220px 30px; min-width:670px; }
   .re-root .re-sheet-when .re-sheet-head, .re-root .re-sheet-when .re-row { grid-template-columns:30px 190px 90px 220px 30px; min-width:560px; }
-  .re-root .re-sheet-then .re-sheet-head, .re-root .re-sheet-then .re-row { grid-template-columns:30px 150px 80px 200px 180px 30px; min-width:670px; }
+  .re-root .re-sheet-then .re-sheet-head, .re-root .re-sheet-then .re-row { grid-template-columns:30px 150px 80px 220px 30px; min-width:510px; }
   .re-root .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
   .re-root .re-formula-view, .re-root .re-cell input, .re-root .re-cell-result, .re-root .re-cell-field { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .re-root .re-formula-view { min-height:36px; line-height:22px; }
-  .re-root .re-cell > .re-msg { display:none; }
+  .re-root .re-cell > .re-msg, .re-root .re-cell > .re-preview { display:none; }
 `;
 /**
  * Below this the pane padding and the When heading are the last things that
@@ -158,7 +158,7 @@ const STYLES = `
 /* The formula column stops at 300px; the description takes what is left, because it holds sentences. */
 .re-sheet-vars .re-sheet-head, .re-sheet-vars .re-row { grid-template-columns:30px 124px minmax(220px,300px) 100px minmax(220px,1fr) 30px; min-width:724px; }
 .re-sheet-when .re-sheet-head, .re-sheet-when .re-row { grid-template-columns:30px minmax(220px,300px) 110px minmax(220px,1fr) 30px; min-width:710px; }
-.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(200px,1fr) 220px 30px; min-width:764px; }
+.re-sheet-then .re-sheet-head, .re-sheet-then .re-row { grid-template-columns:30px 192px 92px minmax(220px,1fr) 30px; min-width:564px; }
 .re-row.re-row-add { grid-template-columns:30px minmax(0,1fr); }
 .re-sheet-head { background:var(--re-head); border-bottom:1px solid #e4e0d9; }
 .re-sheet-head > span { font-size:12px; color:var(--re-muted); padding:6px 9px; border-right:1px solid var(--re-grid); }
@@ -229,6 +229,8 @@ const STYLES = `
 .re-cell.is-invalid .re-formula-view { background:var(--re-warn-wash); }
 .re-msg { margin:0; padding:6px 9px; font-size:12px; line-height:1.45; color:var(--re-warn); background:var(--re-warn-wash); border-radius:3px; }
 .re-pane-head > .re-msg, .re-sheet-block > .re-msg { margin-top:6px; }
+/* What a Then formula resolves to, under its value, in the reading colour of a result. */
+.re-preview { margin:0; padding:0 9px 7px; font-size:12px; line-height:1.45; color:var(--re-reading); overflow-wrap:anywhere; }
 /* Inside a cell the wash is already on the cell: the message is a hint line under the value. */
 .re-cell > .re-msg { padding:0 9px 7px; background:none; border-radius:0; overflow-wrap:anywhere; }
 .re-remove { background:none; border:none; cursor:pointer; color:var(--re-muted); display:flex; align-items:center; justify-content:center; padding:0; }

@@ -12,7 +12,7 @@
 //
 // Layout: a rule rail on the left, and for the selected rule three sheets —
 // Variables (name / formula / result / description), When (condition / result
-// / description) and Then (action / field / formula / result) — in the
+// / description) and Then (action / field / formula) — in the
 // spreadsheet style of the design handoff. Colours and fonts read the host's
 // design tokens (--accent, --ink, --font-body, …) with fallbacks.
 //

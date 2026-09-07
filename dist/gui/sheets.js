@@ -2,6 +2,7 @@
 // the spreadsheet style of the design handoff. Wide, the three stack; narrow,
 // tabs show one at a time.
 import { LIMITS } from '../model.js';
+import { isFormula } from '../formula.js';
 import { el, pickInput, selectInput } from './dom.js';
 import { exampleModel } from './example.js';
 import { ACTION_OPTIONS, EDGE_OPTIONS, HELP, MATCH_OPTIONS } from './labels.js';
@@ -9,7 +10,7 @@ import { isGroupHead, previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD,
 import { locKey } from './state.js';
 export function createSheets(deps) {
     const { state, pane, cells, uid } = deps;
-    const { textInput, cell, formulaCell, resultCell, liveCell, removeBtn, gutter, addRow, sheetHead, sheetTitle } = cells;
+    const { textInput, cell, formulaCell, liveCell, removeBtn, gutter, addRow, sheetHead, sheetTitle } = cells;
     /** Then result cells of the current pane and how to recompute their preview. */
     const previews = new Set();
     function render() {
@@ -156,7 +157,7 @@ export function createSheets(deps) {
     function renderThen(rule, index) {
         const { title, help } = sheetTitle('', HELP.then, ['Then']);
         const sheet = el('div', { class: 're-sheet re-sheet-then' }, [
-            sheetHead(['Action', 'Field', 'Formula', 'Formula result'], ['What happens when the rule fires', 'The field of the action', 'Text, or a formula when it starts with =', 'What the gateway sends']),
+            sheetHead(['Action', 'Field', 'Formula'], ['What happens when the rule fires', 'The field of the action', 'Text as sent, or a formula when it starts with =']),
         ]);
         const rows = thenRows(rule);
         rows.forEach((row, i) => sheet.append(thenRow(row, i, rule, index)));
@@ -189,9 +190,20 @@ export function createSheets(deps) {
             deps.render();
         };
         const who = THEN_LABEL[row.field];
-        const result = resultCell('Formula result', previewThen(value, rule), { address: `${who} · Formula result`, remove });
-        // Recomputed on every refresh: the preview also reads condition 1's description.
-        previews.add(() => { result.textContent = previewThen(thenGet(rule, row), rule) ?? ''; });
+        const formula = formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove });
+        // A formula shows what it resolves to as a line under the value; literal
+        // text is sent as written and needs no preview. Recomputed on every
+        // refresh: the preview also reads condition 1's description.
+        const preview = el('p', { class: 're-preview', hidden: true });
+        formula.append(preview);
+        const updatePreview = () => {
+            const text = thenGet(rule, row);
+            const shown = isFormula(text) ? previewThen(text, rule) : null;
+            preview.hidden = shown === null;
+            preview.textContent = shown ?? '';
+        };
+        updatePreview();
+        previews.add(updatePreview);
         // One Action cell and one delete button per action, like merged cells: the
         // first row holds them, the rows under it continue the cells. Delete
         // removes the whole action, so one button says so.
@@ -206,8 +218,7 @@ export function createSheets(deps) {
             gutter(i + 1),
             action,
             cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
-            formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove }),
-            result,
+            formula,
             trash,
         ]);
     }

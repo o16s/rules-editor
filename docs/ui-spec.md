@@ -191,7 +191,7 @@ paragraph of help on tap.
 |---|---|---|
 | **Variables** | Name · Formula · Formula result · Description | one named formula |
 | **When** `any ▾` of these `becomes true ▾` | Condition · Condition result · Description | one formula that must be true |
-| **Then** | Action · Field · Formula · Formula result | one field of an action |
+| **Then** | Action · Field · Formula | one field of an action |
 
 Sheet anatomy, from the design: a row-number gutter on `#f2efe9`, a header row
 in the same grey, hairline grid lines `#efece7`, 13px cells, 12px headers.
@@ -205,7 +205,8 @@ The Then sheet derives its rows from the model: per publish, `topic` and
 **Action** cell is a select: `Publish MQTT message`, `Raise critical alarm`,
 `Raise error alarm`, `Raise warning alarm`, `Raise info alarm`. Choosing an
 alarm on a publish row converts it; choosing it on an alarm row changes the
-severity. A Then result cell shows the literal text, or a preview of a formula
+severity. The Then sheet has no result column: literal text is sent as written.
+A field that is a formula shows a preview under its value, in the reading blue,
 with constants folded and `condition.description` read from the first row.
 
 The Then sheet ends with the cooldown footer: "Actions are fired at most once
