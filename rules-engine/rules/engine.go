@@ -25,6 +25,8 @@ type Engine struct {
 	lastChange    []time.Time
 	windows       []*formula.Window
 	windowsBySlot [][]int
+	ewmas         []*formula.Ewma
+	ewmasBySlot   [][]int
 	env           formula.Env
 	lastNow       time.Time
 
@@ -51,9 +53,11 @@ func NewEngine(rules []Rule, cat Catalog) *Engine {
 	}
 	e.index(slots)
 	e.buildWindows(cat)
+	e.buildEwmas(slots)
 	e.env = formula.Env{
 		LastChange: e.lastChange,
 		Windows:    e.windows,
+		Ewmas:      e.ewmas,
 		States:     make([]formula.Value, countStates(rules)),
 		Stack:      make([]formula.Value, stackDepth(rules)),
 	}
@@ -93,6 +97,23 @@ func (e *Engine) buildWindows(cat Catalog) {
 		e.windows[i] = formula.NewWindow(specs[i].Slot, specs[i].Window, cat.Period)
 		if slot := specs[i].Slot; slot >= 0 && slot < len(e.windowsBySlot) {
 			e.windowsBySlot[slot] = append(e.windowsBySlot[slot], i)
+		}
+	}
+}
+
+// buildEwmas allocates one smoothed value per pair the rules named, and
+// indexes them by slot for the same reason the windows are.
+func (e *Engine) buildEwmas(slots int) {
+	specs := ewmaSpecs(e.rules)
+	e.ewmas = make([]*formula.Ewma, len(specs))
+	e.ewmasBySlot = make([][]int, slots)
+	for i := 0; i < len(specs); i++ {
+		if specs[i].Tau <= 0 {
+			continue
+		}
+		e.ewmas[i] = formula.NewEwma(specs[i].Slot, specs[i].Tau)
+		if slot := specs[i].Slot; slot >= 0 && slot < slots {
+			e.ewmasBySlot[slot] = append(e.ewmasBySlot[slot], i)
 		}
 	}
 }
@@ -167,6 +188,7 @@ func (e *Engine) detect(values []any, now time.Time) {
 		// saw and not only what moved. A mean over ten minutes is then the
 		// mean of the readings, which is how an operator reads it (ADR-022).
 		e.sample(i, values[i], now)
+		e.smooth(i, values[i], now)
 		if formula.EqualAny(values[i], e.prevValues[i]) {
 			continue
 		}
@@ -192,6 +214,25 @@ func (e *Engine) sample(slot int, value any, now time.Time) {
 	f := v.Float()
 	for i := 0; i < len(list); i++ {
 		e.windows[list[i]].Add(now, f)
+	}
+}
+
+// smooth folds one reading into every smoothed value that follows the slot.
+func (e *Engine) smooth(slot int, value any, now time.Time) {
+	if slot < 0 || slot >= len(e.ewmasBySlot) {
+		return
+	}
+	list := e.ewmasBySlot[slot]
+	if len(list) == 0 {
+		return
+	}
+	v := formula.FromAny(value)
+	if !v.IsNumeric() {
+		return
+	}
+	f := v.Float()
+	for i := 0; i < len(list); i++ {
+		e.ewmas[list[i]].Add(now, f)
 	}
 }
 
@@ -264,6 +305,11 @@ func (e *Engine) Reset(now time.Time) []Incident {
 	for i := 0; i < len(e.windows); i++ {
 		if e.windows[i] != nil {
 			e.windows[i].Reset()
+		}
+	}
+	for i := 0; i < len(e.ewmas); i++ {
+		if e.ewmas[i] != nil {
+			e.ewmas[i].Reset()
 		}
 	}
 	for i := 0; i < len(e.env.States); i++ {
@@ -353,22 +399,46 @@ func maxOf(values ...int) int {
 // one index and one ring.
 func windowSpecs(rules []Rule) []formula.WindowSpec {
 	var specs []formula.WindowSpec
+	eachProgram(rules, func(p *formula.Program) { specs = mergeSpecs(specs, p) })
+	return specs
+}
+
+// ewmaSpecs collects the smoothed values every rule reads, at their indexes.
+func ewmaSpecs(rules []Rule) []formula.EwmaSpec {
+	var specs []formula.EwmaSpec
+	eachProgram(rules, func(p *formula.Program) {
+		if p == nil {
+			return
+		}
+		indexes := p.Ewmas()
+		described := p.EwmaSpecs()
+		for i := 0; i < len(indexes) && i < len(described); i++ {
+			for len(specs) <= indexes[i] {
+				specs = append(specs, formula.EwmaSpec{})
+			}
+			specs[indexes[i]] = described[i]
+		}
+	})
+	return specs
+}
+
+// eachProgram visits every compiled formula of every rule.
+func eachProgram(rules []Rule, visit func(*formula.Program)) {
 	for i := 0; i < len(rules); i++ {
 		for _, row := range rules[i].rows {
-			specs = mergeSpecs(specs, row.prog)
+			visit(row.prog)
 		}
 		for _, a := range rules[i].actions {
-			specs = mergeSpecs(specs, a.topic.prog)
-			specs = mergeSpecs(specs, a.payload.prog)
+			visit(a.topic.prog)
+			visit(a.payload.prog)
 		}
 		if inc := rules[i].incident; inc != nil {
-			specs = mergeSpecs(specs, inc.source.prog)
-			specs = mergeSpecs(specs, inc.summary.prog)
-			specs = mergeSpecs(specs, inc.firstStep.prog)
-			specs = mergeSpecs(specs, inc.cause.prog)
+			visit(inc.source.prog)
+			visit(inc.summary.prog)
+			visit(inc.firstStep.prog)
+			visit(inc.cause.prog)
 		}
 	}
-	return specs
 }
 
 // mergeSpecs places the windows of one program at their own indexes.

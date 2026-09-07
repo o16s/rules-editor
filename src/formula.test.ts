@@ -250,6 +250,8 @@ describe('schema/formula-functions.json', () => {
       maxArgs: f.maxArgs,
       returns: f.returns,
       signature: f.signature,
+      doc: f.doc,
+      example: f.example,
     }));
     expect(onDisk).toEqual(inCode);
   });

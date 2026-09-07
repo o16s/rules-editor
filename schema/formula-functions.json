@@ -4,83 +4,206 @@
     "minArgs": 1,
     "maxArgs": 2,
     "returns": "any",
-    "signature": "TAG(\"tag\") or TAG(\"device\", \"tag\")"
+    "signature": "TAG(\"tag\") or TAG(\"device\", \"tag\")",
+    "doc": "The current value of a field the service decodes.",
+    "example": "TAG(\"pump1\", \"temperature\")"
   },
   {
     "name": "AND",
     "minArgs": 2,
     "maxArgs": 16,
     "returns": "bool",
-    "signature": "AND(a, b, …)"
+    "signature": "AND(a, b, …)",
+    "doc": "True when every argument is true.",
+    "example": "AND(running, temperature \u003e 60)"
   },
   {
     "name": "OR",
     "minArgs": 2,
     "maxArgs": 16,
     "returns": "bool",
-    "signature": "OR(a, b, …)"
+    "signature": "OR(a, b, …)",
+    "doc": "True when at least one argument is true.",
+    "example": "OR(alarm_high, alarm_low)"
   },
   {
     "name": "NOT",
     "minArgs": 1,
     "maxArgs": 1,
     "returns": "bool",
-    "signature": "NOT(a)"
+    "signature": "NOT(a)",
+    "doc": "The opposite of a true or false value.",
+    "example": "NOT(running)"
   },
   {
     "name": "CHANGED",
     "minArgs": 1,
     "maxArgs": 1,
     "returns": "bool",
-    "signature": "CHANGED(x)"
+    "signature": "CHANGED(x)",
+    "doc": "True in the evaluation where the value became different from the last one known. The first reading is not a change.",
+    "example": "CHANGED(error_code)"
   },
   {
     "name": "STALE",
     "minArgs": 1,
     "maxArgs": 2,
     "returns": "bool",
-    "signature": "STALE(x, 4h)"
+    "signature": "STALE(x, 4h)",
+    "doc": "True when the value did not change for the whole duration. A value the service cannot read is stale at once.",
+    "example": "STALE(temperature, 15min)"
+  },
+  {
+    "name": "PREV",
+    "minArgs": 1,
+    "maxArgs": 1,
+    "returns": "any",
+    "signature": "PREV(x)",
+    "doc": "The value the field held before its last change.",
+    "example": "AND(CHANGED(state), PREV(state) = 0)"
+  },
+  {
+    "name": "SINCE",
+    "minArgs": 1,
+    "maxArgs": 1,
+    "returns": "number",
+    "signature": "SINCE(x)",
+    "doc": "How many seconds passed since the field last changed.",
+    "example": "SINCE(heartbeat) \u003e 300"
   },
   {
     "name": "RATE",
     "minArgs": 2,
     "maxArgs": 2,
     "returns": "number",
-    "signature": "RATE(x, 30min)"
+    "signature": "RATE(x, 30min)",
+    "doc": "How fast the value changes, per hour, across the window.",
+    "example": "RATE(temperature, 30min) \u003e 4"
   },
   {
     "name": "AVG",
     "minArgs": 2,
     "maxArgs": 2,
     "returns": "number",
-    "signature": "AVG(x, 10min)"
+    "signature": "AVG(x, 10min)",
+    "doc": "The mean of the readings in the window.",
+    "example": "AVG(temperature, 10min) \u003e 70"
+  },
+  {
+    "name": "MIN",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "MIN(x, 10min)",
+    "doc": "The smallest reading in the window.",
+    "example": "MIN(pressure, 1h) \u003c 2"
+  },
+  {
+    "name": "MAX",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "MAX(x, 10min)",
+    "doc": "The largest reading in the window. It keeps a peak that one poll on its own would miss.",
+    "example": "MAX(vibration, 10min) \u003e 8"
+  },
+  {
+    "name": "COUNT",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "COUNT(x, 1h)",
+    "doc": "How many readings the window holds.",
+    "example": "COUNT(temperature, 1h) \u003c 10"
+  },
+  {
+    "name": "DELTA",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "DELTA(x, 15min)",
+    "doc": "The newest reading minus the oldest one in the window.",
+    "example": "DELTA(level, 1h) \u003c -20"
+  },
+  {
+    "name": "STDDEV",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "STDDEV(x, 30min)",
+    "doc": "How much the readings in the window spread around their mean.",
+    "example": "STDDEV(current, 30min) \u003e 1.5"
+  },
+  {
+    "name": "ZSCORE",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "ZSCORE(x, 2h)",
+    "doc": "How unusual the current reading is against the window. Three or more sits far outside the usual range.",
+    "example": "ZSCORE(vibration, 2h) \u003e 3"
+  },
+  {
+    "name": "SLOPE",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "SLOPE(x, 1h)",
+    "doc": "The trend of the window, per hour. It fits a line through every reading, so noise moves it less than RATE.",
+    "example": "SLOPE(temperature, 1h) \u003e 2"
+  },
+  {
+    "name": "FORECAST",
+    "minArgs": 3,
+    "maxArgs": 3,
+    "returns": "number",
+    "signature": "FORECAST(x, 1h, 8h)",
+    "doc": "Where the value lands after the horizon, if the trend of the window holds.",
+    "example": "FORECAST(temperature, 1h, 8h) \u003e 90"
+  },
+  {
+    "name": "EWMA",
+    "minArgs": 2,
+    "maxArgs": 2,
+    "returns": "number",
+    "signature": "EWMA(x, 5min)",
+    "doc": "A smoothed value that follows the field. Recent readings weigh more, and the time constant says how fast older ones stop counting.",
+    "example": "EWMA(temperature, 5min) \u003e 70"
   },
   {
     "name": "BITAND",
     "minArgs": 2,
     "maxArgs": 2,
     "returns": "number",
-    "signature": "BITAND(x, mask)"
+    "signature": "BITAND(x, mask)",
+    "doc": "The bits that are set in both numbers.",
+    "example": "BITAND(status_word, 4) \u003c\u003e 0"
   },
   {
     "name": "BITOR",
     "minArgs": 2,
     "maxArgs": 2,
     "returns": "number",
-    "signature": "BITOR(x, mask)"
+    "signature": "BITOR(x, mask)",
+    "doc": "The bits that are set in either number.",
+    "example": "BITOR(flags, 1)"
   },
   {
     "name": "BITXOR",
     "minArgs": 2,
     "maxArgs": 2,
     "returns": "number",
-    "signature": "BITXOR(x, mask)"
+    "signature": "BITXOR(x, mask)",
+    "doc": "The bits that are set in one number but not the other.",
+    "example": "BITXOR(flags, last_flags) \u003c\u003e 0"
   },
   {
     "name": "HEX2DEC",
     "minArgs": 1,
     "maxArgs": 1,
     "returns": "number",
-    "signature": "HEX2DEC(\"FF\")"
+    "signature": "HEX2DEC(\"FF\")",
+    "doc": "The number a hexadecimal text stands for.",
+    "example": "BITAND(status_word, HEX2DEC(\"10\")) \u003c\u003e 0"
   }
 ]

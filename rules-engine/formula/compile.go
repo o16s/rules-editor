@@ -13,8 +13,11 @@ type Resolver interface {
 	// the same pair give the same index. ok is false when the engine already
 	// holds as many windows as it allows.
 	Window(slot int, window time.Duration) (index int, ok bool)
-	// ChangedState reserves the memory of one CHANGED node.
+	// ChangedState reserves the memory of one CHANGED node. PREV takes two.
 	ChangedState() (index int, ok bool)
+	// EWMAState reserves the memory of one smoothed value. Two calls with the
+	// same slot and time constant give the same index.
+	EWMAState(slot int, tau time.Duration) (index int, ok bool)
 }
 
 // compiler holds the state of one compilation.
@@ -221,8 +224,16 @@ func (c *compiler) call(n *Node, depth int) Type {
 		return c.changed(n, depth)
 	case "STALE":
 		return c.stale(n, depth)
-	case "RATE", "AVG":
+	case "RATE", "AVG", "MIN", "MAX", "COUNT", "DELTA", "STDDEV", "ZSCORE", "SLOPE":
 		return c.windowCall(n, depth)
+	case "FORECAST":
+		return c.forecast(n, depth)
+	case "SINCE":
+		return c.since(n, depth)
+	case "PREV":
+		return c.prev(n, depth)
+	case "EWMA":
+		return c.ewma(n, depth)
 	case "BITAND", "BITOR", "BITXOR":
 		return c.bitwise(n, depth)
 	case "HEX2DEC":
@@ -259,8 +270,15 @@ func tagWords(ref TagRef) string {
 	return `tag "` + ref.Tag + `" of device "` + ref.Device + `"`
 }
 
-// logic compiles AND or OR with short-circuit jumps. The accumulator below
-// the arguments carries whether an unknown argument was seen.
+// logic compiles AND or OR. The accumulator below the arguments carries
+// whether an unknown argument was seen.
+//
+// The folds normally jump to the end once an argument decides the result,
+// which is what makes the logic short-circuit. An argument that carries
+// memory must not be skipped: CHANGED, PREV and EWMA answer from what they
+// saw at every evaluation, and a skipped evaluation is a hole in that memory.
+// So a call with such an argument keeps its jumps pointing at the next
+// instruction, and every argument runs every time.
 func (c *compiler) logic(n *Node, depth int, isOr bool) Type {
 	op := opAndAcc
 	if isOr {
@@ -270,13 +288,19 @@ func (c *compiler) logic(n *Node, depth int, isOr bool) Type {
 	// true for AND, false for OR. A fold that meets the deciding value jumps
 	// out; one that meets an unknown argument turns it into Unknown.
 	c.constant(BoolValue(!isOr))
+	statesBefore, ewmasBefore := len(c.prog.states), len(c.prog.ewmas)
 	folds := make([]int, 0, len(n.Args))
 	for i := 0; i < len(n.Args) && i < maxArgs; i++ {
 		c.node(n.Args[i], depth+1)
 		folds = append(folds, c.emit(op, 0, 0))
 	}
+	keepsMemory := len(c.prog.states) > statesBefore || len(c.prog.ewmas) > ewmasBefore
 	end := int32(len(c.prog.code))
 	for i := 0; i < len(folds); i++ {
+		if keepsMemory {
+			c.prog.code[folds[i]].a = int32(folds[i] + 1) // fall through
+			continue
+		}
 		c.prog.code[folds[i]].a = end
 	}
 	return TypeBool
@@ -319,7 +343,21 @@ func (c *compiler) stale(n *Node, depth int) Type {
 	return TypeBool
 }
 
-// windowCall compiles RATE or AVG and reserves their ring.
+// windowOps maps a window function to its opcode. Every one of them reads the
+// same ring, so they share the compiler.
+var windowOps = map[string]opcode{
+	"RATE":   opRate,
+	"AVG":    opAvg,
+	"MIN":    opMin,
+	"MAX":    opMax,
+	"COUNT":  opCount,
+	"DELTA":  opDelta,
+	"STDDEV": opStdDev,
+	"ZSCORE": opZScore,
+	"SLOPE":  opSlope,
+}
+
+// windowCall compiles a window function and reserves its ring.
 func (c *compiler) windowCall(n *Node, depth int) Type {
 	slot, ok := c.fieldOf(n.Args[0], n.Str)
 	if !ok {
@@ -334,11 +372,114 @@ func (c *compiler) windowCall(n *Node, depth int) Type {
 		c.fail("this file uses more time windows than the engine allows.")
 		return TypeNumber
 	}
-	op := opRate
-	if n.Str == "AVG" {
-		op = opAvg
+	op, ok := windowOps[n.Str]
+	if !ok {
+		c.fail(n.Str + "() is not a window function.")
+		return TypeNumber
 	}
 	c.emit(op, int32(index), 0)
+	c.claimWindow(slot, window, index)
+	_ = depth
+	return TypeNumber
+}
+
+// forecast compiles FORECAST(x, window, horizon). It reads the same ring as
+// SLOPE and carries the horizon as a constant.
+func (c *compiler) forecast(n *Node, depth int) Type {
+	slot, ok := c.fieldOf(n.Args[0], "FORECAST")
+	if !ok {
+		return TypeNumber
+	}
+	window, ok := c.duration(n.Args[1], "FORECAST")
+	if !ok {
+		return TypeNumber
+	}
+	horizon, ok := c.duration(n.Args[2], "FORECAST")
+	if !ok {
+		return TypeNumber
+	}
+	index, ok := c.resolver.Window(slot, window)
+	if !ok {
+		c.fail("this file uses more time windows than the engine allows.")
+		return TypeNumber
+	}
+	c.prog.consts = append(c.prog.consts, Value{Kind: VDuration, F: horizon.Seconds()})
+	c.emit(opForecast, int32(index), int32(len(c.prog.consts)-1))
+	c.claimWindow(slot, window, index)
+	_ = depth
+	return TypeNumber
+}
+
+// since compiles SINCE(x): how long ago the field last changed, in seconds.
+func (c *compiler) since(n *Node, depth int) Type {
+	slot, ok := c.fieldOf(n.Args[0], "SINCE")
+	if !ok {
+		return TypeNumber
+	}
+	c.emit(opSince, int32(slot), 0)
+	c.prog.slots = appendUniqueInt(c.prog.slots, slot)
+	c.prog.HasTime = true
+	_ = depth
+	return TypeNumber
+}
+
+// prev compiles PREV(x). It reserves two states: the last value seen, and the
+// one before it, which is what PREV returns.
+func (c *compiler) prev(n *Node, depth int) Type {
+	slot, ok := c.fieldOf(n.Args[0], "PREV")
+	if !ok {
+		return TypeAny
+	}
+	last, ok := c.resolver.ChangedState()
+	if !ok {
+		c.fail("this file asks the engine to remember more values than it allows.")
+		return TypeAny
+	}
+	before, ok := c.resolver.ChangedState()
+	if !ok {
+		c.fail("this file asks the engine to remember more values than it allows.")
+		return TypeAny
+	}
+	if before != last+1 {
+		c.fail("the engine could not reserve two neighbouring memories for PREV().")
+		return TypeAny
+	}
+	c.emit(opPrev, int32(slot), int32(last))
+	c.prog.slots = appendUniqueInt(c.prog.slots, slot)
+	c.prog.states = appendUniqueInt(c.prog.states, last)
+	c.prog.states = appendUniqueInt(c.prog.states, before)
+	return TypeAny
+}
+
+// ewma compiles EWMA(x, tau) and reserves its one number.
+func (c *compiler) ewma(n *Node, depth int) Type {
+	slot, ok := c.fieldOf(n.Args[0], "EWMA")
+	if !ok {
+		return TypeNumber
+	}
+	tau, ok := c.duration(n.Args[1], "EWMA")
+	if !ok {
+		return TypeNumber
+	}
+	index, ok := c.resolver.EWMAState(slot, tau)
+	if !ok {
+		c.fail("this file uses more smoothed values than the engine allows.")
+		return TypeNumber
+	}
+	c.emit(opEwma, int32(index), 0)
+	c.prog.slots = appendUniqueInt(c.prog.slots, slot)
+	before := len(c.prog.ewmas)
+	c.prog.ewmas = appendUniqueInt(c.prog.ewmas, index)
+	if len(c.prog.ewmas) > before {
+		c.prog.ewmaSpecs = append(c.prog.ewmaSpecs, EwmaSpec{Slot: slot, Tau: tau})
+	}
+	c.prog.HasTime = true
+	_ = depth
+	return TypeNumber
+}
+
+// claimWindow records that the program reads one ring.
+func (c *compiler) claimWindow(slot int, window time.Duration, index int) {
 	c.prog.slots = appendUniqueInt(c.prog.slots, slot)
 	before := len(c.prog.windows)
 	c.prog.windows = appendUniqueInt(c.prog.windows, index)
@@ -346,8 +487,6 @@ func (c *compiler) windowCall(n *Node, depth int) Type {
 		c.prog.windowSpecs = append(c.prog.windowSpecs, WindowSpec{Slot: slot, Window: window})
 	}
 	c.prog.HasTime = true
-	_ = depth
-	return TypeNumber
 }
 
 // fieldOf resolves the field argument of a time function, through a variable

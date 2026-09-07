@@ -11,6 +11,7 @@ type testResolver struct {
 	fields  []TagRef
 	types   []Type
 	windows []WindowSpec
+	ewmas   []EwmaSpec
 	states  int
 	maxWin  int
 	maxStat int
@@ -54,6 +55,16 @@ func (r *testResolver) Window(slot int, window time.Duration) (int, bool) {
 	}
 	r.windows = append(r.windows, WindowSpec{Slot: slot, Window: window})
 	return len(r.windows) - 1, true
+}
+
+func (r *testResolver) EWMAState(slot int, tau time.Duration) (int, bool) {
+	for i := 0; i < len(r.ewmas); i++ {
+		if r.ewmas[i].Slot == slot && r.ewmas[i].Tau == tau {
+			return i, true
+		}
+	}
+	r.ewmas = append(r.ewmas, EwmaSpec{Slot: slot, Tau: tau})
+	return len(r.ewmas) - 1, true
 }
 
 func (r *testResolver) ChangedState() (int, bool) {
@@ -152,16 +163,47 @@ func TestEvalOperators(t *testing.T) {
 	}
 }
 
-func TestEvalShortCircuitsAndSkipsSideEffects(t *testing.T) {
+// A function that carries memory must see every evaluation, even when an
+// earlier argument already decided the answer. Skipping it leaves a hole, and
+// the next reading then looks like the first one the engine ever saw.
+func TestEvalKeepsMemoryBehindADecidedAnd(t *testing.T) {
 	r := newResolver("a", TypeBool, "b", TypeNumber)
 	p := compile(t, `AND(TAG("a"), CHANGED(TAG("b")))`, r)
 	e := env(t, p, r, false, 1.0)
 	if got := p.Eval(e); !got.Equal(BoolValue(false)) {
 		t.Fatalf("= %+v, want false", got)
 	}
-	// The first argument was false, so CHANGED never ran and kept no value.
-	if e.States[0].Kind != VUnknown {
-		t.Errorf("CHANGED ran although the AND was already false: %+v", e.States[0])
+	if e.States[0].Kind == VUnknown {
+		t.Fatal("CHANGED was skipped, so its memory has a hole")
+	}
+
+	// The value moves while the gate is still shut, then the gate opens on the
+	// same evaluation. The change is real and the rule must see it.
+	e.Slots[1] = 2.0
+	if got := p.Eval(e); !got.Equal(BoolValue(false)) {
+		t.Errorf("the gate is still shut: %+v", got)
+	}
+	e.Slots[0] = true
+	e.Slots[1] = 3.0
+	if got := p.Eval(e); !got.Equal(BoolValue(true)) {
+		t.Errorf("= %+v, want true: the value moved as the gate opened", got)
+	}
+}
+
+// A decided answer survives an unknown argument that follows it, which is
+// what the fold has to get right once it stops jumping out.
+func TestEvalADecidedAnswerAbsorbsAnUnknown(t *testing.T) {
+	r := newResolver("a", TypeBool, "b", TypeNumber)
+	p := compile(t, `AND(TAG("a"), CHANGED(TAG("b")))`, r)
+	e := env(t, p, r, false, nil)
+	if got := p.Eval(e); !got.Equal(BoolValue(false)) {
+		t.Errorf("AND(false, unknown) = %+v, want false", got)
+	}
+
+	q := compile(t, `OR(TAG("a"), CHANGED(TAG("b")))`, r)
+	e2 := env(t, q, r, true, nil)
+	if got := q.Eval(e2); !got.Equal(BoolValue(true)) {
+		t.Errorf("OR(true, unknown) = %+v, want true", got)
 	}
 }
 

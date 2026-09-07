@@ -120,6 +120,7 @@ func (p Problem) String() string {
 // maxWindows and maxChangedStates bound the memory one file can ask for.
 const (
 	maxWindows       = 256
+	maxEwmas         = 256
 	maxChangedStates = 4096
 )
 
@@ -130,6 +131,7 @@ type binder struct {
 	index   map[fieldKey]int
 	types   []Type
 	windows []formula.WindowSpec
+	ewmas   []formula.EwmaSpec
 	states  int
 }
 
@@ -188,6 +190,21 @@ func (b *binder) Window(slot int, window time.Duration) (int, bool) {
 	}
 	b.windows = append(b.windows, formula.WindowSpec{Slot: slot, Window: window})
 	return len(b.windows) - 1, true
+}
+
+// EWMAState reserves the one number of a smoothed value, once per pair of a
+// slot and a time constant.
+func (b *binder) EWMAState(slot int, tau time.Duration) (int, bool) {
+	for i := 0; i < len(b.ewmas); i++ {
+		if b.ewmas[i].Slot == slot && b.ewmas[i].Tau == tau {
+			return i, true
+		}
+	}
+	if len(b.ewmas) >= maxEwmas {
+		return 0, false
+	}
+	b.ewmas = append(b.ewmas, formula.EwmaSpec{Slot: slot, Tau: tau})
+	return len(b.ewmas) - 1, true
 }
 
 // ChangedState reserves the memory of one CHANGED node.

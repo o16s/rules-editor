@@ -6,12 +6,17 @@ import "time"
 // fixed at startup: 64 buckets, whatever the poll rate.
 const buckets = 64
 
-// bucket holds the samples of one slice of a window.
+// bucket holds the samples of one slice of a window. It keeps enough to
+// answer every window function without storing the samples themselves, so
+// the memory of a window does not depend on the poll rate.
 type bucket struct {
 	start time.Time
 	first float64
 	last  float64
 	sum   float64
+	sumSq float64 // for the variance
+	min   float64
+	max   float64
 	count int32
 }
 
@@ -106,9 +111,18 @@ func (w *Window) Add(now time.Time, v float64) {
 	}
 	if b.count == 0 {
 		b.first = v
+		b.min = v
+		b.max = v
+	}
+	if v < b.min {
+		b.min = v
+	}
+	if v > b.max {
+		b.max = v
 	}
 	b.last = v
 	b.sum += v
+	b.sumSq += v * v
 	b.count++
 }
 

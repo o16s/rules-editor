@@ -13,6 +13,7 @@ type Env struct {
 	Now        time.Time   // the time of this evaluation
 	LastChange []time.Time // when each slot last changed, for STALE
 	Windows    []*Window   // the time windows, indexed as the compiler bound them
+	Ewmas      []*Ewma     // the smoothed values, indexed the same way
 	States     []Value     // the last known value of each CHANGED node
 	Context    string      // the description of the firing condition
 	Stack      []Value     // the value stack, at least Program.StackDepth() long
@@ -59,6 +60,26 @@ func (p *Program) Eval(env *Env) Value {
 		case opAvg:
 			env.Stack[sp] = windowValue(env, in.a, false)
 			sp++
+		case opMin, opMax, opCount, opDelta, opStdDev, opSlope:
+			env.Stack[sp] = windowStat(env, in.op, in.a)
+			sp++
+		case opZScore:
+			env.Stack[sp] = windowOfSlot(env, in.a, func(w *Window) Value {
+				return w.ZScore(env.slot(int32(w.Slot())))
+			})
+			sp++
+		case opForecast:
+			env.Stack[sp] = forecast(env, in.a, p.consts[in.b])
+			sp++
+		case opSince:
+			env.Stack[sp] = since(env, in.a)
+			sp++
+		case opPrev:
+			env.Stack[sp] = prevValue(env, in.a, in.b)
+			sp++
+		case opEwma:
+			env.Stack[sp] = ewmaValue(env, in.a)
+			sp++
 		case opNot:
 			env.Stack[sp-1] = notValue(env.Stack[sp-1])
 		case opNeg:
@@ -85,11 +106,18 @@ func (p *Program) Eval(env *Env) Value {
 
 // fold combines one argument of AND or OR with the accumulator below it. It
 // jumps to the end of the call when the argument decides the result, which is
-// what makes the logic short-circuit.
+// what makes the logic short-circuit. The compiler removes that jump when an
+// argument carries memory, and then the first test below is what keeps the
+// answer right: a decided accumulator absorbs everything after it, so
+// AND(false, unknown) is false and OR(true, unknown) is true.
 func fold(env *Env, in instr, pc, sp int, want bool) (int, int) {
 	v := env.Stack[sp-1]
 	sp--
 	acc := env.Stack[sp-1]
+	if acc.Kind == VBool && acc.B == want {
+		env.Stack[sp-1] = acc
+		return int(in.a) - 1, sp // the loop adds one
+	}
 	if v.Kind == VBool && v.B == want {
 		env.Stack[sp-1] = BoolValue(want)
 		return int(in.a) - 1, sp // the loop adds one
@@ -140,6 +168,103 @@ func stale(env *Env, slot int32, window Value) Value {
 		return BoolValue(true)
 	}
 	return BoolValue(env.Now.Sub(last) >= d)
+}
+
+// windowOfSlot runs read against one window, or answers Unknown when the
+// index names none.
+func windowOfSlot(env *Env, index int32, read func(*Window) Value) Value {
+	if index < 0 || int(index) >= len(env.Windows) {
+		return Unknown
+	}
+	w := env.Windows[index]
+	if w == nil {
+		return Unknown
+	}
+	return read(w)
+}
+
+// windowStat reads the statistic one opcode names from one window.
+func windowStat(env *Env, op opcode, index int32) Value {
+	if index < 0 || int(index) >= len(env.Windows) {
+		return Unknown
+	}
+	w := env.Windows[index]
+	if w == nil {
+		return Unknown
+	}
+	switch op {
+	case opMin:
+		return w.Min()
+	case opMax:
+		return w.Max()
+	case opCount:
+		return w.Count()
+	case opDelta:
+		return w.Delta()
+	case opStdDev:
+		return w.StdDev()
+	case opSlope:
+		return w.Slope()
+	}
+	return Unknown
+}
+
+// forecast extends the trend of one window by a horizon.
+func forecast(env *Env, index int32, horizon Value) Value {
+	d, ok := horizon.Duration()
+	if !ok {
+		return Unknown
+	}
+	return windowOfSlot(env, index, func(w *Window) Value {
+		return w.Forecast(env.slot(int32(w.Slot())), d.Hours())
+	})
+}
+
+// since is the time in seconds since one slot last changed. A slot that never
+// carried a value, and one that carries none now, are both unknown: there is
+// no moment to measure from.
+func since(env *Env, slot int32) Value {
+	if slot < 0 || int(slot) >= len(env.LastChange) {
+		return Unknown
+	}
+	last := env.LastChange[slot]
+	if last.IsZero() {
+		return Unknown
+	}
+	return NumberValue(env.Now.Sub(last).Seconds())
+}
+
+// prevValue reads the value one slot held before its last change. States[last]
+// keeps the value seen at the previous evaluation, and States[last+1] the one
+// before that changed.
+func prevValue(env *Env, slot, last int32) Value {
+	if slot < 0 || int(slot) >= len(env.Slots) {
+		return Unknown
+	}
+	if last < 0 || int(last)+1 >= len(env.States) {
+		return Unknown
+	}
+	now := env.slot(slot)
+	seen := env.States[last]
+	if now.Kind != VUnknown && !now.Equal(seen) {
+		if seen.Kind != VUnknown {
+			env.States[last+1] = seen
+		}
+		env.States[last] = now
+	}
+	return env.States[last+1]
+}
+
+// ewmaValue reads one smoothed value.
+func ewmaValue(env *Env, index int32) Value {
+	if index < 0 || int(index) >= len(env.Ewmas) {
+		return Unknown
+	}
+	e := env.Ewmas[index]
+	if e == nil {
+		return Unknown
+	}
+	return e.Value()
 }
 
 // windowValue reads a rate or a mean from one window.

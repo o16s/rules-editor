@@ -31,6 +31,7 @@ type caseResolver struct {
 	tags    []string
 	types   []Type
 	windows []WindowSpec
+	ewmas   []EwmaSpec
 	states  int
 }
 
@@ -54,6 +55,16 @@ func (r *caseResolver) Window(slot int, window time.Duration) (int, bool) {
 	}
 	r.windows = append(r.windows, WindowSpec{Slot: slot, Window: window})
 	return len(r.windows) - 1, true
+}
+
+func (r *caseResolver) EWMAState(slot int, tau time.Duration) (int, bool) {
+	for i := 0; i < len(r.ewmas); i++ {
+		if r.ewmas[i].Slot == slot && r.ewmas[i].Tau == tau {
+			return i, true
+		}
+	}
+	r.ewmas = append(r.ewmas, EwmaSpec{Slot: slot, Tau: tau})
+	return len(r.ewmas) - 1, true
 }
 
 func (r *caseResolver) ChangedState() (int, bool) {
