@@ -44,7 +44,7 @@ SYSREQ-008 and SYSREQ-010 at the level of the functions.
 ## Acceptance Criteria
 
 - `STALE` flips within one `Period` after `d`, with a fixed clock that advances in steps.
-- `RATE` over a linear ramp matches the slope within 1 percent.
+- `RATE` over a linear ramp matches the slope within one bucket of the window, which is one part in 64. The rate divides by the nominal window, and the oldest bucket holds the oldest sample it saw, so a ramp reads short by up to that much.
 - `AVG` over a constant equals the constant. `AVG` over a square wave equals its mean within one bucket of error.
 - Memory does not grow across 10^6 calls (a test with `runtime.MemStats`).
 
