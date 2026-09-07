@@ -68,7 +68,7 @@ export function createXmlPanel(deps) {
                 textarea.focus();
                 textarea.select();
             }
-            say('Selected, press copy');
+            say('Selected. Press Ctrl+C.');
         }
     }
     return {

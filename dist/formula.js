@@ -106,7 +106,7 @@ function tokenize(text, lenient) {
                     i++;
                 const unit = text.slice(unitStart, i);
                 if (!(unit in DURATION_UNITS)) {
-                    fail(`Unknown unit "${unit}". Use ms, s, m, min, or h.`, unitStart);
+                    fail(`"${unit}" is not a unit of time. Use ms, s, m, min or h.`, unitStart);
                     continue;
                 }
                 out.push({ kind: 'duration', text: text.slice(start, i), start });
@@ -312,10 +312,10 @@ export function checkFunctions(ast) {
             case 'call': {
                 const spec = functionSpec(n.name);
                 if (!spec)
-                    out.push(`Unknown function ${n.name}().`);
+                    out.push(`There is no function called ${n.name}().`);
                 else if (n.args.length < spec.minArgs || n.args.length > spec.maxArgs) {
                     const want = spec.minArgs === spec.maxArgs ? `${spec.minArgs}` : `${spec.minArgs} to ${spec.maxArgs}`;
-                    out.push(`${spec.name}() takes ${want} argument${spec.maxArgs === 1 ? '' : 's'}, got ${n.args.length}: ${spec.signature}.`);
+                    out.push(`${spec.name}() takes ${want} argument${spec.maxArgs === 1 ? '' : 's'}, not ${n.args.length}: ${spec.signature}.`);
                 }
                 n.args.forEach(walk);
                 break;

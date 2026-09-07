@@ -23,6 +23,8 @@ export interface CellInfo {
     formula?: boolean;
     /** Removes the cell's row. */
     remove?: () => void;
+    /** What the bar's delete button says. Default "Delete row"; a Then row removes the whole action. */
+    removeLabel?: string;
 }
 /**
  * Address of one input, shared by the renderer (as `data-loc`) and by the

@@ -209,8 +209,9 @@ stays a sheet: columns keep their widths, the sheet scrolls sideways inside
 its frame, and the row numbers stay frozen on the left. Tabs show one sheet
 at a time (Variables, When, Then). A tap selects a cell. A formula bar at the
 bottom of the editor shows the cell's address and content; you edit there,
-and confirm with the tick or cancel with the cross. The bar also offers
-"Delete row" and shows the cell's validation message. Choice cells (Action,
+and confirm with the tick or cancel with the cross. The bar also offers a
+delete button that names what it removes ("Delete variable", "Delete action"),
+and it shows the cell's validation message. Choice cells (Action,
 match, trigger) open the native picker in place. Every control a finger can
 focus is 16px or larger, and the small ones have a 44px touch target.
 

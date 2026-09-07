@@ -29,6 +29,8 @@ export interface FormulaOptions {
     placeholder?: string;
     address?: string;
     remove?: () => void;
+    /** What the bar's delete button says, when "Delete row" is not what happens. */
+    removeLabel?: string;
 }
 export interface Cells {
     textInput(value: string, onCommit: (v: string) => void, o: TextOptions): HTMLInputElement;
@@ -44,7 +46,7 @@ export interface Cells {
     gutter(n: number): HTMLElement;
     addRow(n: number, label: string, fn: () => void, disabledWhy?: string): HTMLElement;
     sheetHead(cols: string[], titles?: string[]): HTMLElement;
-    sheetTitle(cls: string, help: string, children: Array<Node | string>): {
+    sheetTitle(cls: string, help: string, children: Array<Node | string>, sheet: string): {
         title: HTMLElement;
         help: HTMLElement;
     };

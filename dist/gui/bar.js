@@ -11,11 +11,12 @@ export function createBar(deps) {
     let selectedOriginal = '';
     const infoOf = () => (selectedCell ? cellInfo.get(selectedCell) : undefined);
     const address = el('span', { class: 're-bar-address' });
+    const DELETE_DEFAULT = 'Delete row';
     const deleteBtn = el('button', { class: 're-link re-danger', type: 'button', onclick: () => {
             const info = infoOf();
             clear(false);
             info?.remove?.();
-        } }, ['Delete row']);
+        } }, [DELETE_DEFAULT]);
     const input = el('input', {
         type: 'text',
         'aria-label': 'Cell content',
@@ -143,6 +144,8 @@ export function createBar(deps) {
         }
         address.textContent = info.address;
         deleteBtn.hidden = !info.remove;
+        // The Then rows of one action go together: say what the button removes.
+        deleteBtn.textContent = info.removeLabel ?? DELETE_DEFAULT;
         if (info.input) {
             input.readOnly = false;
             input.value = info.input.value;

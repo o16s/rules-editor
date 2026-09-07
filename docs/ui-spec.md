@@ -175,7 +175,8 @@ A 286px column on the left. A **Filter** input, then one row per rule:
 - an 8px square: filled in the severity colour when the rule raises an alarm,
   hollow when it only publishes;
 - the rule name, with an amber issue count beside it when the rule is invalid;
-- a meta line: `rising edge` or `every cycle`;
+- a meta line in the words of the Trigger choice: `when it becomes true` or
+  `while it is true`;
 - **Duplicate** and **Delete** icons, shown on hover and on the selected row.
 
 The selected row sits on the warm ground `#efece5`. Below 900px the rail
@@ -277,8 +278,9 @@ The model is Google Sheets on a phone. The sheet stays a sheet.
   outline). A **formula bar** anchored at the bottom of the editor shows the
   cell's address (`temp_rate · Formula`) and its content. Typing in the bar is a
   draft: the cell shows it, the model waits. **✓** or Enter commits; tapping
-  another cell or a tab commits too. **✕** discards the draft, **Delete row**
-  removes the row. After a commit with an error the bar stays open and shows
+  another cell or a tab commits too. **✕** discards the draft, and the delete button
+  removes what it names: **Delete variable**, **Delete condition**, **Delete
+  action** or **Delete alarm** (every Then row of one action goes with it). After a commit with an error the bar stays open and shows
   the message. A result cell opens the bar read-only.
 - Choice cells (Action, `any`, `becomes true`) keep their native picker and do
   not open the bar.
@@ -435,7 +437,7 @@ Nothing is written to the gateway.
 
 ## 11. Open weaknesses
 
-1. No undo, and no confirmation on Delete rule, Delete row, or Import.
+1. No undo, and no confirmation on a delete or on Import.
 2. The tag catalogue only feeds the `TAG("…")` menu. A misspelled tag typed by
    hand is not flagged; a catalogue-aware warning is the next step.
 3. No simulator. Slide 14a of the handoff describes one: a signal generator per

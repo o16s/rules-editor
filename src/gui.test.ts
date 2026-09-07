@@ -200,8 +200,8 @@ describe('rules editor component (jsdom)', () => {
     button(root, 'Add rule').click();
     expect(root.querySelectorAll('.re-rail-row').length).toBe(7);
     expect(api.getModel().rules[6].name).toBe('new-rule');
-    expect(root.querySelector('.re-rail-row.is-selected .re-rail-meta')?.textContent).toBe('every cycle');
-    expect(root.querySelector('.re-rail-row .re-rail-meta')?.textContent).toBe('rising edge');
+    expect(root.querySelector('.re-rail-row.is-selected .re-rail-meta')?.textContent).toBe('while it is true');
+    expect(root.querySelector('.re-rail-row .re-rail-meta')?.textContent).toBe('when it becomes true');
   });
 
   it('duplicates a rule with a unique name and deletes from the rail', () => {
@@ -463,7 +463,7 @@ describe('rules editor component (jsdom)', () => {
     const { root } = setup({ initialModel: wrap({ conditions: [], actions: [], incident: null }) });
     expect(root.querySelector('.re-sheet-block.is-invalid .re-sheet-when')).toBeTruthy();
     expect(root.querySelector('.re-pane-body.is-invalid')).toBeTruthy();
-    expect(root.querySelector('.re-pane-body > .re-msg')?.textContent).toMatch(/actions.*incident/i);
+    expect(root.querySelector('.re-pane-body > .re-msg')?.textContent).toMatch(/add an action in Then/i);
   });
 
   it('keeps whole-file issues on the status line', () => {
@@ -621,7 +621,7 @@ describe('rules editor component (jsdom)', () => {
     const field = inputByLabel(root, 'Formula of variable 1').closest('.re-cell') as HTMLElement;
     const msg = field.querySelector('.re-msg') as HTMLElement;
     expect(msg, 'no visible message under the field').toBeTruthy();
-    expect(msg.textContent).toBe('Variable "temp": has no formula.');
+    expect(msg.textContent).toBe('Variable "temp" has no formula.');
     expect(msg.hidden).toBe(false);
   });
 
@@ -663,6 +663,8 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
   const visibleBlocks = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>('.re-sheet-block')).filter((b) => !b.hidden);
   const bar = (root: HTMLElement) => root.querySelector('.re-bar') as HTMLElement;
   const barInput = (root: HTMLElement) => root.querySelector('.re-bar input') as HTMLInputElement;
+  /** A button of the formula bar; the sheets have delete buttons with the same names. */
+  const barButton = (root: HTMLElement, label: string) => button(bar(root), label);
   const tab = (root: HTMLElement, name: string) => Array.from(root.querySelectorAll<HTMLButtonElement>('.re-tab')).find((t) => t.textContent?.startsWith(name))!;
 
   it('sets is-narrow from the container width, and not when wide', () => {
@@ -818,7 +820,7 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(barInput(root).value).toBe('48.2 °C');
     expect(button(root, 'Done').hidden).toBe(true);
     expect(button(root, 'Cancel').hidden).toBe(true);
-    expect(button(root, 'Delete row').hidden).toBe(false);
+    expect(barButton(root, 'Delete variable').hidden).toBe(false);
   });
 
   it('a choice cell keeps its native picker and does not open the bar', () => {
@@ -828,11 +830,25 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     expect(bar(root).classList.contains('is-open')).toBe(false);
   });
 
-  it('Delete row in the bar removes the selected row', () => {
+  it('the bar says what Delete removes: a row, or the whole action', () => {
+    const { root } = narrowSetup();
+    const cellOf = (label: string) => inputByLabel(root, label).closest('.re-cell') as HTMLElement;
+    cellOf('Name of variable 1').click();
+    expect(barButton(root, 'Delete variable').hidden).toBe(false);
+    cellOf('Condition 1').click();
+    expect(barButton(root, 'Delete condition').hidden).toBe(false);
+    // a Then field belongs to its action, and Delete removes the action
+    cellOf('payload of row 2').click();
+    expect(barButton(root, 'Delete action').hidden).toBe(false);
+    cellOf('cause of row 6').click();
+    expect(barButton(root, 'Delete alarm').hidden).toBe(false);
+  });
+
+  it('the bar delete removes the selected row', () => {
     const { root, api } = narrowSetup({ initialModel: wrap({ variables: [{ name: 'a', formula: '1' }, { name: 'b', formula: '2' }], conditions: [{ expr: 'a = 1' }] }) });
     (inputByLabel(root, 'Name of variable 2').closest('.re-cell') as HTMLElement).click();
     expect(root.querySelector('.re-bar-address')?.textContent).toBe('b · Name');
-    button(root, 'Delete row').click();
+    barButton(root, 'Delete variable').click();
     expect(api.getModel().rules[0].variables.map((v) => v.name)).toEqual(['a']);
     expect(bar(root).classList.contains('is-open')).toBe(false);
   });

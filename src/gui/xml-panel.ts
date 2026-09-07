@@ -93,7 +93,7 @@ export function createXmlPanel(deps: XmlPanelDeps): XmlPanel {
       // No clipboard permission (plain http on a gateway, or a locked-down
       // iframe): hand the text over selected, so one keystroke copies it.
       if (textarea) { textarea.focus(); textarea.select(); }
-      say('Selected, press copy');
+      say('Selected. Press Ctrl+C.');
     }
   }
 
