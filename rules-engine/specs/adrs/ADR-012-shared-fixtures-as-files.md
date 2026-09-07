@@ -5,7 +5,7 @@ name: "The editor and the engine read the same fixture files"
 description: >
   The XSD fixtures, the formula cases and the function registry are files
   under schema/, read by vitest and by go test.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

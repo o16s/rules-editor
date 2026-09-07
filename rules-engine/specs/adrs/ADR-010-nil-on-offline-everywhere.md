@@ -5,7 +5,7 @@ name: "Every multi-device service clears the slots of an offline device"
 description: >
   iolinkmaster2mqtt adopts the modbus2mqtt behavior: after the offline
   threshold, the slots of the device become nil.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

@@ -5,7 +5,7 @@ name: "Go 1.24 as the floor and the standard library only"
 description: >
   The module declares go 1.24 and has no dependency. Services on 1.25 can
   require it.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

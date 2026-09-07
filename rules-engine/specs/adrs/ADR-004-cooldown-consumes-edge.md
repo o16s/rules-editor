@@ -5,7 +5,7 @@ name: "Keep the shared cooldown timer that consumes a rising edge"
 description: >
   Actions and the incident trigger share one cooldown timer. A rising edge
   inside the cooldown does not fire later.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

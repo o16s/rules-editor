@@ -5,7 +5,7 @@ name: "Add first_step and cause to the incident trigger as optional fields"
 description: >
   The trigger message gains first_step and cause when the rule sets them. The
   resolve does not carry them.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

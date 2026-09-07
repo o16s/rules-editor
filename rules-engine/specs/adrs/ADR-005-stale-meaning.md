@@ -5,7 +5,7 @@ name: "STALE means no change for the duration, or an unknown value"
 description: >
   STALE(x, d) is true when the slot is nil or did not change for d. A constant
   value counts as no update.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

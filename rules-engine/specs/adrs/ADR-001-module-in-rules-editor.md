@@ -5,7 +5,7 @@ name: "Host the engine as a Go module inside rules-editor"
 description: >
   The engine lives in the rules-editor repository under rules-engine/, next to
   the XSD and the formula language.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

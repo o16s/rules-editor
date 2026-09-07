@@ -5,7 +5,7 @@ name: "Compile formulas to a post-order program, no recursion at runtime"
 description: >
   Every formula compiles at Load into an instruction array. Eval walks it with
   a fixed-size value stack.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

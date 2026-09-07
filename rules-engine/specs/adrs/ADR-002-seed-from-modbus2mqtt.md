@@ -5,7 +5,7 @@ name: "Seed the module from modbus2mqtt and merge the tsend2mqtt fixes"
 description: >
   The modbus2mqtt packages internal/rules and internal/rulesxml are the
   starting code. Two fixes come from tsend2mqtt.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

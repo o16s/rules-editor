@@ -5,7 +5,7 @@ name: "A flat slot array is the value model, owned by the service"
 description: >
   The engine reads a []any slot array that the service fills. It does not
   decode frames or know devices.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

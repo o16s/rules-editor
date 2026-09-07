@@ -5,7 +5,7 @@ name: "Cap the actions of one rule at 64 in the XSD, the editor and the engine"
 description: >
   The XSD gets maxOccurs 64 on publish, model.ts gets LIMITS.maxActions, and
   the engine bounds its loop with the same value.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

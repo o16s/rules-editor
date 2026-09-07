@@ -5,7 +5,7 @@ name: "Keep the tsend2mqtt dedup key through an empty topic prefix"
 description: >
   tsend2mqtt sets TopicPrefix to empty and Sources to its topic prefix, so the
   dedup key stays {topic_prefix}-{rule}.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

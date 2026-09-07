@@ -5,7 +5,7 @@ name: "Validate the structure before binding, and report every problem"
 description: >
   Load runs rulesxml.Validate first and returns all problems. Only a
   structurally sound file is bound.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:
