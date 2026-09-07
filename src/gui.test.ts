@@ -127,6 +127,7 @@ describe('rules editor component (jsdom)', () => {
     expect(rows[2].querySelector('select')?.value).toBe('critical');
     expect(rows.map((r) => Boolean(r.querySelector('.re-cell-merged')))).toEqual([false, true, false, true, true, true]);
     expect(rows[1].querySelector('select')).toBeNull();
+    expect(rows.map((r) => Boolean(r.querySelector('.re-remove')))).toEqual([true, false, true, false, false, false]);
     // cause = condition.description & "…" previews with the first condition's description
     expect(rows[5].querySelector('.re-cell-result')?.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
   });
@@ -237,7 +238,9 @@ describe('rules editor component (jsdom)', () => {
     expect(api.getModel().rules[0].variables).toHaveLength(1);
     buttons(root, 'Delete condition')[1].click();
     expect(api.getModel().rules[0].conditions).toHaveLength(1);
-    buttons(root, 'Delete action')[2].click();
+    // one Delete per action, on its first row
+    expect(buttons(root, 'Delete action')).toHaveLength(2);
+    buttons(root, 'Delete action')[1].click();
     expect(api.getModel().rules[0].actions).toHaveLength(1);
   });
 

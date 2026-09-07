@@ -143,6 +143,7 @@ const STYLES = `
 .re-cell-pick .re-pick-caret { padding-top:2px; }
 /* The rows of one action share its Action cell: the continuation rows paint over the grid line above them. */
 .re-cell-merged { position:relative; margin-top:-1px; border-right:1px solid var(--re-grid); background:var(--re-surface); }
+.re-cell-merged-end { border-right:none; }
 .re-info { margin-left:auto; padding:0 4px; background:none; border:none; color:var(--re-muted); font-size:12px; line-height:1; cursor:help; }
 .re-info[aria-expanded="true"] { color:var(--re-accent); }
 .re-help { margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--re-muted); max-width:70ch; }

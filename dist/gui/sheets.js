@@ -192,18 +192,23 @@ export function createSheets(deps) {
         const result = resultCell('Formula result', previewThen(value, rule), { address: `${who} · Formula result`, remove });
         // Recomputed on every refresh: the preview also reads condition 1's description.
         previews.add(() => { result.textContent = previewThen(thenGet(rule, row), rule) ?? ''; });
-        // One Action cell per action, like a merged cell: the first row holds the
-        // choice, the rows under it continue the cell.
-        const action = isGroupHead(row)
+        // One Action cell and one delete button per action, like merged cells: the
+        // first row holds them, the rows under it continue the cells. Delete
+        // removes the whole action, so one button says so.
+        const head = isGroupHead(row);
+        const action = head
             ? cell('re-cell-pick', 'Action', null, [pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`)], { address: `${who} · Action`, remove })
             : el('div', { class: 're-cell-merged', 'aria-hidden': 'true' });
+        const trash = head
+            ? removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', remove)
+            : el('div', { class: 're-cell-merged re-cell-merged-end', 'aria-hidden': 'true' });
         return el('div', { class: 're-row' }, [
             gutter(i + 1),
             action,
             cell('re-cell-field', 'Field', null, [THEN_LABEL[row.field]], { address: `${who} · Field`, remove }),
             formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove }),
             result,
-            removeBtn(row.kind === 'publish' ? 'Delete action' : 'Delete alarm', remove),
+            trash,
         ]);
     }
     /** The Action select changed: convert between a publish and the alarm, or change severity. */
