@@ -43,7 +43,10 @@ func (p *Program) Eval(env *Env) Value   // env: slots, changedSet, windows, clo
 | `BITAND`, `BITOR`, `BITXOR` | on `int64`. A `Number` operand with a fraction gives `Unknown` |
 | `HEX2DEC(s)` | `int64` of a hex string without prefix. Invalid gives `Unknown` |
 | `+ - * /` | on `float64`. `Integer` operands widen. `x / 0` gives `Unknown` |
-| `= != < <= > >=` | number with number, string with string, bool with bool (`=` and `!=` only). Other pairs give `Unknown` |
+| `= != < <= > >=` | number with number (`Integer` widens to `Number`), string with string, bool with bool (`=` and `!=` only) |
+| `=`, `!=` bool with number | `1` reads as `true` and `0` as `false`. Another number gives `Unknown` (ADR-015) |
+| `=`, `!=` string with number or bool | the string compares with the text form of the other value, as `&` renders it (ADR-015) |
+| any other pair | `Unknown` |
 | `&` | string join. Number prints with `strconv.FormatFloat(f, 'g', -1, 64)`, integer with `FormatInt`, bool as `true` or `false`, `Unknown` as the empty string |
 
 A condition with the value `Unknown` counts as false.
@@ -53,6 +56,7 @@ A condition with the value `Unknown` counts as false.
 - A table test per row of the table, with `nil` cases.
 - `go test -bench` of a program without `&` reports 0 allocs/op.
 - A 0.2 `cond` and its formula give the same result for the same slots.
+- `TAG("B") = 1` on a boolean slot with `true` is true. `TAG("S") = true` on a string slot with `"true"` is true.
 
 ## Verification Plan
 

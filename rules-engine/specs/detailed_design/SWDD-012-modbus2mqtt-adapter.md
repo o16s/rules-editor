@@ -35,7 +35,9 @@ func loadRules(path string, cfg *config.Config, devices []*deviceRuntime) *rules
 log each `Path`, `Rule`, `Message`, then `os.Exit(1)`. Else
 `rules.NewEngine(parsed, cat)`.
 
-`aggregator.handleReport`: unchanged. `evalRules(now)`: publish
+`aggregator.handleReport`: writes each value of the report into its slot, then
+`nil` into every other slot of the device (`fieldsByDevice` minus the written
+slots). `evalRules(now)`: publish
 `incidents[i].Message(now)`, record `incidents[i].Rule`. `aggregator.run`:
 add `case <-ticker.C: a.evalRules(time.Now())` with the ticker at
 `cat.Period`.

@@ -31,7 +31,7 @@ behavior with modbus2mqtt (ADR-010).
 ## Logic & Interface Details
 
 - `cmd/iolinkmaster2mqtt/main.go`: `loadRules` builds `Fields` per sensor in the configuration order from `portFieldTypes`, `Sources` from the sensor names, `TopicPrefix` from the configuration, `Period` from `poll_interval_ms`. It calls `rules.Load` and logs every problem before `os.Exit(1)`.
-- `poll()` writes the decoded fields into the slots, then calls `Eval(ruleValues, now)` once per cycle. The cycle is the timer.
+- `poll()` writes the decoded fields of each port into the slots, and `nil` into every other slot of that port. Then it calls `Eval(ruleValues, now)` once per cycle. The cycle is the timer.
 - `portMiss`, when it takes a port offline, writes `nil` into the slots of that port. `poll()` then evaluates as usual.
 - Incidents publish as `incidents[i].Message(now)` with `PublishQoS1Absolute`.
 

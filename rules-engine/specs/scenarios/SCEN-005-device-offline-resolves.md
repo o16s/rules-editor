@@ -42,4 +42,5 @@ The device `pump1` does not answer three polls in a row.
 ## Exceptions & Edge Cases
 
 - [Device returns]: When `pump1` answers again with `error_code` = 5, the rule sees a rising edge and triggers again.
+- [Field missing]: When a report of `pump1` lacks `error_code`, the service writes `nil` into that slot alone. The rule resolves the same way.
 - [STALE]: A rule with `STALE(TAG("pump1", "error_code"), 5min)` becomes true 5 min after the slot became `nil` (SCEN-008).

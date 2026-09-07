@@ -26,7 +26,8 @@ The fourth return value maps a sensor name to its slots, for the offline case.
 
 ## Dynamic View (Logic)
 
-`poll()`: per port, write decoded fields into `ruleValues`. On `portMiss`
+`poll()`: per port, write the decoded fields into `ruleValues`, and `nil` into
+the other slots of the port. On `portMiss`
 that crosses the threshold, write `nil` into the slots of the port. After all
 ports, `Eval(ruleValues, now)` once. The poll cycle is the timer, so no extra
 ticker is needed. Incidents publish `incidents[i].Message(now)`.

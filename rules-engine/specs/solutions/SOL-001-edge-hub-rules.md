@@ -55,3 +55,13 @@ formula language.
 - **Operational**: The rules file is `/svc/rules.xml` on the BL335 and a configured path on the IOT2050. The incident wire format of `tsend2mqtt/docs/events-protocol.md` stays valid.
 - **Safety & Security**: A rule can command a device, for example stop a pump. A wrong evaluation is a safety problem. The engine must refuse a bad file at startup, not at runtime.
 - **Business**: The Power of Ten coding rules apply. The library uses the Go standard library only. The XSD stays the single definition of the format.
+
+## Non-goals
+
+These items are out of scope for the shared engine at version 0.3:
+
+- A reload of the rules file without a restart of the service.
+- Persistence of cooldown timers or incident state across restarts (see ADR-014).
+- A simulator or a dry-run mode for rules.
+- Changes to the incident forwarder beyond the two optional fields of ADR-007.
+- Rules that write to a device. A rule publishes MQTT messages only.

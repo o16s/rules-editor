@@ -41,6 +41,7 @@ Chosen option: "64 in all three layers". It is far more than every deployed rule
 ### Negative Consequences
 
 - A schema change, and a new fixture pair at the limit.
+- The schema version becomes `0.3.1`, and the module starts at `rules-engine/v0.3.1`. No deployed file has more than 5 actions, so no file breaks.
 
 ## Pros and Cons of the Options
 

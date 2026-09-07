@@ -25,9 +25,13 @@ Rule state: `prev bool`, `lastFired time.Time`, `active bool`,
 
 ## Dynamic View (Logic)
 
+`NewEngine` sets `active = true` and `prev = false` for every incident rule
+(SYSREQ-015, ADR-014). The first evaluation then emits a trigger on a true
+result, or a resolve on a false result, through the normal transitions.
+
 ```mermaid
 stateDiagram-v2
-    [*] --> Inactive
+    [*] --> Active: NewEngine, prev=false
     Inactive --> Active: rising and cooledDown / emit trigger, lastFired=now
     Inactive --> Inactive: rising and not cooledDown / edge consumed
     Active --> Inactive: falling / emit resolve

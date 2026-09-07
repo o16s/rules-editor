@@ -38,13 +38,13 @@ firing, before the first render.
 ## Interface & API Definitions
 
 Internal. `Action.Topic` and `Action.Payload`, and the incident strings,
-reference the buffer or the literal bytes. `Eval` returns a third value in a
-later version if the services need the `truncated` flag per action. For now
-the engine logs once per rule.
+reference the buffer or the literal bytes. A truncation increments
+`Stats.TruncatedRenders`. The service logs the counter on its status
+ticker.
 
 ## Error Handling & Edge Cases
 
-- An empty rendered `topic` drops the action and logs once per rule.
+- An empty rendered `topic` drops the action and increments `Stats.DroppedActions`.
 - A rendered `source` that is not in `Sources` is not checked at fire time. The dedup key uses it as rendered. The README documents that a formula `source` bypasses the `Sources` check.
 
 ## Notes

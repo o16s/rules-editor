@@ -43,17 +43,27 @@ type IncidentMsg struct {
     Data map[string]any `json:"data"`
 }
 func (i Incident) Message(now time.Time) IncidentMsg
+
+// Stats are counters since NewEngine. The service logs them; the engine
+// never logs.
+type Stats struct {
+    Evals, Firings, Triggers, Resolves uint64
+    TruncatedRenders, DroppedActions, UnknownSlotTypes, ClockStepsBack uint64
+}
+func (e *Engine) Stats() Stats
 ```
 
 - `Message` sets `Action` to `trigger` or `resolve`, `Time` to `now.UTC()` in `2006-01-02T15:04:05.000Z`, and `Data` to `{"rule": i.Rule}`.
 - On a resolve, `Severity`, `Summary`, `FirstStep` and `Cause` are empty.
 - The `Action.Payload` of a literal payload points at the bytes parsed at `Load`. The payload of a formula points into the rule buffer (SWREQ-011).
 - The slices and the buffers are valid until the next `Eval` or `Reset` call.
+- The engine never writes to a log. Every condition worth a log line increments a counter in `Stats`. The service reads `Stats` on its status ticker and logs a change.
 
 ## Acceptance Criteria
 
 - A golden test of `Message` for a trigger and a resolve matches the JSON in `docs/rules.md` of iolinkmaster2mqtt, plus the two new fields.
 - The capacity of the result slices equals the sum of actions and the count of incident rules, computed in `NewEngine`.
+- The `rules` package imports neither `log` nor `log/slog`.
 
 ## Verification Plan
 

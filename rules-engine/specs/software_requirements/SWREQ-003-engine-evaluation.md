@@ -37,8 +37,8 @@ func (e *Engine) RuleCount() int
 Per call:
 
 1. For each slot `i` less than `len(cat.Fields)`, compare `values[i]` with the previous value with `equalValue`. Record changed slots in `changedSet` and `changedBuf`.
-2. For each changed slot, for each rule in `rulesByField[i]` not yet evaluated this call, evaluate it.
-3. For each rule in `timeRules`, not yet evaluated this call, evaluate it.
+2. For each changed slot, mark each rule in `rulesByField[i]` as due. Mark each rule in `timeRules` as due.
+3. Evaluate the due rules in rule index order, which is the document order (ADR-016).
 4. Copy `values` into `prevValues`. Clear `changedSet` and `evalSet` for the touched entries only.
 
 Per rule:
@@ -54,6 +54,7 @@ Per rule:
 
 - Every `TestEngine_*` and `TestEngineEval_*` test of the three services passes.
 - A rule with two changed slots in one call is evaluated once.
+- Two rules that fire in one call return their actions in document order, whatever the slot order.
 - A rule with no changed slot and no time function is not evaluated.
 - `Eval(nil, now)` returns `nil, nil`.
 - 0 allocs/op in the benchmark of SYSREQ-008.

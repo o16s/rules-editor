@@ -12,12 +12,12 @@ traceability queries. The plan that these documents refine is `../PLAN.md`.
 specs/
   solutions/               SOL-001      the solution
   use_cases/               UC-001..006  what an actor wants
-  scenarios/               SCEN-001..013 concrete paths, with verification
-  system_requirements/     SYSREQ-001..014 what the system must do, measurable
+  scenarios/               SCEN-001..014 concrete paths, with verification
+  system_requirements/     SYSREQ-001..015 what the system must do, measurable
   system_architecture/     SYSARCH-001..002 the module and the service adapter
-  software_requirements/   SWREQ-001..017 what each package and each adapter must do
-  detailed_design/         SWDD-001..015 how each package and adapter is built
-  adrs/                    ADR-001..013 the decisions and their alternatives
+  software_requirements/   SWREQ-001..018 what each package and each adapter must do
+  detailed_design/         SWDD-001..016 how each package and adapter is built
+  adrs/                    ADR-001..016 the decisions and their alternatives
 ```
 
 ## Links
@@ -35,6 +35,16 @@ The links point upstream, from the detail to the purpose:
 | SWREQ | `depends_on` | SWREQ |
 | SWDD | `satisfies` | SWREQ |
 | ADR | `justifies` | SYSARCH, SWDD |
+
+## Terms
+
+One word has one meaning in every document:
+
+- **Device report**: the decoded fields that one successful poll of one device returns. tsend2mqtt has one report per frame.
+- **Slot**: one entry of the value array that the service owns. Slot `i` holds `Catalog.Fields[i]`.
+- **Firing**: one evaluation in which a rule emits actions, an incident trigger, or both.
+- **Pulse**: a condition that is true only in the evaluation where a value changed.
+- **Problem**: one fault that `Load` reports, with a path.
 
 ## How to use SARA on this set
 

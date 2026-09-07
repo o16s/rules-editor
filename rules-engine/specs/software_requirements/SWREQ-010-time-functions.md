@@ -33,11 +33,13 @@ SYSREQ-008 and SYSREQ-010 at the level of the functions.
 | `RATE(x, w)` | `(last - first) / hours(w)` over the samples in the window. `0` with fewer than two samples | one bucket ring per (slot, window) |
 | `AVG(x, w)` | `sum / count` over the samples in the window. `Unknown` with no sample | the same ring |
 
-- A ring has 64 buckets of width `w / 64`. A bucket holds `first`, `last`, `sum`, `count` and the bucket start time.
+- A ring has at most 64 buckets. The bucket width is the larger of `w / 64` and `Catalog.Period`. A bucket holds `first`, `last`, `sum`, `count` and the bucket start time.
+- One ring serves every node with the same slot and the same window. `Load` reports a problem when the rules need more than 256 rings.
+- When `Catalog.Period` is zero, a rule with a time function is a `Load` problem.
 - On each `Eval`, the engine updates every ring. If the slot changed, it writes the value into the bucket of `now`. It expires the buckets older than `w`.
 - `x` must be a `TAG` or a variable that is a `TAG`. An expression is a compile problem.
 - `nil` samples are not recorded.
-- `Catalog.Period` must be at most `w / 64` for full resolution. A larger period is accepted and logged once.
+- A window shorter than 64 periods gets fewer buckets. Nothing is logged.
 
 ## Acceptance Criteria
 

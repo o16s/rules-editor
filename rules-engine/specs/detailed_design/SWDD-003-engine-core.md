@@ -29,7 +29,9 @@ graph TD
     E --> ES["evalSet []bool, evaled []int"]
     E --> PV["prevValues []any, lastChange []time.Time"]
     E --> W["windows []ring (SWDD-008)"]
+    E --> DUE["dueSet []bool, due []int"]
     E --> OUT["actions []Action, incidents []Incident"]
+    E --> ST["Stats counters"]
     E --> ENV["formula.Env (slots, changedSet, windows, now, context)"]
 ```
 
@@ -46,9 +48,10 @@ stateDiagram-v2
 ```
 
 Per `Eval`: phase 1 detects changes with `equalValue` and records
-`lastChange[i] = now`. Phase 2 evaluates the rules of changed slots, then the
-time rules, each at most once (`evalSet`). Phase 3 copies the values and
-clears the touched flags. The rule evaluation is the logic of SWREQ-003 with
+`lastChange[i] = now`. Phase 2 marks the rules of changed slots and the time
+rules as due (`dueSet []bool`, `due []int`). It then evaluates the due rules
+in rule index order, which is the document order (ADR-016). Phase 3 copies
+the values and clears the touched flags. The rule evaluation is the logic of SWREQ-003 with
 `fireActions` and the incident machine of SWDD-004.
 
 ## Interface & API Definitions
@@ -63,6 +66,7 @@ problem.
 - `values` shorter than the catalog: the missing slots count as `nil`.
 - `values` longer than the catalog: the extra slots are ignored.
 - A `NaN` float compares as changed on every call. This is documented.
+- A slot with a dynamic type outside the list increments `Stats.UnknownSlotTypes` and reads as `nil`.
 - The action loop per rule is bounded by `MaxActions = 64`.
 
 ## Notes

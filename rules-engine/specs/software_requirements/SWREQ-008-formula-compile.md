@@ -40,6 +40,7 @@ Checks, with the messages of `src/parse.ts`:
 
 - Unknown function, wrong argument count (`checkFunctions`).
 - A reference that is not a variable of the rule.
+- A variable named like a function, `TRUE`, `FALSE` or `CONDITION`, in any case (`RESERVED_NAMES` of the editor).
 - A context name other than `condition.description`, or a context name outside a Then field.
 - A variable cycle, reported once at the variable where the cycle starts.
 - A condition of type number, string or duration: "must be true or false, but is a ...".

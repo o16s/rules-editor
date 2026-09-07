@@ -26,7 +26,8 @@ forwarder expects QoS 1.
 
 ## Acceptance Criteria
 
-- Actions are published in the order of the returned slice, with 10 ms between two actions.
+- Actions are published in the order of the returned slice, with 10 ms between two actions. Actions and incidents are not retained.
+- When several rules fire in one `Eval`, their outputs follow the order of the rules in the file (ADR-016).
 - Incidents are published after the actions of the same call.
 - The topic prefix of the service is not prepended to an action topic.
 - An `Eval` result is consumed before the next `Eval` call.

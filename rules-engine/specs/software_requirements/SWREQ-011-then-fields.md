@@ -32,9 +32,9 @@ page. The buffer keeps the hot path free of allocations.
 - A literal Then field is stored as bytes at `Load`.
 - A formula Then field is a `Program` with `allowContext = true`. Its result renders with the `&` rules of SWREQ-009.
 - Each rule has one buffer of 4096 bytes. Rendered fields are appended in order: topic and payload per action, then source, summary, first step, cause. `Action` and `Incident` hold slices of the buffer.
-- A render that exceeds the buffer is truncated at the buffer end, and the engine sets a `Truncated` flag on the output. The service logs it.
+- A render that exceeds the buffer is truncated at the buffer end, and the engine increments `Stats.TruncatedRenders`. The service logs the counter.
 - A rendered `summary` longer than 120 code points is cut to 120.
-- `condition.description`: the top-level group is evaluated row by row. The description of the first true row with a description is the context. For a bare `cond`, it is its description. Empty when none.
+- `condition.description`: the top-level group is evaluated row by row. The description of the first true row with a description is the context. A nested `and` or `or` group is one row, and its `description` attribute is its description. For a bare `cond`, it is its description. Empty when none.
 - A formula `source` renders at trigger time. The engine stores the rendered dedup key with the rule state and uses it for the resolve (SWREQ-004).
 
 ## Acceptance Criteria
@@ -50,4 +50,4 @@ page. The buffer keeps the hot path free of allocations.
 
 ## Notes
 
-A `topic` formula that renders an empty string is a problem at fire time: the action is dropped and logged.
+A `topic` formula that renders an empty string drops the action and increments `Stats.DroppedActions`.

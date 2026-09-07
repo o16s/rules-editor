@@ -31,12 +31,14 @@ of the three services forbid allocation after initialization.
 - A firing with literal Then fields reports 0 allocs/op.
 - A firing with a formula Then field writes into a preallocated buffer of the rule.
 - Every `for` loop has a constant or a slice length as its bound, and a comment names the bound where it is not obvious.
-- The memory of one time window is 64 buckets, independent of the poll rate.
+- The memory of one time window is at most 64 buckets, independent of the poll rate.
+- The engine keeps one ring per distinct pair of slot and window, and at most 256 rings. More is a `Load` problem.
+- `Eval` with 1000 rules, 300 slots and 10 changed slots completes in less than 2 ms on a Cortex-A53 at 1.2 GHz. The CI benchmark on amd64 uses 0.5 ms as the proxy limit.
 
 ## Verification Plan
 
 - **Method**: test and inspection.
-- **Procedure**: `go test -bench Eval -benchmem` in CI, with a threshold of 0 allocs/op. A review checklist for loop bounds.
+- **Procedure**: `go test -bench Eval -benchmem` in CI, with a threshold of 0 allocs/op and the time limit. A review checklist for loop bounds. One measurement on a BL335 before the release.
 
 ## Notes
 

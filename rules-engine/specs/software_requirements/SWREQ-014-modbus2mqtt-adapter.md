@@ -32,6 +32,7 @@ modbus2mqtt is the closest to the module. Its change is the smallest.
 - `cmd/modbus2mqtt/setup.go`: `ruleFields` returns `rules.Catalog{Fields, Sources, TopicPrefix, Period}` and `fieldsByDevice`. `Fields` is built per device in the configuration order, with `TypeFromJSONSchema` on the driver field type. `Sources` is the device names. `Period` is the shortest poll interval.
 - `checkAndParseRules` becomes `rules.Load(data, cat)`. The problem loop logs `Path`, `Rule` and `Message`.
 - `rulesRuntime` keeps `eng`, `values`, `fieldMap` (device.tag to slot) and `fieldsByDevice`.
+- On a device report, the adapter writes each reported field into its slot, and `nil` into every other slot of that device (SYSREQ-011).
 - `cmd/modbus2mqtt/aggregator.go`: `evalRules` publishes `incidents[i].Message(now)` with `PublishQoS1Absolute`, and records `incidents[i].Rule` in the status page firing. A `time.Ticker` event in the aggregator loop calls `evalRules(now)`.
 - The CI step `Schema parity really ran` and the vendored `testdata/` are removed.
 

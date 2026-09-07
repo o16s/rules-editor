@@ -44,6 +44,11 @@ Listed differences:
 | tsend2mqtt | no resolve after a suppressed trigger | SYSREQ-004 |
 | iolinkmaster2mqtt, modbus2mqtt | a `CHANGED` rule fires on every change | SYSREQ-003 |
 | iolinkmaster2mqtt | offline device resolves | SYSREQ-011 |
+| iolinkmaster2mqtt, modbus2mqtt | a field absent from a device report becomes `nil` | SYSREQ-011 |
+| all | firings of several rules in one call follow the document order | ADR-016 |
+| all | one resolve per incident rule whose condition is false at the first evaluation | SYSREQ-015 |
+| all | `op`, `edge` and `severity` match exactly. `GT` and `Critical` are problems | SYSREQ-002 |
+| tsend2mqtt | a boolean field compared with `1` or `0` keeps its meaning after the editor rewrite | ADR-015 |
 
 ## Acceptance Criteria
 

@@ -13,8 +13,9 @@ satisfies:
 
 ## Overview
 
-A ring is fixed memory for one slot and one window. `NewEngine` allocates
-one per `windowSpec` and never grows it.
+A ring is fixed memory for one slot and one window. `Load` collects the
+distinct pairs of slot and window over all rules, at most 256, and
+`NewEngine` allocates one ring per pair. Nothing grows after that.
 
 ## Static View (Structure)
 
@@ -23,7 +24,8 @@ type bucket struct { start time.Time; first, last, sum float64; count int32 }
 type ring struct {
     slot   int
     window time.Duration
-    width  time.Duration   // window / 64
+    width  time.Duration   // max(window / 64, Period)
+    n      int             // buckets in use: window / width, at most 64
     b      [64]bucket
     head   int             // bucket of the newest sample
 }
@@ -52,8 +54,8 @@ with three methods: `Stale`, `Rate`, `Avg`.
 
 ## Error Handling & Edge Cases
 
-- A clock that moves backwards clears the ring and resets `lastChange` to `now`.
-- A window shorter than 64 periods loses resolution. `NewEngine` logs it once.
+- A clock that moves backwards clears the ring, resets `lastChange` to `now`, and increments `Stats.ClockStepsBack`.
+- A window shorter than 64 periods uses fewer buckets. `Catalog.Period` of zero with a time function is a `Load` problem.
 - A `Reset` clears every ring.
 
 ## Notes

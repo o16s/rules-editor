@@ -41,6 +41,6 @@ A frame arrives with `Temperature` = 85.5.
 
 ## Exceptions & Edge Cases
 
-- [Buffer full]: If the rendered text exceeds 4 KiB, the engine truncates it and the service logs a warning.
+- [Buffer full]: If the rendered text exceeds 4 KiB, the engine truncates it and counts it in `Stats`. The service logs the counter.
 - [Summary too long]: A rendered summary longer than 120 characters is truncated to 120 characters.
 - [No description]: If no true row has a description, `condition.description` is the empty string.
