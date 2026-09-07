@@ -172,3 +172,47 @@ func TestEwmaUsesTheTimeBetweenReadings(t *testing.T) {
 			fast.Value().Float(), slow.Value().Float())
 	}
 }
+
+// RATE divides by the time between the two readings it used, not by the width
+// of the window. A window that is not yet full then reports the rate of what
+// it holds, instead of a fraction of it.
+//
+// A thirty minute window used to need thirty minutes before it told the truth.
+// It now needs two buckets, and a bucket is a sixty-fourth of the window, so
+// it tells the truth after about a minute.
+func TestRateMeasuresTheSpanItHas(t *testing.T) {
+	for _, window := range []time.Duration{10 * time.Second, time.Minute, 30 * time.Minute} {
+		w := NewWindow(0, window, time.Second)
+		start := time.Unix(1_700_000_000, 0)
+		// Five readings, spaced so they land in five buckets, rising one unit
+		// a second. That is 3600 an hour whatever the window is.
+		spacing := window / buckets
+		if spacing < time.Second {
+			spacing = time.Second
+		}
+		for i := 0; i < 5; i++ {
+			now := start.Add(time.Duration(i) * spacing)
+			w.Advance(now)
+			w.Add(now, now.Sub(start).Seconds())
+		}
+		got := w.Rate()
+		if got.Kind != VNumber {
+			t.Fatalf("window %v: Rate = %v, want a number", window, got)
+		}
+		if math.Abs(got.Float()-3600) > 1 {
+			t.Errorf("window %v: Rate = %v, want 3600 an hour", window, got.Float())
+		}
+	}
+}
+
+// Readings that all sit in one bucket give no span to divide by.
+func TestRateNeedsTwoMomentsNotTwoReadings(t *testing.T) {
+	w := NewWindow(0, time.Hour, time.Minute)
+	now := time.Unix(1_700_000_000, 0)
+	w.Advance(now)
+	w.Add(now, 1)
+	w.Add(now, 5)
+	if got := w.Rate(); got.Kind != VUnknown {
+		t.Errorf("Rate from one moment = %v, want unknown", got)
+	}
+}

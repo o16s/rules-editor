@@ -374,8 +374,10 @@ export type { Token };
 // ---- the Simulator page and its core ----
 export { initSimulator, parseSeconds } from './gui/simulator.js';
 export type { SimulatorOptions, SimulatorHandle, SimulatorState } from './gui/simulator.js';
-export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
-export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value, Env } from './simulate.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export { loadEngine, runEngine, engineAssets } from './engine.js';
+export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value } from './simulate.js';
+export type { EngineRequest, EngineResult, EngineSeries, EngineFiring, EngineProblem } from './engine.js';
 
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';

@@ -37,20 +37,26 @@ const SIGNALS = {
   'bulk1/door_state': 'PULSE("closed", "open", 150s, 30s)',
 };
 
-function setup(opts: Partial<Parameters<typeof initSimulator>[1]> = {}, width = 1180) {
+// The engine loads asynchronously, so setup waits for the first run before a
+// test looks at the page.
+async function setup(opts: Partial<Parameters<typeof initSimulator>[1]> = {}, width = 1180) {
   const root = document.createElement('div');
   Object.defineProperty(root, 'clientWidth', { value: width, configurable: true });
   document.body.append(root);
   const api = initSimulator(root, { rule: rule(), catalog: CATALOG, signals: SIGNALS, stop: 600, step: 1, cursor: 250, ...opts });
+  await api.ready();
   return { root, api };
 }
+// The engine answers asynchronously, so a committed change redraws on a
+// later turn of the loop.
+const flush = (): Promise<void> => new Promise((r) => { setTimeout(r, 0); });
 const text = (el: Element | null | undefined): string => el?.textContent?.trim() ?? '';
 const lanes = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>('.rs-lane'));
 const labelOf = (lane: HTMLElement) => text(lane.querySelector('.rs-label')).replace(/^[▾▸]\s*/, '');
 
 describe('simulator page (jsdom)', () => {
-  it('renders the header, one tag row per tag, the tree fully open, and the log', () => {
-    const { root } = setup();
+  it('renders the header, one tag row per tag, the tree fully open, and the log', async () => {
+    const { root } = await setup();
     expect(text(root.querySelector('.rs-title'))).toBe('Simulator');
     expect((root.querySelector('.rs-back') as HTMLElement).hidden).toBe(true);
     expect((root.querySelector('[aria-label="Run for"]') as HTMLInputElement).value).toBe('600 s');
@@ -67,28 +73,30 @@ describe('simulator page (jsdom)', () => {
       '=AND(temp_rate > 4, door_changed)', 'temp_rate', 'temp', '=TAG("vibration1", "temperature")', 'door_changed', '=TAG("bulk1", "door_state")',
     ]);
     expect(lanes(root).map((l) => l.classList.contains('is-condition'))).toEqual([true, false, false, true, false, false, true, false, false, false, false, false]);
-    // the log has the fire
-    const fired = root.querySelector('.rs-log .is-fired');
-    expect(text(fired?.querySelector('.rs-time'))).toBe('180 s');
-    // the change line names the condition, so the fire line does not repeat it
-    expect(text(fired?.previousElementSibling?.querySelector('.rs-event'))).toBe('Condition 1 became true.');
-    expect(text(fired?.querySelector('.rs-event'))).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical incident “Press guard alarm on cell 3”');
-    expect(text(fired?.nextElementSibling?.querySelector('.rs-event'))).toBe('Cooldown: the rule cannot fire again before 225 s.');
-    expect(root.querySelectorAll('.rs-fire')).toHaveLength(1);
+    // The log opens with the engine closing the incident it assumes open at
+    // startup, and then carries the rule's own firing.
+    const firedRows = Array.from(root.querySelectorAll('.rs-log .is-fired'));
+    expect(text(firedRows[0].querySelector('.rs-time'))).toBe('0 s');
+    expect(text(firedRows[0].querySelector('.rs-event'))).toContain('Resolve incident');
+    const fired = firedRows[1];
+    expect(text(fired.querySelector('.rs-time'))).toBe('150 s');
+    expect(text(fired.querySelector('.rs-event'))).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical incident “Press guard alarm on cell 3”');
+    expect(text(fired.nextElementSibling?.querySelector('.rs-event'))).toBe('Cooldown: the rule cannot fire again before 195 s.');
+    expect(root.querySelectorAll('.rs-fire')).toHaveLength(2);
   });
 
-  it('shows the value at the cursor with units, y labels on analog lanes, and bands on discrete ones', () => {
-    const { root, api } = setup();
+  it('shows the value at the cursor with units, y labels on analog lanes, and bands on discrete ones', async () => {
+    const { root, api } = await setup();
     const values = () => lanes(root).map((l) => text(l.querySelector('.rs-value')));
     expect(values().slice(0, 6)).toEqual(['true', 'true', 'true', 'false', '47.8 °C', '47.8 °C']);
-    // temp_rate has no history in a 600 s run
-    expect(values()[7]).toBe('—');
+    // temp_rate reads the ramp: 14 degrees over 600 s is about 84 an hour.
+    expect(values()[7]).toMatch(/°C\/h$/);
     // analog lane: axis max over min, threshold from the condition, a trace
     const temp = lanes(root)[4];
     expect(Array.from(temp.querySelectorAll('.rs-axis span')).map(text)).toEqual(['56 °C', '42 °C']);
     expect(temp.querySelectorAll('.rs-threshold')).toHaveLength(1);
     // a value that never moves gets one label, not a range around it
-    const { root: flat } = setup({ signals: { ...SIGNALS, 'vibration1/temperature': 'HOLD(20)' }, rule: { ...rule(), conditions: [{ expr: 'temp' }] } });
+    const { root: flat } = await setup({ signals: { ...SIGNALS, 'vibration1/temperature': 'HOLD(20)' }, rule: { ...rule(), conditions: [{ expr: 'temp' }] } });
     // the variable lane and its tag lane each carry the single label
     expect(Array.from(flat.querySelectorAll('.rs-axis span')).map(text)).toEqual(['20 °C', '20 °C']);
     expect(temp.querySelector('.rs-trace')?.getAttribute('d')).toMatch(/^M0\.0 /);
@@ -112,8 +120,8 @@ describe('simulator page (jsdom)', () => {
     expect((root.querySelector('.rs-timeline') as HTMLElement).style.getPropertyValue('--rs-frac')).toBe(String(100 / 600));
   });
 
-  it('folds and opens a tree node', () => {
-    const { root } = setup();
+  it('folds and opens a tree node', async () => {
+    const { root } = await setup();
     expect(lanes(root)).toHaveLength(12);
     (lanes(root)[0].querySelector('.rs-label') as HTMLButtonElement).click();
     expect(lanes(root)).toHaveLength(10);
@@ -124,28 +132,32 @@ describe('simulator page (jsdom)', () => {
     expect((lanes(root)[2].querySelector('.rs-label') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('re-runs when a signal, the stop time or the step is committed', () => {
+  it('re-runs when a signal, the stop time or the step is committed', async () => {
     let changes = 0;
-    const { root, api } = setup({ onChange: () => changes++ });
+    const { root, api } = await setup({ onChange: () => changes++ });
     const before = changes;
     const input = root.querySelector('[aria-label="Signal for plc1 AlarmActive"]') as HTMLInputElement;
     input.value = 'STEP(false, true, 400s)';
     input.dispatchEvent(new Event('input'));
     expect(changes).toBe(before); // a draft
     input.dispatchEvent(new Event('change'));
+    await flush();
     expect(changes).toBe(before + 1);
-    // the alarm now steps at 400 s, so the ramp crossing 50 °C at 343 s fires first
-    expect(api.getSimulation().fires).toEqual([343]);
+    // The alarm now steps at 400 s, so the door pulses fire the rule first,
+    // after the startup resolve.
+    expect(api.getSimulation().fires).toEqual([0, 150, 300]);
     expect(api.getState().signals['plc1/AlarmActive']).toBe('STEP(false, true, 400s)');
     // a typed leading = is stripped
     const again = root.querySelector('[aria-label="Signal for plc1 AlarmActive"]') as HTMLInputElement;
     again.value = '=STEP(false, true, 300s)';
     again.dispatchEvent(new Event('change'));
+    await flush();
     expect(api.getState().signals['plc1/AlarmActive']).toBe('STEP(false, true, 300s)');
     // stop time: "10m" is a Go duration; the axis follows
     const stop = root.querySelector('[aria-label="Run for"]') as HTMLInputElement;
     stop.value = '20m';
     stop.dispatchEvent(new Event('change'));
+    await flush();
     expect(api.getState().stop).toBe(1200);
     expect(stop.value).toBe('1200 s');
     expect(Array.from(root.querySelectorAll('.rs-tick')).map(text)).toEqual(['0 s', '240 s', '480 s', '720 s', '960 s', '1200 s']);
@@ -157,44 +169,47 @@ describe('simulator page (jsdom)', () => {
     const step = root.querySelector('[aria-label="Sample every"]') as HTMLInputElement;
     step.value = '10';
     step.dispatchEvent(new Event('change'));
+    await flush();
     expect(api.getSimulation().times).toHaveLength(121);
   });
 
-  it('marks a signal that does not parse and gives its tag no value', () => {
-    const { root } = setup({ signals: { ...SIGNALS, 'vibration1/temperature': 'RAMP(1)' } });
+  it('marks a signal that does not parse and gives its tag no value', async () => {
+    const { root } = await setup({ signals: { ...SIGNALS, 'vibration1/temperature': 'RAMP(1)' } });
     const cell = root.querySelector('.rs-cell-signal.is-invalid');
     expect(text(cell?.querySelector('.rs-msg'))).toMatch(/takes 3 arguments/);
     expect(text(lanes(root)[4].querySelector('.rs-value'))).toBe('—');
   });
 
-  it('holds the catalog value for a tag with no signal', () => {
-    const { root, api } = setup({ signals: {} });
+  it('holds the catalog value for a tag with no signal', async () => {
+    const { root, api } = await setup({ signals: {} });
     expect(api.getState().signals).toEqual({ 'plc1/AlarmActive': 'HOLD(false)', 'vibration1/temperature': 'HOLD(48.2)', 'bulk1/door_state': 'HOLD("closed")' });
-    expect(text(root.querySelector('.rs-log .rs-event'))).toBe('No condition changed, and the rule did not fire.');
-    expect(root.querySelectorAll('.rs-fire')).toHaveLength(0);
+    // Nothing moves, but the engine still closes the incident it assumes open
+    // when it starts, so the log is not empty and the timeline carries a mark.
+    expect(text(root.querySelector('.rs-log .rs-event'))).toContain('Resolve incident');
+    expect(root.querySelectorAll('.rs-fire')).toHaveLength(1);
   });
 
-  it('shows the back link when asked, and setRule swaps the rule and drops stale signals', () => {
+  it('shows the back link when asked, and setRule swaps the rule and drops stale signals', async () => {
     let back = 0;
-    const { root, api } = setup({ onBack: () => back++ });
+    const { root, api } = await setup({ onBack: () => back++ });
     const btn = root.querySelector('.rs-back') as HTMLButtonElement;
     expect(btn.hidden).toBe(false);
     expect(btn.textContent).toBe('← alarm-camera');
     btn.click();
     expect(back).toBe(1);
-    api.setRule(rule({ name: 'pump', variables: [{ name: 'temp', formula: 'TAG("vibration1", "temperature")' }], conditions: [{ expr: 'temp > 45' }] }));
+    await api.setRule(rule({ name: 'pump', variables: [{ name: 'temp', formula: 'TAG("vibration1", "temperature")' }], conditions: [{ expr: 'temp > 45' }] }));
     expect(btn.textContent).toBe('← pump');
     expect(Object.keys(api.getState().signals)).toEqual(['vibration1/temperature']);
     expect(lanes(root).map(labelOf)).toEqual(['=temp > 45', 'temp', '=TAG("vibration1", "temperature")']);
   });
 
-  it('sets width classes from its container and cleans up on destroy', () => {
-    const wide = setup();
+  it('sets width classes from its container and cleans up on destroy', async () => {
+    const wide = await setup();
     expect(wide.root.classList.contains('is-medium')).toBe(false);
-    const medium = setup({}, 800);
+    const medium = await setup({}, 800);
     expect(medium.root.classList.contains('is-medium')).toBe(true);
     expect(medium.root.classList.contains('is-narrow')).toBe(false);
-    const phone = setup({}, 360);
+    const phone = await setup({}, 360);
     expect(phone.root.classList.contains('is-narrow')).toBe(true);
     phone.api.destroy();
     expect(phone.root.className).toBe('');
@@ -202,8 +217,8 @@ describe('simulator page (jsdom)', () => {
     expect(document.getElementById('octaview-rules-simulator-styles')).toBeTruthy();
   });
 
-  it('does not select text while the cursor is dragged', () => {
-    const { root } = setup();
+  it('does not select text while the cursor is dragged', async () => {
+    const { root } = await setup();
     const css = document.getElementById('octaview-rules-simulator-styles')?.textContent ?? '';
     expect(css).toMatch(/\.rs-tree, \.rs-tl-head \{[^}]*user-select:none/);
     const plot = root.querySelector('.rs-plot') as HTMLElement;
@@ -216,18 +231,18 @@ describe('simulator page (jsdom)', () => {
     expect(touch.defaultPrevented).toBe(false);
   });
 
-  it('shortens the timeline headings where the column is narrow', () => {
-    const wide = setup().root;
+  it('shortens the timeline headings where the column is narrow', async () => {
+    const wide = (await setup()).root;
     expect(text(wide.querySelector('.rs-tl-head span'))).toBe('Condition › variable › tag');
     expect(text(wide.querySelector('.rs-at'))).toBe('At 250 s');
-    const phone = setup({}, 360).root;
+    const phone = (await setup({}, 360)).root;
     expect(text(phone.querySelector('.rs-tl-head span'))).toBe('Condition › tag');
     expect((phone.querySelector('.rs-tl-head span') as HTMLElement).title).toBe('Condition › variable › tag');
     expect(text(phone.querySelector('.rs-at'))).toBe('250 s');
   });
 
-  it('opens one paragraph of help per section', () => {
-    const { root } = setup();
+  it('opens one paragraph of help per section', async () => {
+    const { root } = await setup();
     expect(Array.from(root.querySelectorAll('.rs-section')).map((h) => text(h).replace('ⓘ', '').trim())).toEqual(['Tags', 'Timeline', 'Log']);
     const info = root.querySelector('[aria-label="Help on tags"]') as HTMLButtonElement;
     const help = root.querySelector('.rs-help') as HTMLElement;

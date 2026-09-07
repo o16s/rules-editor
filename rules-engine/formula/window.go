@@ -140,22 +140,31 @@ func (w *Window) oldest() *bucket {
 	return nil
 }
 
-// Rate is the change of the value per hour over the window. Fewer than two
-// samples give Unknown, not zero: a zero would satisfy a threshold such as
-// "less than 5" on a service that has just started and knows nothing.
+// Rate is the change of the value per hour, measured between the oldest and
+// the newest reading the window holds.
+//
+// It divides by the time those two readings are apart, not by the width of
+// the window. A window that is not yet full then reports the rate of what it
+// has, instead of a fraction of it: a service that started two minutes ago
+// with a thirty minute window reported a fifteenth of the truth.
+//
+// The two moments are the starts of their buckets, so the span is exact to one
+// bucket, which is at worst a sixty-fourth of the window.
+//
+// A window with readings in only one bucket has no span to divide by and
+// answers Unknown, not zero: a zero would satisfy a threshold such as "less
+// than 5" on a service that has just started and knows nothing.
 func (w *Window) Rate() Value {
 	newest := &w.b[w.head]
 	oldest := w.oldest()
-	if oldest == nil {
-		if newest.count < 2 {
-			return Unknown
-		}
-		return NumberValue((newest.last - newest.first) / w.window.Hours())
-	}
-	if newest.count == 0 {
+	if oldest == nil || newest.count == 0 {
 		return Unknown
 	}
-	return NumberValue((newest.last - oldest.first) / w.window.Hours())
+	span := newest.start.Sub(oldest.start).Hours()
+	if span <= 0 {
+		return Unknown
+	}
+	return NumberValue((newest.last - oldest.first) / span)
 }
 
 // Avg is the mean of the samples in the window, or Unknown when it holds

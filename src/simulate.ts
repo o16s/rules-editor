@@ -1,10 +1,16 @@
-// The simulator core: signal generators for tags, a formula evaluator that
-// runs the rule's variables and conditions over a clock, and the rule's
-// firing with its edge and cooldown. Pure functions; the page in
-// gui/simulator.ts draws the result. Nothing here reaches a gateway.
+// The simulator core: signal generators for the tags, and the run that turns
+// a rule and its signals into the lines the page draws.
+//
+// The rule itself is evaluated by the gateway's own engine, loaded into the
+// page from dist/rules-engine.wasm. Nothing here decides what a formula means
+// or when a rule fires, so the Simulator page cannot disagree with the plant.
+// What stays here is the signal generators, which exist only to make test
+// data, and the wording of the log.
 
 import { formulaRefs, parseFormula, type Ast, type TagRef } from './formula.js';
+import { runEngine, type EngineFormula, type EngineResult } from './engine.js';
 import type { Rule } from './model.js';
+import { serialize } from './serialize.js';
 
 /** A value on the wire: what a tag reads, or what a formula gives. Null is "no value". */
 export type Value = number | string | boolean | null;
@@ -108,169 +114,21 @@ export function parseGoDuration(text: string): number | null {
   return matched === text && matched !== '' ? total : null;
 }
 
-// ---- evaluation ------------------------------------------------------------
-
-/** What a formula reads while it runs. Indices are sample steps, `step` seconds apart. */
-export interface Env {
-  step: number;
-  tag(ref: TagRef, i: number): Value;
-  variable(name: string, i: number): Value;
-  context?(name: string): Value;
-}
+// ---- values ----------------------------------------------------------------
 
 /** The key a tag is stored under: "device/tag", or "tag" without a device. */
 export const tagKey = (ref: TagRef): string => (ref.device ? `${ref.device}/${ref.tag}` : ref.tag);
 
-const asBool = (v: Value): boolean | null => (typeof v === 'boolean' ? v : null);
-const asNum = (v: Value): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-/**
- * Equality, with the two coercions the gateway applies. A boolean against 1
- * or 0 compares as a boolean, so a v0.2 rule rewritten as a formula keeps its
- * meaning. Anything else compares as text.
- */
-const equal = (a: Value, b: Value): boolean => {
-  if (typeof a === 'number' && typeof b === 'number') return a === b;
-  if (typeof a === 'boolean' && typeof b === 'number') return b === 0 || b === 1 ? a === (b === 1) : false;
-  if (typeof a === 'number' && typeof b === 'boolean') return a === 0 || a === 1 ? b === (a === 1) : false;
-  return String(a) === String(b);
-};
-
-/** Text of a value for the & operator. No value joins as nothing. */
-const asText = (v: Value): string => (v === null ? '' : String(v));
-
-/** Read a comparison from the sign of a code point order. */
-function order(op: string, c: number): boolean | null {
-  switch (op) {
-    case '<': return c < 0;
-    case '<=': return c <= 0;
-    case '>': return c > 0;
-    case '>=': return c >= 0;
+/** The JSON Schema name of a reading, so the engine binds the field's type. */
+function typeOf(values: Value[]): string {
+  for (const v of values) {
+    if (v === null) continue;
+    if (typeof v === 'boolean') return 'boolean';
+    if (typeof v === 'number') return Number.isInteger(v) ? 'integer' : 'number';
+    return 'string';
   }
-  return null;
+  return '';
 }
-
-/** Evaluate `ast` at sample `i`. Time functions look back through `env` at earlier samples. */
-export function evaluateAt(ast: Ast, i: number, env: Env): Value {
-  switch (ast.kind) {
-    case 'number': case 'string': case 'bool': return ast.value;
-    case 'duration': return ast.seconds;
-    case 'ref': return env.variable(ast.name, i);
-    case 'context': return env.context?.(ast.name) ?? null;
-    case 'unary': { const v = asNum(evaluateAt(ast.arg, i, env)); return v === null ? null : -v; }
-    case 'binary': {
-      const l = evaluateAt(ast.left, i, env);
-      const r = evaluateAt(ast.right, i, env);
-      // A join still gives text when one side has no value, so a Then field
-      // publishes something.
-      if (ast.op === '&') return `${asText(l)}${asText(r)}`;
-      if (l === null || r === null) return null;
-      switch (ast.op) {
-        case '=': return equal(l, r);
-        case '!=': return !equal(l, r);
-        default: {
-          // Two strings compare in code point order; everything else needs
-          // numbers on both sides.
-          if (typeof l === 'string' && typeof r === 'string') return order(ast.op, l < r ? -1 : l > r ? 1 : 0);
-          const a = asNum(l), b = asNum(r);
-          if (a === null || b === null) return null;
-          switch (ast.op) {
-            case '+': return a + b;
-            case '-': return a - b;
-            case '*': return a * b;
-            case '/': return b === 0 ? null : a / b;
-            case '<': return a < b;
-            case '<=': return a <= b;
-            case '>': return a > b;
-            case '>=': return a >= b;
-          }
-          return null;
-        }
-      }
-    }
-    case 'call': return call(ast, i, env);
-  }
-}
-
-function call(ast: Ast & { kind: 'call' }, i: number, env: Env): Value {
-  const args = ast.args;
-  const at = (n: number, j: number = i): Value => (args[n] ? evaluateAt(args[n], j, env) : null);
-  /** Samples back for a duration argument (at least one). */
-  const back = (n: number): number | null => {
-    const w = asNum(at(n));
-    return w === null || w <= 0 ? null : Math.max(1, Math.round(w / env.step));
-  };
-  switch (ast.name) {
-    case 'TAG': {
-      const dev = args.length === 2 ? args[0] : null;
-      const tag = args[args.length - 1];
-      if (!tag || tag.kind !== 'string' || (dev && dev.kind !== 'string')) return null;
-      return env.tag({ device: dev && dev.kind === 'string' ? dev.value : undefined, tag: tag.value }, i);
-    }
-    case 'AND': {
-      let out: boolean | null = true;
-      for (let n = 0; n < args.length; n++) { const b = asBool(at(n)); if (b === false) return false; if (b === null) out = null; }
-      return out;
-    }
-    case 'OR': {
-      let out: boolean | null = false;
-      for (let n = 0; n < args.length; n++) { const b = asBool(at(n)); if (b === true) return true; if (b === null) out = null; }
-      return out;
-    }
-    case 'NOT': { const b = asBool(at(0)); return b === null ? null : !b; }
-    case 'CHANGED': {
-      // The last value the argument was known to have, however long ago. A
-      // value that is not known is never a change, and neither is the first
-      // one: a restart must not fire a rule.
-      const now = at(0);
-      if (now === null) return false;
-      for (let j = i - 1; j >= 0; j--) {
-        const before = at(0, j);
-        if (before === null) continue;
-        return !equal(now, before);
-      }
-      return false;
-    }
-    case 'STALE': {
-      const n = args.length === 2 ? back(1) : back(-1);
-      const samples = n ?? Math.round(4 * 3600 / env.step); // the default window is 4h
-      const now = at(0);
-      // No value at all is stale at once: the gateway has nothing to read.
-      if (now === null) return true;
-      if (i < samples) return false;
-      for (let j = i - samples; j < i; j++) if (!equal(at(0, j), now)) return false;
-      return true;
-    }
-    case 'RATE': {
-      const n = back(1);
-      if (n === null || i < n) return null;
-      const now = asNum(at(0)), before = asNum(at(0, i - n));
-      if (now === null || before === null) return null;
-      return ((now - before) / (n * env.step)) * 3600;
-    }
-    case 'AVG': {
-      const n = back(1);
-      if (n === null) return null;
-      const from = Math.max(0, i - n);
-      let sum = 0, count = 0;
-      for (let j = from; j <= i; j++) { const v = asNum(at(0, j)); if (v !== null) { sum += v; count++; } }
-      return count ? sum / count : null;
-    }
-    case 'BITAND': case 'BITOR': case 'BITXOR': {
-      const a = asNum(at(0)), b = asNum(at(1));
-      if (a === null || b === null) return null;
-      const x = Math.trunc(a), y = Math.trunc(b);
-      return ast.name === 'BITAND' ? (x & y) : ast.name === 'BITOR' ? (x | y) : (x ^ y);
-    }
-    case 'HEX2DEC': {
-      const s = at(0);
-      if (typeof s !== 'string' || !/^[0-9a-fA-F]+$/.test(s)) return null;
-      return parseInt(s, 16);
-    }
-    default: return null;
-  }
-}
-
-// ---- the run ---------------------------------------------------------------
 
 export interface SimulationOptions {
   /** Length of the run in seconds. */
@@ -310,15 +168,45 @@ export function ruleTags(rule: Rule): TagRef[] {
   return [...seen.values()];
 }
 
-const safeParse = (text: string): Ast | null => { try { return parseFormula(text); } catch { return null; } };
+/**
+ * An empty run: the shape of a Simulation with nothing in it. The page draws
+ * this while the engine loads, so the layout does not jump when it arrives.
+ */
+export function emptySimulation(rule: Rule): Simulation {
+  return {
+    times: [0],
+    tags: ruleTags(rule).map((ref) => ({ key: tagKey(ref), ref, values: [null] })),
+    variables: rule.variables.map((v) => ({ name: v.name, values: [null] })),
+    conditions: rule.conditions.map((c) => ({ name: c.expr, values: [null] })),
+    result: [null],
+    fires: [],
+    log: [],
+  };
+}
 
-/** Run the rule against the signals. Never throws: a formula that does not parse reads null. */
-export function simulate(rule: Rule, opts: SimulationOptions): Simulation {
+/** Wrap one rule in a document, so the engine loads it the way a gateway does. */
+function ruleDocument(rule: Rule): string {
+  try {
+    return serialize({ rules: [rule] });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Run the rule against the signals.
+ *
+ * It never throws: a formula that does not compile keeps its place in the
+ * timeline and carries its problem, so the page draws the rest while an
+ * operator is still typing.
+ */
+export async function simulate(rule: Rule, opts: SimulationOptions): Promise<Simulation> {
   const step = opts.step > 0 ? opts.step : 1;
   const count = Math.max(1, Math.floor(opts.stop / step) + 1);
   const times = Array.from({ length: count }, (_, i) => i * step);
 
-  // Tags: one series each, from its signal.
+  // Tags: one series each, from its signal. This is the only thing the page
+  // makes up; everything after it is the engine's answer.
   const tags: TagSeries[] = ruleTags(rule).map((ref) => {
     const key = tagKey(ref);
     const text = opts.signals[key];
@@ -330,57 +218,81 @@ export function simulate(rule: Rule, opts: SimulationOptions): Simulation {
     const values = times.map((t) => (signal ? signalAt(signal, t) : null));
     return error ? { key, ref, values, error } : { key, ref, values };
   });
-  const tagByKey = new Map(tags.map((s) => [s.key, s]));
 
-  // Variables: evaluated on demand and memoized, so a variable read by many
-  // formulas and time functions is computed once per sample.
-  const varAst = new Map(rule.variables.map((v) => [v.name, safeParse(v.formula)]));
-  const memo = new Map<string, Value[]>();
-  const visiting = new Set<string>();
-  const env: Env = {
-    step,
-    tag: (ref, i) => tagByKey.get(tagKey(ref))?.values[i] ?? null,
-    variable: (name, i) => {
-      const ast = varAst.get(name);
-      if (!ast) return null;
-      let series = memo.get(name);
-      if (!series) { series = new Array<Value>(count).fill(undefined as unknown as Value); memo.set(name, series); }
-      if (series[i] !== undefined) return series[i];
-      const mark = `${name}@${i}`;
-      if (visiting.has(mark)) return null; // a cycle: validation reports it
-      visiting.add(mark);
-      const v = evaluateAt(ast, i, env);
-      visiting.delete(mark);
-      series[i] = v;
-      return v;
-    },
+  const variables: EngineFormula[] = rule.variables.map((v) => ({ name: v.name, text: v.formula }));
+  const rows: EngineFormula[] = rule.conditions.map((c) => ({ name: c.expr, text: c.expr }));
+
+  let out: EngineResult;
+  try {
+    out = await runEngine({
+      periodMs: Math.round(step * 1000),
+      fields: tags.map((t) => ({ device: t.ref.device ?? '', tag: t.ref.tag, type: typeOf(t.values) })),
+      steps: times.map((t, i) => ({ tMs: Math.round(t * 1000), values: tags.map((s) => s.values[i]) })),
+      variables,
+      rows,
+      sources: rule.incident?.source ? [rule.incident.source] : [],
+      match: rule.match === 'any' ? 'any' : 'all',
+      ruleXml: ruleDocument(rule),
+    });
+  } catch (e) {
+    const blank = times.map(() => null);
+    return {
+      times,
+      tags,
+      variables: rule.variables.map((v) => ({ name: v.name, values: [...blank] })),
+      conditions: rule.conditions.map((c) => ({ name: c.expr, values: [...blank] })),
+      result: [...blank],
+      fires: [],
+      log: [{ t: 0, text: `The rule engine did not load: ${(e as Error).message}` }],
+    };
+  }
+
+  const named = (s: EngineResult['variables'][number]): NamedSeries => ({ name: s.name, values: s.values });
+  const conditions = out.rows.map(named);
+  const result = out.result;
+  const fires = out.firings.map((f) => times[f.index] ?? 0);
+
+  return {
+    times,
+    tags,
+    variables: out.variables.map(named),
+    conditions,
+    result,
+    fires,
+    log: writeLog(rule, times, conditions, out, step),
   };
-  const variables: NamedSeries[] = rule.variables.map((v) => ({ name: v.name, values: times.map((_, i) => env.variable(v.name, i)) }));
+}
 
-  const condAst = rule.conditions.map((c) => safeParse(c.expr));
-  const conditions: NamedSeries[] = rule.conditions.map((c, k) => ({
-    name: c.expr,
-    values: times.map((_, i) => (condAst[k] ? asBool(evaluateAt(condAst[k]!, i, env)) : null)),
-  }));
-
-  // The rule: match, edge, cooldown.
-  const result: Array<boolean | null> = times.map((_, i) => {
-    if (conditions.length === 0) return null;
-    const vals = conditions.map((c) => c.values[i]);
-    if (rule.match === 'all') return vals.every((v) => v === true) ? true : vals.some((v) => v === false) ? false : null;
-    return vals.some((v) => v === true) ? true : vals.every((v) => v === false) ? false : null;
-  });
-  const cooldown = rule.cooldown ? parseGoDuration(rule.cooldown) ?? 0 : 0;
-  const rising = rule.edge === 'rising';
-  const fires: number[] = [];
+/**
+ * The log an operator reads: which condition moved, what the rule published,
+ * and when the cooldown lets it fire again. The words are the page's; every
+ * fact in them comes from the engine.
+ */
+function writeLog(
+  rule: Rule,
+  times: number[],
+  conditions: NamedSeries[],
+  out: EngineResult,
+  step: number,
+): LogEntry[] {
   const log: LogEntry[] = [];
   const LOG_MAX = 200;
   let hidden = 0;
   const say = (entry: LogEntry): void => { if (log.length < LOG_MAX) log.push(entry); else hidden++; };
-  let allowedFrom = 0;
-  for (let i = 0; i < count; i++) {
+
+  for (const p of out.problems) {
+    say({ t: 0, text: p.message });
+  }
+  if (out.error) say({ t: 0, text: out.error });
+  for (const line of [...out.variables, ...out.rows]) {
+    if (line.problem) say({ t: 0, text: `${line.name}: ${line.problem}` });
+  }
+
+  const firingAt = new Map(out.firings.map((f) => [f.index, f]));
+  const cooldown = rule.cooldown ? parseGoDuration(rule.cooldown) ?? 0 : 0;
+
+  for (let i = 0; i < times.length; i++) {
     const t = times[i];
-    // Which conditions the log already named at this time, so a fire does not repeat one.
     const announced = new Set<number>();
     if (i > 0) {
       conditions.forEach((c, k) => {
@@ -390,35 +302,25 @@ export function simulate(rule: Rule, opts: SimulationOptions): Simulation {
         announced.add(k);
       });
     }
-    const on = result[i] === true;
-    const wasOn = i > 0 && result[i - 1] === true;
-    const trigger = rising ? on && !wasOn : on;
-    if (!trigger || t < allowedFrom) continue;
-    fires.push(t);
-    const firing = conditions.findIndex((c) => c.values[i] === true);
-    const description = rule.conditions[firing]?.description ?? '';
-    const thenEnv: Env = { ...env, context: (name) => (name === 'condition.description' ? description : null) };
-    const text = (field: string | undefined): string => {
-      if (!field) return '';
-      if (!field.startsWith('=')) return field;
-      const ast = safeParse(field);
-      const v = ast ? evaluateAt(ast, i, thenEnv) : null;
-      return v === null ? '—' : String(v);
-    };
+    const fired = firingAt.get(i);
+    if (!fired) continue;
+
     const actions = [
-      ...rule.actions.map((a) => `Publish to ${text(a.topic)}${a.payload ? ` ${text(a.payload)}` : ''}`),
-      ...(rule.incident ? [`Raise ${rule.incident.severity} incident “${text(rule.incident.summary)}”`] : []),
+      ...(fired.actions ?? []).map((a) => `Publish to ${a.topic}${a.payload ? ` ${a.payload}` : ''}`),
+      ...(fired.incidents ?? []).map((inc) => (inc.action === 'resolve'
+        ? `Resolve incident ${inc.dedupKey}`
+        : `Raise ${inc.severity} incident \u201c${inc.summary}\u201d`)),
     ];
-    // The line above already names a condition that just changed; do not repeat it.
+    const firing = conditions.findIndex((c) => c.values[i] === true);
     const why = firing >= 0 && !announced.has(firing) ? `Condition ${firing + 1} is true.` : '';
-    say({ t, text: [`Fired.`, why, actions.join(' · ')].filter(Boolean).join(' '), fired: true });
+    say({ t, text: ['Fired.', why, actions.join(' \u00b7 ')].filter(Boolean).join(' '), fired: true });
     if (cooldown > 0) {
-      allowedFrom = t + cooldown;
-      say({ t, text: `Cooldown: the rule cannot fire again before ${formatSeconds(allowedFrom)}.` });
+      say({ t, text: `Cooldown: the rule cannot fire again before ${formatSeconds(t + cooldown)}.` });
     }
   }
-  if (hidden) log.push({ t: times[count - 1], text: `${hidden} more events are not shown.` });
-  return { times, tags, variables, conditions, result, fires, log };
+  if (hidden) log.push({ t: times[times.length - 1] ?? 0, text: `${hidden} more events are not shown.` });
+  void step;
+  return log;
 }
 
 /** Seconds for display: "180 s"; fractions keep one decimal. */

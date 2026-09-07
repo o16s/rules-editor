@@ -2,10 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { parseFormula } from './formula.js';
 import type { Rule } from './model.js';
+import { runEngine } from './engine.js';
 import {
-  evaluateAt,
   formatSeconds,
   formatValue,
   parseGoDuration,
@@ -14,7 +13,6 @@ import {
   signalAt,
   simulate,
   tagKey,
-  type Env,
 } from './simulate.js';
 
 const rule = (r: Partial<Rule> = {}): Rule => ({
@@ -93,72 +91,13 @@ describe('parseGoDuration', () => {
   });
 });
 
-describe('evaluateAt', () => {
-  const env: Env = {
-    step: 1,
-    tag: (ref, i) => (ref.tag === 'x' ? i * 2 : ref.tag === 'name' ? 'open' : null),
-    variable: (name, i) => (name === 'v' ? i : name === 'flag' ? i > 2 : null),
-    context: (name) => (name === 'condition.description' ? 'Housing hot' : null),
-  };
-  const ev = (text: string, i = 5) => evaluateAt(parseFormula(text), i, env);
-
-  it('does arithmetic, comparison, text and logic', () => {
-    expect(ev('1 + 2 * 3')).toBe(7);
-    expect(ev('(1 + 2) * 3')).toBe(9);
-    expect(ev('-v')).toBe(-5);
-    expect(ev('v > 4')).toBe(true);
-    expect(ev('v >= 6')).toBe(false);
-    expect(ev('v = 5')).toBe(true);
-    expect(ev('v <> 5')).toBe(false);
-    expect(ev('TAG("name") = "open"')).toBe(true);
-    expect(ev('TAG("name") != "open"')).toBe(false);
-    expect(ev('AND(flag, v > 1)')).toBe(true);
-    expect(ev('OR(NOT(flag), v > 10)')).toBe(false);
-    expect(ev('condition.description & "."')).toBe('Housing hot.');
-    expect(ev('"a" & 1')).toBe('a1');
-    expect(ev('10 / 0')).toBeNull();
-  });
-
-  it('gives null for a missing value, and AND/OR short-circuit around it', () => {
-    expect(ev('TAG("nope")')).toBeNull();
-    expect(ev('TAG("nope") > 1')).toBeNull();
-    expect(ev('AND(TAG("nope") > 1, false)')).toBe(false);
-    expect(ev('AND(TAG("nope") > 1, true)')).toBeNull();
-    expect(ev('OR(TAG("nope") > 1, true)')).toBe(true);
-    expect(ev('unknown_var')).toBeNull();
-  });
-
-  it('does the bit and hex functions', () => {
-    expect(ev('BITAND(20, 4)')).toBe(4);
-    expect(ev('BITAND(20, 4) != 0')).toBe(true);
-    expect(ev('BITOR(16, 4)')).toBe(20);
-    expect(ev('BITXOR(20, 4)')).toBe(16);
-    expect(ev('HEX2DEC("FF")')).toBe(255);
-    expect(ev('BITAND(20, HEX2DEC("10")) != 0')).toBe(true);
-    expect(ev('HEX2DEC("zz")')).toBeNull();
-  });
-
-  it('looks back for CHANGED, RATE, AVG and STALE', () => {
-    // x = 2i, so it changes every sample and rises 2 per second = 7200 per hour
-    expect(ev('CHANGED(TAG("x"))', 0)).toBe(false);
-    expect(ev('CHANGED(TAG("x"))', 3)).toBe(true);
-    expect(ev('CHANGED(TAG("name"))', 3)).toBe(false);
-    expect(ev('RATE(TAG("x"), 2s)', 5)).toBe(7200);
-    expect(ev('RATE(TAG("x"), 2s)', 1)).toBeNull(); // not enough history
-    expect(ev('AVG(TAG("x"), 2s)', 5)).toBe(8); // mean of 6, 8, 10
-    expect(ev('STALE(TAG("name"), 3s)', 5)).toBe(true);
-    expect(ev('STALE(TAG("x"), 3s)', 5)).toBe(false);
-    expect(ev('STALE(TAG("name"), 3s)', 2)).toBe(false); // not enough history yet
-  });
-});
-
 describe('simulate', () => {
   it('lists the tags a rule reads once each, variables first', () => {
     expect(ruleTags(rule()).map(tagKey)).toEqual(['plc1/AlarmActive', 'vibration1/temperature', 'bulk1/door_state', 'plc1/StatusWord']);
   });
 
-  it('runs variables and conditions over the clock and fires on the rising edge with a cooldown', () => {
-    const sim = simulate(rule(), { stop: 600, step: 1, signals: SIGNALS });
+  it('runs variables and conditions over the clock and fires on the rising edge with a cooldown', async () => {
+    const sim = await simulate(rule(), { stop: 600, step: 1, signals: SIGNALS });
     expect(sim.times).toHaveLength(601);
     const at = (name: string, t: number) => sim.variables.find((v) => v.name === name)!.values[t];
     expect(at('alarm_active', 179)).toBe(false);
@@ -167,63 +106,80 @@ describe('simulate', () => {
     expect(at('door_changed', 150)).toBe(true);
     expect(at('door_changed', 151)).toBe(false);
     expect(at('guard_open', 0)).toBe(true);
-    // RATE(temp, 30min) needs 1800 s of history: null for the whole 600 s run
-    expect(at('temp_rate', 600)).toBeNull();
+    // RATE measures the span it holds, so it answers as soon as two buckets
+    // carry a reading. The ramp climbs 14 over 600 s, which is 84 an hour.
+    // The span is measured between bucket starts, so it reads one bucket
+    // short: a thirty minute window has 28 s buckets, and 14/(572/3600) is
+    // about 88. Anything near 84 is the ramp; the old answer was nothing.
+    expect(at('temp_rate', 600) as number).toBeGreaterThan(80);
+    expect(at('temp_rate', 600) as number).toBeLessThan(92);
     expect(sim.conditions[0].values[250]).toBe(true);
     expect(sim.conditions[1].values[250]).toBe(false);
     expect(sim.conditions[1].values[400]).toBe(true); // 42 + 14 * 400/600 = 51.3
-    // AND(temp_rate > 4, door_changed): the rate is null, so the row is null while the door moves and false otherwise
-    expect(sim.conditions[2].values[150]).toBeNull();
+    // AND(temp_rate > 4, door_changed) is true while the door moves, because
+    // the ramp climbs faster than 4 an hour.
+    expect(sim.conditions[2].values[150]).toBe(true);
     expect(sim.conditions[2].values[250]).toBe(false);
     expect(sim.result[100]).toBe(false);
     expect(sim.result[250]).toBe(true);
-    // one fire at 180 s; the rising edge does not fire again while true
-    expect(sim.fires).toEqual([180]);
-    const fired = sim.log.find((e) => e.fired)!;
-    expect(fired.t).toBe(180);
-    // the change line above already names condition 1, so the fire line does not repeat it
-    expect(fired.text).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical incident “Press guard alarm on cell 3”');
-    expect(sim.log.map((e) => e.text)).toContain('Cooldown: the rule cannot fire again before 225 s.');
+    // The run opens with the startup resolve of the incident the engine
+    // assumes open. The door pulse then fires the rule at 150 s, and the
+    // alarm rising at 180 s falls inside the 45 s cooldown, which consumes it.
+    expect(sim.fires).toEqual([0, 150]);
+    const fired = sim.log.filter((e) => e.fired)[1];
+    expect(fired.t).toBe(150);
+    expect(sim.log.map((e) => e.text)).toContain('Cooldown: the rule cannot fire again before 195 s.');
     expect(sim.log.map((e) => e.text)).toContain('Condition 1 became true.');
     expect(sim.log.map((e) => e.text)).toContain('Condition 2 became true.');
   });
 
-  it('fires every sample while true without an edge, honouring the cooldown', () => {
-    const sim = simulate(rule({ edge: undefined, cooldown: '100s', conditions: [{ expr: 'alarm_active' }] }), { stop: 600, step: 1, signals: SIGNALS });
-    expect(sim.fires).toEqual([180, 280, 380, 480, 580]);
-    const none = simulate(rule({ edge: undefined, cooldown: undefined, conditions: [{ expr: 'alarm_active' }] }), { stop: 600, step: 10, signals: SIGNALS });
-    expect(none.fires).toHaveLength(43); // 180, 190, … 600
+  it('fires every sample while true without an edge, honouring the cooldown', async () => {
+    const sim = await simulate(rule({ edge: undefined, cooldown: '100s', conditions: [{ expr: 'alarm_active' }] }), { stop: 600, step: 1, signals: SIGNALS });
+    // The engine assumes every incident is open when it starts and lets the
+    // first evaluation decide, so the run opens with a resolve at 0 s. After
+    // that the rule fires every 100 s while the alarm stands.
+    expect(sim.fires).toEqual([0, 180, 280, 380, 480, 580]);
+    const none = await simulate(rule({ edge: undefined, cooldown: undefined, conditions: [{ expr: 'alarm_active' }] }), { stop: 600, step: 10, signals: SIGNALS });
+    expect(none.fires).toHaveLength(44); // the startup resolve, then 180, 190, … 600
   });
 
-  it('evaluates Then formulas with the firing condition\'s description', () => {
-    const r = rule({ actions: [{ topic: 'alarm/text', payload: '=condition.description & "!"' }], incident: null });
-    const sim = simulate(r, { stop: 200, step: 1, signals: SIGNALS });
-    expect(sim.log.find((e) => e.fired)!.text).toContain('Publish to alarm/text Cell 3 PLC raised its own alarm!');
+  it('evaluates Then formulas with the firing condition\'s description', async () => {
+    // The row that fires is the one whose description the Then field reads.
+    const r = rule({
+      conditions: [{ expr: 'alarm_active', description: 'Cell 3 PLC raised its own alarm' }],
+      actions: [{ topic: 'alarm/text', payload: '=condition.description & "!"' }],
+      incident: null,
+    });
+    const sim = await simulate(r, { stop: 200, step: 1, signals: SIGNALS });
+    const fired = sim.log.filter((e) => e.fired);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].t).toBe(180);
+    expect(fired[0].text).toContain('Publish to alarm/text Cell 3 PLC raised its own alarm!');
   });
 
-  it('reports a signal that does not parse and reads null for it', () => {
-    const sim = simulate(rule(), { stop: 10, step: 1, signals: { ...SIGNALS, 'plc1/StatusWord': 'RAMP(1)' } });
+  it('reports a signal that does not parse and reads null for it', async () => {
+    const sim = await simulate(rule(), { stop: 10, step: 1, signals: { ...SIGNALS, 'plc1/StatusWord': 'RAMP(1)' } });
     const status = sim.tags.find((t) => t.key === 'plc1/StatusWord')!;
     expect(status.error).toMatch(/takes 3 arguments/);
     expect(status.values[0]).toBeNull();
     expect(sim.variables.find((v) => v.name === 'guard_open')!.values[0]).toBeNull();
     // a tag with no signal at all reads null too, without an error
-    const bare = simulate(rule(), { stop: 10, step: 1, signals: {} });
+    const bare = await simulate(rule(), { stop: 10, step: 1, signals: {} });
     expect(bare.tags[0].error).toBeUndefined();
     expect(bare.result[5]).toBeNull();
   });
 
-  it('matches all when asked, and does not throw on a formula that does not parse', () => {
-    const all = simulate(rule({ match: 'all', conditions: [{ expr: 'alarm_active' }, { expr: 'temp > 40' }] }), { stop: 300, step: 1, signals: SIGNALS });
+  it('matches all when asked, and does not throw on a formula that does not parse', async () => {
+    const all = await simulate(rule({ match: 'all', conditions: [{ expr: 'alarm_active' }, { expr: 'temp > 40' }] }), { stop: 300, step: 1, signals: SIGNALS });
     expect(all.result[100]).toBe(false);
     expect(all.result[200]).toBe(true);
-    const broken = simulate(rule({ conditions: [{ expr: 'temp >' }], variables: [{ name: 'temp', formula: 'TAG(' }] }), { stop: 10, step: 1, signals: SIGNALS });
+    const broken = await simulate(rule({ conditions: [{ expr: 'temp >' }], variables: [{ name: 'temp', formula: 'TAG(' }] }), { stop: 10, step: 1, signals: SIGNALS });
     expect(broken.conditions[0].values[0]).toBeNull();
     expect(broken.fires).toEqual([]);
   });
 
-  it('caps the log', () => {
-    const sim = simulate(rule({ edge: undefined, cooldown: undefined, conditions: [{ expr: 'true' }] }), { stop: 600, step: 1, signals: SIGNALS });
+  it('caps the log', async () => {
+    const sim = await simulate(rule({ edge: undefined, cooldown: undefined, conditions: [{ expr: 'true' }] }), { stop: 600, step: 1, signals: SIGNALS });
     expect(sim.log).toHaveLength(201);
     expect(sim.log[200].text).toBe('401 more events are not shown.');
   });
@@ -246,9 +202,10 @@ describe('formatting', () => {
 // ---- parity with the gateway ----------------------------------------------
 //
 // schema/eval-cases.json is read by this suite and by
-// rules-engine/formula/eval_cases_test.go in Go. The simulator shows an
-// operator what a rule will do, and the gateway then does it, so the two
-// implementations must answer every case the same way.
+// rules-engine/formula/eval_cases_test.go in Go. The editor no longer has an
+// evaluator of its own: it runs the engine. The cases stay, because they are
+// the written answer both the engine and its Go suite must give, and running
+// them here proves the module in the page is the module the Go suite tested.
 
 interface EvalStep {
   values: Record<string, number | string | boolean | null>;
@@ -268,29 +225,41 @@ const EVAL_CASES = JSON.parse(
 ) as EvalCase[];
 
 describe('schema/eval-cases.json', () => {
-  it('holds the cases both implementations answer', () => {
+  it('holds the cases both implementations answer', async () => {
     expect(EVAL_CASES.length).toBeGreaterThan(30);
   });
 
   for (const c of EVAL_CASES) {
-    it(c.name, () => {
-      // The value of every tag at every step, so a time function can look back.
-      const history: Record<string, Value>[] = [];
-      for (const step of c.steps) {
-        const last = history.length ? history[history.length - 1] : {};
-        history.push({ ...last, ...step.values });
-      }
-      const env: Env = {
-        step: c.step_seconds ?? 1,
-        tag: (ref, i) => {
-          const at = history[Math.max(0, Math.min(i, history.length - 1))];
-          return ref.device ? null : (at[ref.tag] ?? null);
-        },
-        variable: () => null,
-      };
-      const ast = parseFormula(c.formula);
+    it(c.name, async () => {
+      const tags = Object.keys(c.types);
+      const stepSeconds = c.step_seconds ?? 1;
+      // A tag keeps its last reading until the case gives a new one, the way a
+      // slot does between two polls.
+      const last: Record<string, number | string | boolean | null> = {};
+      const steps = c.steps.map((step, i) => {
+        Object.assign(last, step.values);
+        return {
+          tMs: Math.round(i * stepSeconds * 1000),
+          values: tags.map((t) => last[t] ?? null),
+        };
+      });
+
+      const out = await runEngine({
+        periodMs: Math.round(stepSeconds * 1000),
+        fields: tags.map((t) => ({ device: '', tag: t, type: c.types[t] })),
+        steps,
+        // A case is any expression, not only a condition, so it goes in as a
+        // variable: a condition row has to answer true or false.
+        variables: [{ name: c.formula, text: c.formula }],
+        rows: [],
+        sources: [],
+        match: 'all',
+        ruleXml: '',
+      });
+      expect(out.error, 'the engine must run the case').toBeUndefined();
+      expect(out.variables[0].problem, 'the formula must compile').toBeFalsy();
       c.steps.forEach((step, i) => {
-        expect(evaluateAt(ast, i, env), `step ${i + 1}`).toEqual(step.want);
+        expect(out.variables[0].values[i], `step ${i + 1}`).toEqual(step.want);
       });
     });
   }

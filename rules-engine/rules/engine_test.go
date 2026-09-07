@@ -40,14 +40,32 @@ func TestEngineFiresWhenTheConditionBecomesTrue(t *testing.T) {
 	}
 }
 
-func TestEngineSkipsARuleWhoseInputsDidNotChange(t *testing.T) {
-	e := engineFor(t, hotRule, testCatalog())
+// A rule with a rising edge can only fire when something moves, so the engine
+// skips it while nothing does. That is the optimisation the slot index buys.
+func TestEngineSkipsARisingRuleWhoseInputsDidNotChange(t *testing.T) {
+	xml := `<rules><rule name="hot" edge="rising">
+	  <cond device="vibration1" tag="temperature" op="gt" value="50.0"/>
+	  <actions><publish topic="alerts/hot" payload='{"a":1}'/></actions>
+	</rule></rules>`
+	e := engineFor(t, xml, testCatalog())
 	e.Eval(values(60.0, false, 0, "", 0, 0.0), t0)
 	before := e.Stats().RuleEvals
 	// The same values: nothing changed, so the rule is not evaluated again.
 	e.Eval(values(60.0, false, 0, "", 0, 0.0), t0.Add(time.Second))
 	if e.Stats().RuleEvals != before {
 		t.Errorf("the rule was evaluated again without a change")
+	}
+}
+
+// A rule without a rising edge fires on every evaluation where its condition
+// is true, so it cannot be skipped: a steady value would silence it.
+func TestEngineEvaluatesARuleWithoutARisingEdgeEveryTime(t *testing.T) {
+	e := engineFor(t, hotRule, testCatalog())
+	e.Eval(values(60.0, false, 0, "", 0, 0.0), t0)
+	before := e.Stats().RuleEvals
+	e.Eval(values(60.0, false, 0, "", 0, 0.0), t0.Add(time.Second))
+	if e.Stats().RuleEvals == before {
+		t.Errorf("the rule was skipped although it fires on every evaluation")
 	}
 }
 

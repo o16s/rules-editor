@@ -76,8 +76,10 @@ export declare function initRulesEditor(root: HTMLElement, opts?: RulesEditorOpt
 export type { Token };
 export { initSimulator, parseSeconds } from './gui/simulator.js';
 export type { SimulatorOptions, SimulatorHandle, SimulatorState } from './gui/simulator.js';
-export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
-export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value, Env } from './simulate.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export { loadEngine, runEngine, engineAssets } from './engine.js';
+export type { Simulation, SimulationOptions, SignalSpec, TagSeries, NamedSeries, LogEntry, Value } from './simulate.js';
+export type { EngineRequest, EngineResult, EngineSeries, EngineFiring, EngineProblem } from './engine.js';
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';
 export type { ValidationIssue } from './parse.js';

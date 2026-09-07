@@ -29,12 +29,25 @@ export interface SimulatorOptions {
     onChange?: (state: SimulatorState, simulation: Simulation) => void;
 }
 export interface SimulatorHandle {
-    /** Run again with the current signals and settings. */
-    run(): Simulation;
+    /**
+     * Run again with the current signals and settings. The engine answers
+     * asynchronously, and the page has already redrawn when the promise
+     * settles.
+     */
+    run(): Promise<Simulation>;
+    /**
+     * The first run. The engine loads once, so a host that wants to draw only
+     * when there is something to draw awaits this.
+     */
+    ready(): Promise<Simulation>;
+    /** The last answer. It is an empty run until the first one arrives. */
     getSimulation(): Simulation;
     getState(): SimulatorState;
-    /** Replace the rule (signals for tags it still reads are kept) and run. */
-    setRule(rule: Rule): void;
+    /**
+     * Replace the rule and run. Signals for tags it still reads are kept. The
+     * promise settles when the page has redrawn.
+     */
+    setRule(rule: Rule): Promise<Simulation>;
     setCursor(seconds: number): void;
     destroy(): void;
 }

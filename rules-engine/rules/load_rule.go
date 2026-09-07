@@ -180,7 +180,7 @@ func (l *loader) compileRow(text, path string, vars map[string]*formula.Node) ro
 			prog.Type.String()+`. Compare it, for example "`+text+` > 0".`)
 		return row{}
 	}
-	return row{prog: prog}
+	return row{prog: prog, pulse: prog.HasChanged}
 }
 
 // condText gives the formula of one <cond>: its expr, or the 0.2 form
@@ -360,7 +360,6 @@ func (l *loader) addProgram(r *Rule, p *formula.Program) {
 	for _, w := range p.Windows() {
 		r.windows = appendUniqueInt(r.windows, w)
 	}
-	r.hasChanged = r.hasChanged || p.HasChanged
 	r.hasTime = r.hasTime || p.HasTime
 }
 

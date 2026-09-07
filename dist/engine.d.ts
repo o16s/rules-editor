@@ -34,6 +34,14 @@ export interface EngineRequest {
     variables: EngineFormula[];
     rows: EngineFormula[];
     /**
+     * The names an incident may name. A gateway takes them from its
+     * configuration; the page takes them from the rule, because a simulator must
+     * not refuse a device that exists but is not wired into this run.
+     */
+    sources: string[];
+    /** How the rows combine: every row true, or any row true. */
+    match: 'all' | 'any';
+    /**
      * The whole rules file, with this one rule in it. An empty document asks
      * only for the lines, not for what the rule fires.
      */
@@ -45,11 +53,23 @@ export interface EngineSeries {
     /** Why this line is empty, in the operator's words. */
     problem?: string;
 }
+/** One publish, rendered by the engine. */
+export interface EngineAction {
+    topic: string;
+    payload: string;
+}
+/** One incident, rendered by the engine. */
+export interface EngineIncident {
+    action: 'trigger' | 'resolve';
+    severity?: string;
+    summary?: string;
+    dedupKey: string;
+}
 export interface EngineFiring {
     /** The step at which the rule fired. */
     index: number;
-    actions: string[] | null;
-    incidents: string[] | null;
+    actions: EngineAction[];
+    incidents: EngineIncident[];
 }
 export interface EngineProblem {
     path: string;

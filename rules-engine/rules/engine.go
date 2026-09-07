@@ -70,7 +70,11 @@ func (e *Engine) index(slots int) {
 			}
 			e.rulesByField[slot] = append(e.rulesByField[slot], ri)
 		}
-		if r.hasTime {
+		// A rule with a rising edge only fires when its inputs move, so the
+		// index above is enough for it. Anything else has to be evaluated
+		// every time: a rule that reads a clock, and a rule without a rising
+		// edge, which fires on every evaluation where its condition is true.
+		if r.hasTime || r.Edge == EdgeNone {
 			e.timeRules = append(e.timeRules, ri)
 		}
 	}

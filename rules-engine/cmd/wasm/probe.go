@@ -40,7 +40,11 @@ func newProbe(cat rules.Catalog, req request) (*probe, string) {
 	if len(problems) > 0 {
 		return nil, problems[0].Message
 	}
-	p := &probe{binder: res, slots: len(cat.Fields), match: "all"}
+	match := req.Match
+	if match != "any" {
+		match = "all"
+	}
+	p := &probe{binder: res, slots: len(cat.Fields), match: match}
 
 	// Variables first: a row may name one, so they compile in order.
 	vars := make(map[string]*formula.Node, len(req.Variables))
@@ -71,9 +75,15 @@ func newProbe(cat rules.Catalog, req request) (*probe, string) {
 			continue
 		}
 		prog, probs := formula.Compile(node, vars, res, false)
-		if len(probs) > 0 {
+		switch {
+		case len(probs) > 0:
 			l.problem = probs[0]
-		} else {
+		case !isCondition(prog.Type):
+			// The same check the loader makes, so the page refuses what the
+			// gateway refuses instead of drawing a line of numbers.
+			l.problem = "a condition must be true or false, but this is a " +
+				prog.Type.String() + `. Compare it, for example "` + r.Text + ` > 0".`
+		default:
 			l.prog = prog
 		}
 		p.rows = append(p.rows, l)
@@ -82,6 +92,15 @@ func newProbe(cat rules.Catalog, req request) (*probe, string) {
 	p.env = res.Env()
 	p.lastRow = make([]formula.Value, len(p.rows))
 	return p, ""
+}
+
+// isCondition says whether a compiled row can answer true or false.
+func isCondition(t formula.Type) bool {
+	switch t {
+	case formula.TypeNumber, formula.TypeString, formula.TypeDuration:
+		return false
+	}
+	return true
 }
 
 // step records one moment: it writes the readings, advances the history the

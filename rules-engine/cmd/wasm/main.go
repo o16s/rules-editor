@@ -54,6 +54,14 @@ type request struct {
 	Steps     []step  `json:"steps"`
 	Variables []named `json:"variables"`
 	Rows      []named `json:"rows"`
+	// Sources are the names an incident may name. A service takes them from
+	// its configuration; the page takes them from the rule, because a
+	// simulator must not refuse a device the operator has but has not wired
+	// into this run.
+	Sources []string `json:"sources"`
+	// Match is how the rows combine: "all" or "any". It is the rule's own
+	// group, and the page sends it because the rows arrive on their own.
+	Match string `json:"match"`
 	// RuleXML is the whole file, with this one rule in it. An empty document
 	// means the page only wants the lines, not the firing.
 	RuleXML string `json:"ruleXml"`
@@ -66,11 +74,27 @@ type series struct {
 	Problem string `json:"problem,omitempty"`
 }
 
-// firing is one moment where the rule fired, with what it published.
+// firing is one moment where the rule fired, with what it published. The page
+// words these for the log, so the engine hands over the parts and not a
+// sentence.
 type firing struct {
-	Index     int      `json:"index"`
-	Actions   []string `json:"actions"`
-	Incidents []string `json:"incidents"`
+	Index     int           `json:"index"`
+	Actions   []actionMsg   `json:"actions"`
+	Incidents []incidentMsg `json:"incidents"`
+}
+
+// actionMsg is one publish, rendered by the engine.
+type actionMsg struct {
+	Topic   string `json:"topic"`
+	Payload string `json:"payload"`
+}
+
+// incidentMsg is one incident, rendered by the engine.
+type incidentMsg struct {
+	Action   string `json:"action"`
+	Severity string `json:"severity,omitempty"`
+	Summary  string `json:"summary,omitempty"`
+	DedupKey string `json:"dedupKey"`
 }
 
 type response struct {
@@ -130,6 +154,13 @@ func catalogOf(req request) rules.Catalog {
 			seen[f.Device] = true
 			cat.Sources = append(cat.Sources, f.Device)
 		}
+	}
+	for _, name := range req.Sources {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		cat.Sources = append(cat.Sources, name)
 	}
 	if len(cat.Sources) == 0 {
 		cat.Sources = []string{"sim"}
@@ -204,17 +235,21 @@ func collectFiring(res *response, eng *rules.Engine, values []any, now time.Time
 	if len(actions) == 0 && len(incidents) == 0 {
 		return
 	}
-	f := firing{Index: index}
+	f := firing{Index: index, Actions: []actionMsg{}, Incidents: []incidentMsg{}}
 	for i := range actions {
-		f.Actions = append(f.Actions, actions[i].Topic+" "+string(actions[i].Payload))
+		f.Actions = append(f.Actions, actionMsg{
+			Topic:   actions[i].Topic,
+			Payload: string(actions[i].Payload),
+		})
 	}
 	for i := range incidents {
 		msg := incidents[i].Message(now)
-		if !incidents[i].Trigger {
-			f.Incidents = append(f.Incidents, "resolve "+msg.DedupKey)
-			continue
-		}
-		f.Incidents = append(f.Incidents, msg.Severity+" "+msg.Summary)
+		f.Incidents = append(f.Incidents, incidentMsg{
+			Action:   msg.Action,
+			Severity: msg.Severity,
+			Summary:  msg.Summary,
+			DedupKey: msg.DedupKey,
+		})
 	}
 	res.Firings = append(res.Firings, f)
 }

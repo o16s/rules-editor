@@ -6,7 +6,7 @@
 // Nothing here is written to the gateway.
 import { formulaRefs, formulaTokens, parseFormula } from '../formula.js';
 import { el, identifierAttrs } from './dom.js';
-import { formatSeconds, formatValue, parseGoDuration, ruleTags, simulate, tagKey } from '../simulate.js';
+import { emptySimulation, formatSeconds, formatValue, parseGoDuration, ruleTags, simulate, tagKey } from '../simulate.js';
 const safeParse = (text) => { try {
     return parseFormula(text);
 }
@@ -99,7 +99,9 @@ export function initSimulator(root, opts) {
             state.signals[key] = value === 'true' || value === 'false' ? `HOLD(${value})` : Number.isFinite(n) && value.trim() !== '' ? `HOLD(${n})` : `HOLD("${value.replace(/"/g, '""')}")`;
         }
     }
-    let sim = simulate(rule, { stop: 0, step: 1, signals: {} });
+    // The engine loads once, asynchronously. Until it answers, the page draws
+    // an empty run so the layout does not jump when the first result arrives.
+    let sim = emptySimulation(rule);
     /** Which tree nodes are open. Everything starts open, so the dependency chain shows. */
     const closed = new Set();
     // ---- header ----
@@ -468,19 +470,33 @@ export function initSimulator(root, opts) {
         }
     }
     // ---- run ----
+    // Runs are asynchronous because the engine is. A run started while another
+    // is in flight wins: only the newest answer reaches the page.
+    let runSeq = 0;
     function run() {
         defaultSignals();
-        sim = simulate(rule, { stop: state.stop, step: state.step, signals: state.signals });
-        if (state.cursor < 0 || state.cursor > state.stop)
-            state.cursor = sim.fires[0] ?? Math.round(state.stop / 2 / state.step) * state.step;
+        const seq = ++runSeq;
         stopInput.value = formatSeconds(state.stop);
         stepInput.value = formatSeconds(state.step);
         backBtn.textContent = `← ${rule.name || 'unnamed'}`;
-        renderTags();
-        renderTimeline();
-        renderLog();
-        opts.onChange?.(getState(), sim);
-        return sim;
+        return simulate(rule, { stop: state.stop, step: state.step, signals: state.signals })
+            .then((next) => {
+            if (seq !== runSeq)
+                return sim; // a newer run already answered
+            sim = next;
+            if (state.cursor < 0 || state.cursor > state.stop) {
+                // The run opens with the engine closing the incidents it assumes
+                // open, which is not what an operator came to look at. The cursor
+                // lands on the first firing after that.
+                const first = sim.fires.find((t) => t > 0) ?? sim.fires[0];
+                state.cursor = first ?? Math.round(state.stop / 2 / state.step) * state.step;
+            }
+            renderTags();
+            renderTimeline();
+            renderLog();
+            opts.onChange?.(getState(), sim);
+            return sim;
+        });
     }
     const getState = () => ({ ...state, signals: { ...state.signals } });
     /** A section heading with a help toggle that reveals its paragraph on tap. */
@@ -510,9 +526,10 @@ export function initSimulator(root, opts) {
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     resizeObserver?.observe(root);
     measure();
-    run();
+    const first = run();
     return {
         run,
+        ready: () => first,
         getSimulation: () => sim,
         getState,
         setRule: (next) => {
@@ -521,7 +538,7 @@ export function initSimulator(root, opts) {
             for (const key of Object.keys(state.signals))
                 if (!keep.has(key))
                     delete state.signals[key];
-            run();
+            return run();
         },
         setCursor,
         destroy: () => {

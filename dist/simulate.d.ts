@@ -20,17 +20,8 @@ export declare function parseSignal(text: string): Ast;
 export declare function signalAt(signal: Ast, t: number): Value;
 /** Seconds in a Go duration ("45s", "1m30s", "500ms"); null when it is not one. */
 export declare function parseGoDuration(text: string): number | null;
-/** What a formula reads while it runs. Indices are sample steps, `step` seconds apart. */
-export interface Env {
-    step: number;
-    tag(ref: TagRef, i: number): Value;
-    variable(name: string, i: number): Value;
-    context?(name: string): Value;
-}
 /** The key a tag is stored under: "device/tag", or "tag" without a device. */
 export declare const tagKey: (ref: TagRef) => string;
-/** Evaluate `ast` at sample `i`. Time functions look back through `env` at earlier samples. */
-export declare function evaluateAt(ast: Ast, i: number, env: Env): Value;
 export interface SimulationOptions {
     /** Length of the run in seconds. */
     stop: number;
@@ -69,8 +60,19 @@ export interface Simulation {
 }
 /** Every tag the rule reads, in first-seen order: variables first, then conditions. */
 export declare function ruleTags(rule: Rule): TagRef[];
-/** Run the rule against the signals. Never throws: a formula that does not parse reads null. */
-export declare function simulate(rule: Rule, opts: SimulationOptions): Simulation;
+/**
+ * An empty run: the shape of a Simulation with nothing in it. The page draws
+ * this while the engine loads, so the layout does not jump when it arrives.
+ */
+export declare function emptySimulation(rule: Rule): Simulation;
+/**
+ * Run the rule against the signals.
+ *
+ * It never throws: a formula that does not compile keeps its place in the
+ * timeline and carries its problem, so the page draws the rest while an
+ * operator is still typing.
+ */
+export declare function simulate(rule: Rule, opts: SimulationOptions): Promise<Simulation>;
 /** Seconds for display: "180 s"; fractions keep one decimal. */
 export declare function formatSeconds(t: number): string;
 /** A value for display, with an optional unit; null is a dash. */

@@ -301,7 +301,8 @@ export function initRulesEditor(root, opts = {}) {
 }
 // ---- the Simulator page and its core ----
 export { initSimulator, parseSeconds } from './gui/simulator.js';
-export { simulate, ruleTags, tagKey, parseSignal, signalAt, evaluateAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export { simulate, ruleTags, tagKey, parseSignal, signalAt, parseGoDuration, formatValue, formatSeconds, SIGNALS } from './simulate.js';
+export { loadEngine, runEngine, engineAssets } from './engine.js';
 // ---- re-exports: one entry for the editor + the core ---------------------
 export { serialize } from './serialize.js';
 export { parse, validate, validateIssues, RulesParseError } from './parse.js';

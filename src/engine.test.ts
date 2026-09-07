@@ -12,6 +12,8 @@ describe('the rule engine in the browser', () => {
       steps: Array.from({ length: 6 }, (_, i) => ({ tMs: i * 1000, values: [10 + i * 10] })),
       variables: [{ name: 'avg', text: 'AVG(TAG("temp"), 5s)' }],
       rows: [{ name: 'hot', text: 'TAG("temp") > 25' }],
+      sources: [],
+      match: 'all',
       ruleXml: `<rules><rule name="hot" edge="rising">
           <cond expr='TAG("temp") &gt; 25' description="Above 25"/>
           <actions><publish topic="alerts/hot" payload='{"a":1}'/></actions>
@@ -27,7 +29,7 @@ describe('the rule engine in the browser', () => {
     // A rising edge fires once, and the payload comes from the engine's own
     // renderer, not from the page.
     expect(out.firings).toEqual([
-      { index: 2, actions: ['alerts/hot {"a":1}'], incidents: null },
+      { index: 2, actions: [{ topic: 'alerts/hot', payload: '{"a":1}' }], incidents: [] },
     ]);
   });
 
@@ -38,6 +40,8 @@ describe('the rule engine in the browser', () => {
       steps: [{ tMs: 0, values: [1] }],
       variables: [],
       rows: [],
+      sources: [],
+      match: 'all',
       ruleXml: `<rules><rule name="x"><cond expr='TAG("nope") &gt; 1'/>
         <actions><publish topic="t"/></actions></rule></rules>`,
     });
@@ -56,6 +60,8 @@ describe('the rule engine in the browser', () => {
         { name: 'good', text: 'TAG("temp") > 25' },
         { name: 'half typed', text: 'TAG("temp") >' },
       ],
+      sources: [],
+      match: 'all',
       ruleXml: '',
     });
     expect(out.rows[0].values).toEqual([true]);
@@ -75,6 +81,8 @@ describe('the rule engine in the browser', () => {
         { name: 'count', text: 'COUNT(TAG("temp"), 10s)' },
       ],
       rows: [],
+      sources: [],
+      match: 'all',
       ruleXml: '',
     });
     expect(out.variables[0].values).toEqual([null]);
@@ -98,6 +106,8 @@ describe('the rule engine in the browser', () => {
         { name: 'since', text: 'SINCE(TAG("t"))' },
       ],
       rows: [],
+      sources: [],
+      match: 'all',
       ruleXml: '',
     });
     const last = (n: string): unknown => {

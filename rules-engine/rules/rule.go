@@ -11,6 +11,10 @@ import (
 type row struct {
 	prog        *formula.Program
 	description string
+	// pulse is true when the row reads CHANGED. Such a row is true only in
+	// the evaluation where its input moved, and is never seen as false, so a
+	// rule that fires on it has to re-arm its edge.
+	pulse bool
 }
 
 // thenField is a topic, a payload or an incident text. It is literal text, or
@@ -51,7 +55,6 @@ type Rule struct {
 
 	fieldRefs   []int // slots the conditions read
 	windows     []int // windows the rule reads
-	hasChanged  bool  // a condition contains CHANGED
 	hasTime     bool  // a condition contains STALE, RATE or AVG
 	needsBuffer bool  // a Then field is a formula and renders into the buffer
 

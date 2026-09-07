@@ -9,7 +9,7 @@ import type { Rule } from '../model.js';
 import type { TagCatalog } from '../catalog.js';
 import { formulaRefs, formulaTokens, parseFormula, type Ast } from '../formula.js';
 import { el, identifierAttrs } from './dom.js';
-import { formatSeconds, formatValue, parseGoDuration, ruleTags, simulate, tagKey, type Simulation, type Value } from '../simulate.js';
+import { emptySimulation, formatSeconds, formatValue, parseGoDuration, ruleTags, simulate, tagKey, type Simulation, type Value } from '../simulate.js';
 
 export interface SimulatorState {
   /** Signal formula per tag key ("device/tag" or "tag"). */
@@ -41,12 +41,25 @@ export interface SimulatorOptions {
 }
 
 export interface SimulatorHandle {
-  /** Run again with the current signals and settings. */
-  run(): Simulation;
+  /**
+   * Run again with the current signals and settings. The engine answers
+   * asynchronously, and the page has already redrawn when the promise
+   * settles.
+   */
+  run(): Promise<Simulation>;
+  /**
+   * The first run. The engine loads once, so a host that wants to draw only
+   * when there is something to draw awaits this.
+   */
+  ready(): Promise<Simulation>;
+  /** The last answer. It is an empty run until the first one arrives. */
   getSimulation(): Simulation;
   getState(): SimulatorState;
-  /** Replace the rule (signals for tags it still reads are kept) and run. */
-  setRule(rule: Rule): void;
+  /**
+   * Replace the rule and run. Signals for tags it still reads are kept. The
+   * promise settles when the page has redrawn.
+   */
+  setRule(rule: Rule): Promise<Simulation>;
   setCursor(seconds: number): void;
   destroy(): void;
 }
@@ -144,7 +157,9 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
     }
   }
 
-  let sim: Simulation = simulate(rule, { stop: 0, step: 1, signals: {} });
+  // The engine loads once, asynchronously. Until it answers, the page draws
+  // an empty run so the layout does not jump when the first result arrives.
+  let sim: Simulation = emptySimulation(rule);
   /** Which tree nodes are open. Everything starts open, so the dependency chain shows. */
   const closed = new Set<string>();
 
@@ -459,18 +474,33 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
   }
 
   // ---- run ----
-  function run(): Simulation {
+  // Runs are asynchronous because the engine is. A run started while another
+  // is in flight wins: only the newest answer reaches the page.
+  let runSeq = 0;
+
+  function run(): Promise<Simulation> {
     defaultSignals();
-    sim = simulate(rule, { stop: state.stop, step: state.step, signals: state.signals });
-    if (state.cursor < 0 || state.cursor > state.stop) state.cursor = sim.fires[0] ?? Math.round(state.stop / 2 / state.step) * state.step;
+    const seq = ++runSeq;
     stopInput.value = formatSeconds(state.stop);
     stepInput.value = formatSeconds(state.step);
     backBtn.textContent = `← ${rule.name || 'unnamed'}`;
-    renderTags();
-    renderTimeline();
-    renderLog();
-    opts.onChange?.(getState(), sim);
-    return sim;
+    return simulate(rule, { stop: state.stop, step: state.step, signals: state.signals })
+      .then((next) => {
+        if (seq !== runSeq) return sim; // a newer run already answered
+        sim = next;
+        if (state.cursor < 0 || state.cursor > state.stop) {
+          // The run opens with the engine closing the incidents it assumes
+          // open, which is not what an operator came to look at. The cursor
+          // lands on the first firing after that.
+          const first = sim.fires.find((t) => t > 0) ?? sim.fires[0];
+          state.cursor = first ?? Math.round(state.stop / 2 / state.step) * state.step;
+        }
+        renderTags();
+        renderTimeline();
+        renderLog();
+        opts.onChange?.(getState(), sim);
+        return sim;
+      });
   }
 
   const getState = (): SimulatorState => ({ ...state, signals: { ...state.signals } });
@@ -502,17 +532,18 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
   const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
   resizeObserver?.observe(root);
   measure();
-  run();
+  const first = run();
 
   return {
     run,
+    ready: () => first,
     getSimulation: () => sim,
     getState,
     setRule: (next) => {
       rule = next;
       const keep = new Set(ruleTags(rule).map(tagKey));
       for (const key of Object.keys(state.signals)) if (!keep.has(key)) delete state.signals[key];
-      run();
+      return run();
     },
     setCursor,
     destroy: () => {

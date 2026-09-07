@@ -5,7 +5,7 @@ import "time"
 // evalRule evaluates one rule and appends what it fires.
 func (e *Engine) evalRule(r *Rule, now time.Time) {
 	e.stats.RuleEvals++
-	result, description := e.condition(r)
+	result, description, pulse := e.condition(r)
 
 	first := !r.seen
 	r.seen = true
@@ -16,7 +16,12 @@ func (e *Engine) evalRule(r *Rule, now time.Time) {
 	// A pulse is true only in the cycle where its input moved, and it is
 	// never observed as false. Re-arming after it fired keeps the next pulse
 	// a rising edge (ADR-018 and the fix of tsend2mqtt).
-	if r.hasChanged && result {
+	//
+	// Only the row that made the rule true decides this. Re-arming because
+	// some other row reads CHANGED turned a level into a pulse: a rule whose
+	// level rose once fired again at the end of every cooldown, for as long
+	// as the level stood.
+	if pulse && result {
 		r.prev = false
 	}
 
@@ -43,19 +48,26 @@ func (e *Engine) fires(r *Rule, result, rising, cooled bool) bool {
 	return result
 }
 
-// condition evaluates the rows of a rule and returns the result together with
-// the description of the first true row that has one. The rows short-circuit:
-// an "all" rule stops at the first false row, an "any" rule at the first true
-// one.
-func (e *Engine) condition(r *Rule) (bool, string) {
+// condition evaluates the rows of a rule. It returns the result, the
+// description of the first true row that has one, and whether the result came
+// from a pulse.
+//
+// The rows short-circuit: an "all" rule stops at the first false row, an "any"
+// rule at the first true one.
+//
+// A result is a pulse when the row that produced it reads CHANGED. For an
+// "any" rule that is the first true row. For an "all" rule every row is true,
+// so one pulse among them makes the whole result a pulse.
+func (e *Engine) condition(r *Rule) (bool, string, bool) {
 	description := ""
+	pulse := false
 	if len(r.rows) == 0 {
-		return false, ""
+		return false, "", false
 	}
 	for i := 0; i < len(r.rows); i++ {
 		row := &r.rows[i]
 		if row.prog == nil {
-			return false, ""
+			return false, "", false
 		}
 		value := row.prog.Eval(&e.env)
 		if value.Truth() {
@@ -63,16 +75,17 @@ func (e *Engine) condition(r *Rule) (bool, string) {
 				description = row.description
 			}
 			if !r.matchAll {
-				return true, description
+				return true, description, row.pulse
 			}
+			pulse = pulse || row.pulse
 			continue
 		}
 		if r.matchAll {
-			return false, ""
+			return false, "", false
 		}
 	}
 	// Every row of an "all" rule was true; no row of an "any" rule was.
-	return r.matchAll, description
+	return r.matchAll, description, r.matchAll && pulse
 }
 
 // publish appends the actions of a rule, in document order.
