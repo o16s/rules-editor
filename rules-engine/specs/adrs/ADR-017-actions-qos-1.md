@@ -6,7 +6,7 @@ description: >
   The code of all three services publishes actions with QoS 1. The
   documentation and the XSD annotation say QoS 0. The specification follows
   the code.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:

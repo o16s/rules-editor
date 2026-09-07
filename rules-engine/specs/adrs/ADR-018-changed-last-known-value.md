@@ -5,7 +5,7 @@ name: "CHANGED compares with the last known value"
 description: >
   CHANGED is true when a known value differs from the last known value. The
   first value of a slot and a transition to or from nil are not changes.
-status: proposed
+status: accepted
 deciders:
   - "octanis engineering"
 justifies:
