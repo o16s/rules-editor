@@ -57,7 +57,7 @@ func modbusCatalog() Catalog {
 func plcExampleCatalog() Catalog {
 	return Catalog{
 		// The source ID is the source itself. ADR-021 replaces this with
-		// Catalog.SourceIDs in v0.4.0, when tsend2mqtt adopts the module.
+		// Catalog.SourceIDs in v0.4.2, when tsend2mqtt adopts the module.
 		TopicPrefix: "",
 		Period:      time.Second,
 		Sources:     []string{"plc1"},
@@ -85,8 +85,8 @@ func TestServiceFileIOLink(t *testing.T) {
 	if len(problems) != 0 {
 		t.Fatalf("the iolinkmaster2mqtt example must load:\n%v", problems)
 	}
-	if len(parsed) != 3 {
-		t.Fatalf("rules = %d, want 3", len(parsed))
+	if len(parsed) != 6 {
+		t.Fatalf("rules = %d, want 6", len(parsed))
 	}
 	e := NewEngine(parsed, cat)
 	values := make([]any, len(cat.Fields))
@@ -101,7 +101,7 @@ func TestServiceFileIOLink(t *testing.T) {
 	// Every incident rule starts active, so the first quiet evaluation closes
 	// what a restart may have left open.
 	_, incidents := e.Eval(values, t0)
-	if len(incidents) != 3 {
+	if len(incidents) != 6 {
 		t.Fatalf("startup: incidents = %d, want one resolve per incident rule", len(incidents))
 	}
 

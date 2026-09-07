@@ -1,19 +1,28 @@
 <!-- Example rules file for iolinkmaster2mqtt.
-     Device names must match config.yaml port names.
+     Device names must match the device names in config.yaml.
      Tag names must match the driver's decoded field names.
-     See driver.DiscoverFieldTypes() for available fields per driver.
+     See driver.DiscoverFieldTypes() for the fields of each driver.
+     The rule language is documented in the rules-engine README:
+     https://github.com/o16s/rules-editor/blob/main/rules-engine/README.md
 
-     MPB10 alert bits: alert_vrms_max, alert_vrms_prewarn, alert_acc_peak, alert_temp
-     Reset command:    iolink/<name>/param/reset_alerts with payload {} -->
+     The fields below are those of the SICK MPB10 on its v-rms profile:
+     alert_temp, alert_acc_peak, alert_vrms_prewarn, alert_vrms_max,
+     alerts_raw, vrms_x, vrms_y, vrms_z and temperature. -->
 <rules>
 
-  <!-- vibration1: any vibration/shock alarm triggers all cameras, then resets. -->
+  <!-- The sensor raises its own vibration alarm. Trigger every camera, then
+       clear the latched bits so the next alarm is a new one. -->
   <rule name="vibration1-alarm" cooldown="30s" edge="rising">
-    <or>
-      <cond device="vibration1" tag="alert_vrms_max" op="eq" value="true"/>
-      <cond device="vibration1" tag="alert_vrms_prewarn" op="eq" value="true"/>
-      <cond device="vibration1" tag="alert_acc_peak" op="eq" value="true"/>
-    </or>
+    <variables>
+      <var name="vrms_max" formula='TAG("vibration1", "alert_vrms_max")'
+           description="The sensor's velocity alarm, above its configured limit"/>
+      <var name="vrms_prewarn" formula='TAG("vibration1", "alert_vrms_prewarn")'
+           description="The sensor's early warning, below the alarm limit"/>
+      <var name="acc_peak" formula='TAG("vibration1", "alert_acc_peak")'
+           description="A shock above the configured peak acceleration"/>
+    </variables>
+    <cond expr="OR(vrms_max, vrms_prewarn, acc_peak)"
+          description="The sensor reports vibration or a shock"/>
     <actions>
       <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"vibration1_alarm"}'/>
       <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"vibration1_alarm"}'/>
@@ -22,16 +31,73 @@
       <publish topic="iolink/vibration1/param/reset_alerts" payload='{}'/>
     </actions>
     <incident source="vibration1" severity="warning"
-              summary="Vibration1 alarm triggered"/>
+              summary="Vibration alarm on machine 1"
+              first_step="Look at the camera recording before you go to the machine."
+              cause="The sensor raised its velocity alarm, its early warning, or a shock alarm."/>
   </rule>
 
-  <!-- vibration2 -->
+  <!-- The bearing is not alarming yet, but it climbs. Eight hours of warning
+       is the difference between a planned stop and a broken machine. -->
+  <rule name="vibration1-trend-rising" cooldown="4h" edge="rising">
+    <variables>
+      <var name="vrms_now" formula='EWMA(TAG("vibration1", "vrms_z"), 10min)'
+           description="Vibration on the vertical axis, smoothed over ten minutes"/>
+      <var name="climb" formula='SLOPE(TAG("vibration1", "vrms_z"), 6h)'
+           description="How fast that vibration climbs, per hour"/>
+      <var name="in_8h" formula='FORECAST(TAG("vibration1", "vrms_z"), 6h, 8h)'
+           description="Where it lands in eight hours, if the climb holds"/>
+    </variables>
+    <and>
+      <cond expr="climb &gt; 0.05" description="Vibration climbs faster than 0.05 mm/s an hour"/>
+      <cond expr="in_8h &gt; 4.5" description="It reaches the alarm limit within eight hours"/>
+    </and>
+    <incident source="vibration1" severity="warning"
+              summary="Vibration on machine 1 climbs towards its limit"
+              first_step="Plan a bearing inspection at the next stop. The machine can still run."
+              cause='="Vibration reads " &amp; vrms_now &amp; " mm/s and climbs " &amp; climb &amp; " mm/s an hour."'/>
+  </rule>
+
+  <!-- A bearing that runs hot fails soon after. -->
+  <rule name="vibration1-hot" cooldown="30m" edge="rising">
+    <variables>
+      <var name="temp" formula='AVG(TAG("vibration1", "temperature"), 5min)'
+           description="Sensor temperature, averaged over five minutes"/>
+      <var name="rise" formula='RATE(TAG("vibration1", "temperature"), 30min)'
+           description="How fast that temperature rises, per hour"/>
+    </variables>
+    <and>
+      <cond expr="temp &gt; 70" description="Above 70 C on average"/>
+      <cond expr="rise &gt; 2" description="Still rising, faster than 2 C an hour"/>
+    </and>
+    <incident source="vibration1" severity="error"
+              summary="Machine 1 runs hot and keeps heating"
+              first_step="Stop the machine if the temperature passes 85 C."
+              cause='="The sensor reads " &amp; temp &amp; " C and rises " &amp; rise &amp; " C an hour."'/>
+  </rule>
+
+  <!-- The sensor stopped reporting. The engine resolves this by itself when
+       the readings come back. -->
+  <rule name="vibration1-silent" cooldown="10m">
+    <cond expr='STALE(TAG("vibration1", "vrms_z"), 5min)'
+          description="No new reading from the sensor for five minutes"/>
+    <incident source="vibration1" severity="warning"
+              summary="No readings from the sensor on machine 1"
+              first_step="Check the IO-Link cable and the port LED on the master."
+              cause="The master polls the port, but the sensor sends no new value."/>
+  </rule>
+
+  <!-- The same alarm rule for the other two machines. -->
   <rule name="vibration2-alarm" cooldown="30s" edge="rising">
-    <or>
-      <cond device="vibration2" tag="alert_vrms_max" op="eq" value="true"/>
-      <cond device="vibration2" tag="alert_vrms_prewarn" op="eq" value="true"/>
-      <cond device="vibration2" tag="alert_acc_peak" op="eq" value="true"/>
-    </or>
+    <variables>
+      <var name="vrms_max" formula='TAG("vibration2", "alert_vrms_max")'
+           description="The sensor's velocity alarm, above its configured limit"/>
+      <var name="vrms_prewarn" formula='TAG("vibration2", "alert_vrms_prewarn")'
+           description="The sensor's early warning, below the alarm limit"/>
+      <var name="acc_peak" formula='TAG("vibration2", "alert_acc_peak")'
+           description="A shock above the configured peak acceleration"/>
+    </variables>
+    <cond expr="OR(vrms_max, vrms_prewarn, acc_peak)"
+          description="The sensor reports vibration or a shock"/>
     <actions>
       <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"vibration2_alarm"}'/>
       <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"vibration2_alarm"}'/>
@@ -40,16 +106,22 @@
       <publish topic="iolink/vibration2/param/reset_alerts" payload='{}'/>
     </actions>
     <incident source="vibration2" severity="warning"
-              summary="Vibration2 alarm triggered"/>
+              summary="Vibration alarm on machine 2"
+              first_step="Look at the camera recording before you go to the machine."
+              cause="The sensor raised its velocity alarm, its early warning, or a shock alarm."/>
   </rule>
 
-  <!-- vibration3 -->
   <rule name="vibration3-alarm" cooldown="30s" edge="rising">
-    <or>
-      <cond device="vibration3" tag="alert_vrms_max" op="eq" value="true"/>
-      <cond device="vibration3" tag="alert_vrms_prewarn" op="eq" value="true"/>
-      <cond device="vibration3" tag="alert_acc_peak" op="eq" value="true"/>
-    </or>
+    <variables>
+      <var name="vrms_max" formula='TAG("vibration3", "alert_vrms_max")'
+           description="The sensor's velocity alarm, above its configured limit"/>
+      <var name="vrms_prewarn" formula='TAG("vibration3", "alert_vrms_prewarn")'
+           description="The sensor's early warning, below the alarm limit"/>
+      <var name="acc_peak" formula='TAG("vibration3", "alert_acc_peak")'
+           description="A shock above the configured peak acceleration"/>
+    </variables>
+    <cond expr="OR(vrms_max, vrms_prewarn, acc_peak)"
+          description="The sensor reports vibration or a shock"/>
     <actions>
       <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"vibration3_alarm"}'/>
       <publish topic="sensingcam/sick2/trigger" payload='{"event_name":"vibration3_alarm"}'/>
@@ -58,7 +130,9 @@
       <publish topic="iolink/vibration3/param/reset_alerts" payload='{}'/>
     </actions>
     <incident source="vibration3" severity="warning"
-              summary="Vibration3 alarm triggered"/>
+              summary="Vibration alarm on machine 3"
+              first_step="Look at the camera recording before you go to the machine."
+              cause="The sensor raised its velocity alarm, its early warning, or a shock alarm."/>
   </rule>
 
 </rules>
