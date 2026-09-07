@@ -123,7 +123,31 @@ export const tagKey = (ref: TagRef): string => (ref.device ? `${ref.device}/${re
 
 const asBool = (v: Value): boolean | null => (typeof v === 'boolean' ? v : null);
 const asNum = (v: Value): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-const equal = (a: Value, b: Value): boolean => (typeof a === 'number' && typeof b === 'number' ? a === b : String(a) === String(b));
+/**
+ * Equality, with the two coercions the gateway applies. A boolean against 1
+ * or 0 compares as a boolean, so a v0.2 rule rewritten as a formula keeps its
+ * meaning. Anything else compares as text.
+ */
+const equal = (a: Value, b: Value): boolean => {
+  if (typeof a === 'number' && typeof b === 'number') return a === b;
+  if (typeof a === 'boolean' && typeof b === 'number') return b === 0 || b === 1 ? a === (b === 1) : false;
+  if (typeof a === 'number' && typeof b === 'boolean') return a === 0 || a === 1 ? b === (a === 1) : false;
+  return String(a) === String(b);
+};
+
+/** Text of a value for the & operator. No value joins as nothing. */
+const asText = (v: Value): string => (v === null ? '' : String(v));
+
+/** Read a comparison from the sign of a code point order. */
+function order(op: string, c: number): boolean | null {
+  switch (op) {
+    case '<': return c < 0;
+    case '<=': return c <= 0;
+    case '>': return c > 0;
+    case '>=': return c >= 0;
+  }
+  return null;
+}
 
 /** Evaluate `ast` at sample `i`. Time functions look back through `env` at earlier samples. */
 export function evaluateAt(ast: Ast, i: number, env: Env): Value {
@@ -136,12 +160,17 @@ export function evaluateAt(ast: Ast, i: number, env: Env): Value {
     case 'binary': {
       const l = evaluateAt(ast.left, i, env);
       const r = evaluateAt(ast.right, i, env);
+      // A join still gives text when one side has no value, so a Then field
+      // publishes something.
+      if (ast.op === '&') return `${asText(l)}${asText(r)}`;
       if (l === null || r === null) return null;
       switch (ast.op) {
-        case '&': return `${l}${r}`;
         case '=': return equal(l, r);
         case '!=': return !equal(l, r);
         default: {
+          // Two strings compare in code point order; everything else needs
+          // numbers on both sides.
+          if (typeof l === 'string' && typeof r === 'string') return order(ast.op, l < r ? -1 : l > r ? 1 : 0);
           const a = asNum(l), b = asNum(r);
           if (a === null || b === null) return null;
           switch (ast.op) {
@@ -189,17 +218,25 @@ function call(ast: Ast & { kind: 'call' }, i: number, env: Env): Value {
     }
     case 'NOT': { const b = asBool(at(0)); return b === null ? null : !b; }
     case 'CHANGED': {
-      if (i === 0) return false;
-      const now = at(0), before = at(0, i - 1);
-      if (now === null || before === null) return null;
-      return !equal(now, before);
+      // The last value the argument was known to have, however long ago. A
+      // value that is not known is never a change, and neither is the first
+      // one: a restart must not fire a rule.
+      const now = at(0);
+      if (now === null) return false;
+      for (let j = i - 1; j >= 0; j--) {
+        const before = at(0, j);
+        if (before === null) continue;
+        return !equal(now, before);
+      }
+      return false;
     }
     case 'STALE': {
       const n = args.length === 2 ? back(1) : back(-1);
       const samples = n ?? Math.round(4 * 3600 / env.step); // the default window is 4h
-      if (i < samples) return false;
       const now = at(0);
-      if (now === null) return null;
+      // No value at all is stale at once: the gateway has nothing to read.
+      if (now === null) return true;
+      if (i < samples) return false;
       for (let j = i - samples; j < i; j++) if (!equal(at(0, j), now)) return false;
       return true;
     }

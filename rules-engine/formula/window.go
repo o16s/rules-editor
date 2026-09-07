@@ -111,9 +111,12 @@ func (w *Window) Add(now time.Time, v float64) {
 	b.count++
 }
 
-// oldest returns the oldest bucket in the window that holds a sample.
+// oldest returns the oldest bucket in the window that holds a sample, not
+// counting the head. The scan stops before it wraps back onto the head, so a
+// window whose samples all sit in the head bucket reports none: Rate handles
+// that case on its own.
 func (w *Window) oldest() *bucket {
-	for i := 1; i <= w.n; i++ {
+	for i := 1; i < w.n; i++ {
 		b := &w.b[(w.head+i)%w.n]
 		if b.count > 0 {
 			return b
@@ -123,18 +126,19 @@ func (w *Window) oldest() *bucket {
 }
 
 // Rate is the change of the value per hour over the window. Fewer than two
-// samples give zero: nothing is known to have changed.
+// samples give Unknown, not zero: a zero would satisfy a threshold such as
+// "less than 5" on a service that has just started and knows nothing.
 func (w *Window) Rate() Value {
 	newest := &w.b[w.head]
 	oldest := w.oldest()
 	if oldest == nil {
 		if newest.count < 2 {
-			return NumberValue(0)
+			return Unknown
 		}
 		return NumberValue((newest.last - newest.first) / w.window.Hours())
 	}
 	if newest.count == 0 {
-		return NumberValue(0)
+		return Unknown
 	}
 	return NumberValue((newest.last - oldest.first) / w.window.Hours())
 }

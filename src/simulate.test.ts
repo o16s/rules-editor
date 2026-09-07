@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parseFormula } from './formula.js';
 import type { Rule } from './model.js';
@@ -238,4 +241,57 @@ describe('formatting', () => {
     expect(formatSeconds(180)).toBe('180 s');
     expect(formatSeconds(2.5)).toBe('2.5 s');
   });
+});
+
+// ---- parity with the gateway ----------------------------------------------
+//
+// schema/eval-cases.json is read by this suite and by
+// rules-engine/formula/eval_cases_test.go in Go. The simulator shows an
+// operator what a rule will do, and the gateway then does it, so the two
+// implementations must answer every case the same way.
+
+interface EvalStep {
+  values: Record<string, number | string | boolean | null>;
+  want: number | string | boolean | null;
+}
+
+interface EvalCase {
+  name: string;
+  formula: string;
+  types: Record<string, string>;
+  step_seconds?: number;
+  steps: EvalStep[];
+}
+
+const EVAL_CASES = JSON.parse(
+  readFileSync(resolve(fileURLToPath(import.meta.url), '..', '..', 'schema', 'eval-cases.json'), 'utf8')
+) as EvalCase[];
+
+describe('schema/eval-cases.json', () => {
+  it('holds the cases both implementations answer', () => {
+    expect(EVAL_CASES.length).toBeGreaterThan(30);
+  });
+
+  for (const c of EVAL_CASES) {
+    it(c.name, () => {
+      // The value of every tag at every step, so a time function can look back.
+      const history: Record<string, Value>[] = [];
+      for (const step of c.steps) {
+        const last = history.length ? history[history.length - 1] : {};
+        history.push({ ...last, ...step.values });
+      }
+      const env: Env = {
+        step: c.step_seconds ?? 1,
+        tag: (ref, i) => {
+          const at = history[Math.max(0, Math.min(i, history.length - 1))];
+          return ref.device ? null : (at[ref.tag] ?? null);
+        },
+        variable: () => null,
+      };
+      const ast = parseFormula(c.formula);
+      c.steps.forEach((step, i) => {
+        expect(evaluateAt(ast, i, env), `step ${i + 1}`).toEqual(step.want);
+      });
+    });
+  }
 });

@@ -121,7 +121,9 @@ func TestEvalOperators(t *testing.T) {
 		{`OR(TAG("n") > 9, TAG("n") > 8)`, BoolValue(false)},
 		// the coercion of ADR-015: a boolean compared with 1 or 0
 		{`TAG("b") = 1`, BoolValue(true)}, {`TAG("b") = 0`, BoolValue(false)},
-		{`TAG("b") != 0`, BoolValue(true)}, {`TAG("b") = 2`, Unknown},
+		{`TAG("b") != 0`, BoolValue(true)},
+		// A boolean is not the number 2, which is an answer, not a missing one.
+		{`TAG("b") = 2`, BoolValue(false)}, {`TAG("b") != 2`, BoolValue(true)},
 		// a string compared with a number reads the text
 		{`TAG("s") = 1`, BoolValue(false)},
 		// bitwise
@@ -239,5 +241,39 @@ func TestEvalAllocatesNothing(t *testing.T) {
 	e := env(t, p, r, false, 60.0, uint16(5))
 	if n := testing.AllocsPerRun(100, func() { p.Eval(e) }); n != 0 {
 		t.Errorf("Eval allocates %v times per run, want 0", n)
+	}
+}
+
+func TestEvalStaleWithoutADurationUsesTheDefault(t *testing.T) {
+	// STALE(x) names no duration, so it uses the one its signature shows.
+	// A zero window would make it true at once, on every field.
+	r := newResolver("x", TypeNumber)
+	p := compile(t, `STALE(TAG("x"))`, r)
+	e := env(t, p, r, 1.0)
+	if got := p.Eval(e); got.Truth() {
+		t.Error("a value that just changed is not stale")
+	}
+	e.Now = e.Now.Add(DefaultStaleWindow - time.Minute)
+	if got := p.Eval(e); got.Truth() {
+		t.Error("just inside the default window is not stale")
+	}
+	e.Now = e.Now.Add(time.Minute)
+	if got := p.Eval(e); !got.Truth() {
+		t.Errorf("the default window is %v, and it has passed", DefaultStaleWindow)
+	}
+}
+
+func TestEvalRateWithoutHistoryIsUnknown(t *testing.T) {
+	r := newResolver("x", TypeNumber)
+	p := compile(t, `RATE(TAG("x"), 30min)`, r)
+	e := env(t, p, r, 1.0)
+	if got := p.Eval(e); got.Kind != VUnknown {
+		t.Errorf("= %+v, want unknown before the window holds two samples", got)
+	}
+	// And a condition over it is false, not true.
+	cond := compile(t, `RATE(TAG("x"), 30min) < 5`, r)
+	ec := env(t, cond, r, 1.0)
+	if got := cond.Eval(ec); got.Truth() {
+		t.Error("a threshold must not fire on a window that knows nothing")
 	}
 }

@@ -145,6 +145,11 @@ func (c *compiler) reference(n *Node, depth int) Type {
 // inlining depth too.
 const MaxVariables = 64
 
+// DefaultStaleWindow is the duration STALE uses when the formula names none,
+// as the signature STALE(x, 4h) shows and the editor's simulator assumes. A
+// zero window would make every STALE true at once, on every field.
+const DefaultStaleWindow = 4 * time.Hour
+
 // chain renders a reference cycle for a message.
 func chain(from []string, name string) string {
 	out := ""
@@ -298,7 +303,7 @@ func (c *compiler) stale(n *Node, depth int) Type {
 	if !ok {
 		return TypeBool
 	}
-	window := time.Duration(0)
+	window := DefaultStaleWindow
 	if len(n.Args) == 2 {
 		d, ok := c.duration(n.Args[1], "STALE")
 		if !ok {

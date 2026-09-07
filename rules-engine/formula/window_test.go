@@ -28,14 +28,21 @@ func TestWindowRateOverARamp(t *testing.T) {
 }
 
 func TestWindowRateNeedsTwoSamples(t *testing.T) {
+	// Too little history is unknown, not zero. A zero would satisfy a rule
+	// such as RATE(x, 30min) < 5 on a service that has just started.
 	w := NewWindow(0, time.Hour, time.Second)
-	if got := w.Rate().Float(); got != 0 {
-		t.Errorf("an empty window has no rate, got %v", got)
+	if got := w.Rate(); got.Kind != VUnknown {
+		t.Errorf("an empty window has no rate, got %+v", got)
 	}
 	w.Advance(t0)
 	w.Add(t0, 5)
-	if got := w.Rate().Float(); got != 0 {
-		t.Errorf("one sample has no rate, got %v", got)
+	if got := w.Rate(); got.Kind != VUnknown {
+		t.Errorf("one sample has no rate, got %+v", got)
+	}
+	w.Advance(t0.Add(time.Minute))
+	w.Add(t0.Add(time.Minute), 6)
+	if got := w.Rate(); got.Kind != VNumber {
+		t.Errorf("two samples have a rate, got %+v", got)
 	}
 }
 

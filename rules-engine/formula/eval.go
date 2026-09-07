@@ -246,11 +246,14 @@ func compare(op binop, l, r Value) Value {
 	return Unknown
 }
 
-// boolNumber compares a boolean with a number: 1 is true and 0 is false.
+// boolNumber compares a boolean with a number: 1 is true and 0 is false, so
+// a v0.2 rule keeps its meaning after the editor rewrites it as a formula.
+// Any other number is simply not that boolean, which is an answer, not a
+// missing one.
 func boolNumber(op binop, b bool, n Value) Value {
 	f := n.Float()
 	if f != 0 && f != 1 {
-		return Unknown
+		return equality(op, false)
 	}
 	return equality(op, b == (f == 1))
 }
