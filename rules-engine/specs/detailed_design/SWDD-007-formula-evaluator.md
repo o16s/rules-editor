@@ -37,7 +37,7 @@ type Env struct {
 ## Dynamic View (Logic)
 
 - `LoadSlot(i)`: box the slot with a type switch into `Value`. `nil` gives `Unknown`.
-- `Binary`: pop two, apply the operator by the kind pair, push. For `=` and `!=`, a bool with the number `1` or `0` compares as a bool. A string with a number or a bool compares with the rendered text (ADR-015). Other mismatched kinds push `Unknown`. `&` builds a string with `strings.Builder` and allocates. The compiler marks programs with `&` so the engine uses them only in Then fields.
+- `Binary`: pop two, apply the operator by the kind pair, push. For `=` and `!=`, a bool with the number `1` or `0` compares as a bool, and a bool with any other number is false. A string with a number or a bool compares with the rendered text (ADR-015). Two strings order by code point. Other mismatched kinds push `Unknown`. `&` builds a string with `strings.Builder` and allocates. The compiler marks programs with `&` so the engine uses them only in Then fields.
 - `Call AND/OR`: implemented by jumps. `NOT`: pop, invert, `Unknown` stays.
 - `Changed(k)`: if the top of the stack is `Unknown`, push false and keep `States[k]`. Else, if `States[k]` is `Unknown`, store the value and push false. Else compare with `States[k]` by kind and value, store the value, push the result (ADR-018).
 - `Stale(w)`, `Rate(w)`, `Avg(w)`: read the ring `w` (SWDD-008), push.

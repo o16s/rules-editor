@@ -29,8 +29,8 @@ SYSREQ-008 and SYSREQ-010 at the level of the functions.
 
 | Function | Meaning | State |
 |---|---|---|
-| `STALE(x, d)` | true when the slot of `x` is `nil`, or when `now - lastChange(x) >= d` | `lastChange` per slot, set when `equalValue` reports a change |
-| `RATE(x, w)` | `(last - first) / hours(w)` over the samples in the window. `0` with fewer than two samples | one bucket ring per (slot, window) |
+| `STALE(x, d)` | true when the slot of `x` is `nil`, or when `now - lastChange(x) >= d`. Without a duration, `d` is 4h, as the signature shows: a window of zero would be true at once, on every field | `lastChange` per slot, set when `equalValue` reports a change |
+| `RATE(x, w)` | `(last - first) / hours(w)` over the samples in the window. Unknown with fewer than two samples: a zero would satisfy a threshold such as `< 5` on a service that has just started | one bucket ring per (slot, window) |
 | `AVG(x, w)` | `sum / count` over the samples in the window. `Unknown` with no sample | the same ring |
 
 - A ring has at most 64 buckets. The bucket width is the larger of `w / 64` and `Catalog.Period`. A bucket holds `first`, `last`, `sum`, `count` and the bucket start time.
@@ -43,8 +43,8 @@ SYSREQ-008 and SYSREQ-010 at the level of the functions.
 
 ## Acceptance Criteria
 
-- `STALE` flips within one `Period` after `d`, with a fixed clock that advances in steps.
-- `RATE` over a linear ramp matches the slope within one bucket of the window, which is one part in 64. The rate divides by the nominal window, and the oldest bucket holds the oldest sample it saw, so a ramp reads short by up to that much.
+- `STALE` flips within one `Period` after `d`, with a fixed clock that advances in steps. `STALE(x)` without a duration flips after 4h.
+- `RATE` over a linear ramp matches the slope within one bucket of the window, which is one part in 64. With fewer than two samples it is unknown, and a threshold over it does not fire. The rate divides by the nominal window, and the oldest bucket holds the oldest sample it saw, so a ramp reads short by up to that much.
 - `AVG` over a constant equals the constant. `AVG` over a square wave equals its mean within one bucket of error.
 - Memory does not grow across 10^6 calls (a test with `runtime.MemStats`).
 

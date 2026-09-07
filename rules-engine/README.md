@@ -91,17 +91,19 @@ Copy what you keep.
 
 ## The formula language
 
-The registry is `../schema/formula-functions.json`, and
-`../schema/formula-cases.json` holds the cases both this module and the editor
-must agree on.
+The registry is `../schema/formula-functions.json`.
+`../schema/formula-cases.json` holds the text both this module and the editor
+must read the same way, and `../schema/eval-cases.json` the answers both must
+give: the editor simulates a rule in TypeScript before it reaches a gateway,
+and this module then runs it (ADR-020).
 
 | Function | Result |
 |----------|--------|
 | `TAG(tag)`, `TAG(device, tag)` | the current value of a field |
 | `AND(a, b, …)`, `OR(a, b, …)`, `NOT(a)` | boolean logic, with short-circuit evaluation |
 | `CHANGED(x)` | true in the cycle where `x` changed |
-| `STALE(x, 4h)` | true when `x` is unknown, or did not change within the duration |
-| `RATE(x, 30min)` | the change of `x` per hour over the window |
+| `STALE(x, 4h)` | true when `x` is unknown, or did not change within the duration. Without a duration it uses 4h |
+| `RATE(x, 30min)` | the change of `x` per hour over the window, and unknown while the window holds fewer than two samples |
 | `AVG(x, 10min)` | the mean of `x` over the window |
 | `BITAND`, `BITOR`, `BITXOR`, `HEX2DEC` | integer operations |
 
@@ -110,7 +112,12 @@ then `* /`, then unary `-`. `&` joins text.
 
 A comparison between kinds that have no common meaning is unknown, which
 reads as false in a condition. A boolean compared with `1` or `0` keeps the
-meaning of the 0.2 form.
+meaning of the 0.2 form, and a boolean compared with any other number is
+false. Two strings order by code point.
+
+The editor's simulator evaluates the same language in TypeScript.
+`../schema/eval-cases.json` holds the answers both implementations must give,
+and both test suites read it (ADR-020).
 
 `STALE`, `RATE` and `AVG` need a field, not an expression, and a literal
 duration. Their history is a ring of at most 64 buckets per field and

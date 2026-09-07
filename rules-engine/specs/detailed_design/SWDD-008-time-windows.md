@@ -40,8 +40,8 @@ On each `Eval`, before the rules: for each ring, compute the bucket index of
 one, bounded by 64. If the slot changed in this call and is numeric, add the
 value to the head bucket. Then:
 
-- `STALE(x, d)`: `Slots[x] == nil || now.Sub(lastChange[x]) >= d`.
-- `RATE(x, w)`: find the oldest non-empty bucket in the window and the newest. `(newest.last - oldest.first) / w.Hours()`. With fewer than two samples, `0`. The divisor is the nominal window, so a ramp reads short by up to one bucket, which is one part in 64.
+- `STALE(x, d)`: `Slots[x] == nil || now.Sub(lastChange[x]) >= d`. `d` is `DefaultStaleWindow`, 4h, when the formula names none.
+- `RATE(x, w)`: find the oldest non-empty bucket in the window and the newest. `(newest.last - oldest.first) / w.Hours()`. With fewer than two samples, Unknown. The scan for the oldest bucket stops before it wraps onto the head, so a window whose samples all sit in one bucket is handled by the head-only branch. The divisor is the nominal window, so a ramp reads short by up to one bucket, which is one part in 64.
 - `AVG(x, w)`: `sum(sum) / sum(count)` over non-empty buckets. `Unknown` when the count is 0.
 
 Time rules evaluate on every call, so a ring that only expires still moves

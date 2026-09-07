@@ -32,11 +32,13 @@ schema/
   fixtures/{valid,invalid,app-level,xsd-stricter}/<name>.xml
   formula-cases.json      [{ "text": "...", "print": "...", "error": null } | { "text": "...", "error": { "column": 7 } }]
   formula-functions.json  [{ "name": "TAG", "minArgs": 1, "maxArgs": 2, "returns": "any" }, ...]
+  eval-cases.json         [{ "name": "...", "formula": "...", "types": {...}, "steps": [{ "values": {...}, "want": ... }] }]
 ```
 
 - `src/xsd.test.ts` reads `fixtures/` instead of its inline tables. A test compares the fixture file names with the previous inline table once, then the table is deleted.
 - `rules-engine/rulesxml/parity_test.go` reads `../../schema/rules.xsd` and `../../schema/fixtures/`. It requires `xmllint` and fails, not skips, when `CI=true`.
-- `src/formula.test.ts` and `rules-engine/formula/parity_test.go` read `formula-cases.json`.
+- `src/formula.test.ts` and `rules-engine/formula/parse_test.go` read `formula-cases.json`.
+- `src/simulate.test.ts` and `rules-engine/formula/eval_cases_test.go` read `eval-cases.json`, which holds the answers, not the text (SWREQ-019).
 - A `vitest` test writes `formula-functions.json` from `FUNCTIONS` and fails when the file differs. The Go test reads it and fails when a function has no implementation.
 
 ## Acceptance Criteria

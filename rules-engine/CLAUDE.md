@@ -76,6 +76,7 @@ reads the same files:
 | `../schema/rules.xsd` | The published schema. `rulesxml/parity_test.go` holds `Validate` to it with `xmllint`. |
 | `../schema/fixtures/**` | One file per case, in four classes: `valid`, `invalid`, `app-level`, `xsd-stricter`. `reasons.json` carries the reason of each divergence. |
 | `../schema/formula-cases.json`, `../schema/formula-functions.json` | The formula parity cases and the function registry. |
+| `../schema/eval-cases.json` | The answers the engine and the editor's simulator must both give. |
 
 `//go:embed` cannot reach a parent directory, so the tests read them with
 `os.ReadFile` and a relative path.
