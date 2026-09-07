@@ -32,7 +32,8 @@ func ioLinkCatalog() Catalog {
 }
 
 // modbusCatalog is what modbus2mqtt builds for a NeoPool controller and a
-// BADU pump.
+// BADU pump. The service sorts the tags of one device by name, so this list
+// is in slot order.
 func modbusCatalog() Catalog {
 	return Catalog{
 		TopicPrefix: "modbus",
@@ -40,11 +41,12 @@ func modbusCatalog() Catalog {
 		Sources:     []string{"pool1", "pump1"},
 		Fields: []Field{
 			{Device: "pool1", Tag: "flow_signal", Type: Integer},
+			{Device: "pool1", Tag: "heating_on", Type: Bool},
 			{Device: "pool1", Tag: "ph", Type: Number},
 			{Device: "pool1", Tag: "ph_valid", Type: Bool},
-			{Device: "pool1", Tag: "heating_on", Type: Bool},
 			{Device: "pool1", Tag: "temperature_c", Type: Number},
 			{Device: "pump1", Tag: "error_code", Type: Integer},
+			{Device: "pump1", Tag: "error_text", Type: String},
 			{Device: "pump1", Tag: "running", Type: Bool},
 		},
 	}
@@ -145,11 +147,20 @@ func TestServiceFileModbus(t *testing.T) {
 		t.Fatalf("rules = %d, want 4", len(parsed))
 	}
 	e := NewEngine(parsed, cat)
-	values := []any{0, 7.2, true, false, 25.0, 0, true}
+	values := make([]any, len(cat.Fields))
+	set := func(device, tag string, v any) { values[slotOf(t, cat, device, tag)] = v }
+	set("pool1", "flow_signal", 0)
+	set("pool1", "heating_on", false)
+	set("pool1", "ph", 7.2)
+	set("pool1", "ph_valid", true)
+	set("pool1", "temperature_c", 25.0)
+	set("pump1", "error_code", 0)
+	set("pump1", "error_text", "")
+	set("pump1", "running", true)
 	e.Eval(values, t0)
 
 	// The flow-detection bypass is the safety rule of that file.
-	values[0] = 1
+	set("pool1", "flow_signal", 1)
 	_, incidents := e.Eval(values, t0.Add(time.Second))
 	if len(incidents) != 1 || !incidents[0].Trigger || incidents[0].Severity != "critical" {
 		t.Fatalf("the bypass must raise a critical incident: %+v", incidents)
@@ -158,8 +169,10 @@ func TestServiceFileModbus(t *testing.T) {
 		t.Errorf("dedup key = %q", incidents[0].DedupKey)
 	}
 
-	// A pump fault stops the pump and raises an incident.
-	values[5] = 3
+	// A pump fault stops the pump and raises an incident. Its cause is built
+	// from the values the pump reported.
+	set("pump1", "error_code", 3)
+	set("pump1", "error_text", "rotor blocked")
 	actions, incidents := e.Eval(values, t0.Add(2*time.Second))
 	if len(actions) != 1 || actions[0].Topic != "modbus/pump1/param/set_running" {
 		t.Fatalf("actions = %+v", actions)
@@ -168,7 +181,13 @@ func TestServiceFileModbus(t *testing.T) {
 		t.Errorf("payload = %q", actions[0].Payload)
 	}
 	if len(incidents) != 1 || incidents[0].Rule != "pump1-fault" {
-		t.Errorf("incidents = %+v", incidents)
+		t.Fatalf("incidents = %+v", incidents)
+	}
+	if incidents[0].Cause != "Error 3: rotor blocked" {
+		t.Errorf("cause = %q, want the live values", incidents[0].Cause)
+	}
+	if incidents[0].FirstStep == "" {
+		t.Error("the incident carries no first step")
 	}
 }
 

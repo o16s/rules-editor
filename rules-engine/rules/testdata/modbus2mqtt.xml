@@ -1,47 +1,74 @@
 <!-- Example rules file for modbus2mqtt.
      Device names must match config.yaml device names.
      Tag names must match the driver's decoded field names.
-     See driver.DiscoverFieldTypes() for available fields per driver. -->
+     See driver.DiscoverFieldTypes() for available fields per driver.
+     The rule language is documented in the rules-engine README:
+     https://github.com/o16s/rules-editor/blob/main/rules-engine/README.md -->
 <rules>
 
   <!-- NeoPool flow-detection bypass: ALWAYS_ON (1) means the hydrolysis cell
        runs without flow supervision. This is the safety-bypass state the
        gateway must alarm on. -->
   <rule name="pool1-flow-bypass" edge="rising">
-    <cond device="pool1" tag="flow_signal" op="eq" value="1"/>
+    <variables>
+      <var name="flow_signal" formula='TAG("pool1", "flow_signal")'
+           description="How the cell supervises water flow: 0 off, 1 always on, 2 by the flow switch"/>
+    </variables>
+    <cond expr="flow_signal = 1" description="Flow supervision is set to ALWAYS_ON"/>
     <incident source="pool1" severity="critical"
-              summary="Hydrolysis flow detection bypassed (ALWAYS_ON)"/>
+              summary="Hydrolysis flow detection bypassed (ALWAYS_ON)"
+              first_step="Make sure that water flows through the cell before you clear the bypass."
+              cause="The cell is set to run whether water flows or not, so the flow switch cannot stop it."/>
   </rule>
 
   <!-- pH out of band while the measurement is valid. -->
   <rule name="pool1-ph-high" cooldown="10m" edge="rising">
+    <variables>
+      <var name="ph" formula='TAG("pool1", "ph")' description="Measured pH of the pool water"/>
+      <var name="ph_valid" formula='TAG("pool1", "ph_valid")'
+           description="The probe reports its reading as usable"/>
+    </variables>
     <and>
-      <cond device="pool1" tag="ph_valid" op="eq" value="true"/>
-      <cond device="pool1" tag="ph" op="gt" value="7.8"/>
+      <cond expr="ph_valid" description="The pH probe reports a usable reading"/>
+      <cond expr="ph &gt; 7.8" description="pH above 7.8"/>
     </and>
     <incident source="pool1" severity="warning"
-              summary="Pool pH above 7.8"/>
+              summary="Pool pH above 7.8"
+              first_step="Read the pH by hand before you dose acid."
+              cause='="The probe reads pH " &amp; ph &amp; ". The band ends at 7.8."'/>
   </rule>
 
   <!-- Pump fault: any non-zero error code raises an incident and stops the
        pump via its own command topic. -->
   <rule name="pump1-fault" cooldown="60s" edge="rising">
-    <cond device="pump1" tag="error_code" op="neq" value="0"/>
+    <variables>
+      <var name="error_code" formula='TAG("pump1", "error_code")' description="Fault number the pump reports"/>
+      <var name="error_text" formula='TAG("pump1", "error_text")' description="The pump's own words for that fault"/>
+    </variables>
+    <cond expr="error_code &lt;&gt; 0" description="The pump reports a fault"/>
     <actions>
       <publish topic="modbus/pump1/param/set_running" payload='{"value": false}'/>
     </actions>
     <incident source="pump1" severity="error"
-              summary="BADU pump reports a fault"/>
+              summary="BADU pump reports a fault"
+              first_step="The gateway already stopped the pump. Read the code on the pump display."
+              cause='="Error " &amp; error_code &amp; ": " &amp; error_text'/>
   </rule>
 
-  <!-- Cold water + heating on: plausibility check across two devices. -->
+  <!-- Cold water + heating on: plausibility check across two readings. -->
   <rule name="pool1-heating-ineffective" cooldown="30m" edge="rising">
+    <variables>
+      <var name="heating_on" formula='TAG("pool1", "heating_on")' description="The heater is switched on"/>
+      <var name="water_temp" formula='TAG("pool1", "temperature_c")' description="Water temperature in degrees Celsius"/>
+    </variables>
     <and>
-      <cond device="pool1" tag="heating_on" op="eq" value="true"/>
-      <cond device="pool1" tag="temperature_c" op="lt" value="10"/>
+      <cond expr="heating_on" description="The heater is running"/>
+      <cond expr="water_temp &lt; 10" description="Water below 10 C"/>
     </and>
     <incident source="pool1" severity="warning"
-              summary="Heating on but water below 10 C"/>
+              summary="Heating on but water below 10 C"
+              first_step="Check the heater flow and the temperature probe."
+              cause='="The heater runs and the water reads " &amp; water_temp &amp; " C."'/>
   </rule>
 
 </rules>
