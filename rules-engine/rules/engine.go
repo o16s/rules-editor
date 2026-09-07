@@ -21,11 +21,12 @@ type Engine struct {
 	dueSet []bool
 	due    []int
 
-	prevValues []any
-	lastChange []time.Time
-	windows    []*formula.Window
-	env        formula.Env
-	lastNow    time.Time
+	prevValues    []any
+	lastChange    []time.Time
+	windows       []*formula.Window
+	windowsBySlot [][]int
+	env           formula.Env
+	lastNow       time.Time
 
 	actions   []Action
 	incidents []Incident
@@ -83,12 +84,16 @@ func (e *Engine) index(slots int) {
 func (e *Engine) buildWindows(cat Catalog) {
 	specs := windowSpecs(e.rules)
 	e.windows = make([]*formula.Window, len(specs))
+	e.windowsBySlot = make([][]int, len(cat.Fields))
 	for i := 0; i < len(specs); i++ {
 		if specs[i].Window <= 0 {
 			// An index no program claimed; a nil ring reads as unknown.
 			continue
 		}
 		e.windows[i] = formula.NewWindow(specs[i].Slot, specs[i].Window, cat.Period)
+		if slot := specs[i].Slot; slot >= 0 && slot < len(e.windowsBySlot) {
+			e.windowsBySlot[slot] = append(e.windowsBySlot[slot], i)
+		}
 	}
 }
 
@@ -158,25 +163,35 @@ func (e *Engine) detect(values []any, now time.Time) {
 			e.stats.UnknownSlotTypes++
 			continue
 		}
+		// Every evaluation is a reading, so a window holds what the service
+		// saw and not only what moved. A mean over ten minutes is then the
+		// mean of the readings, which is how an operator reads it (ADR-022).
+		e.sample(i, values[i], now)
 		if formula.EqualAny(values[i], e.prevValues[i]) {
 			continue
 		}
 		e.lastChange[i] = now
-		e.sample(i, values[i], now)
 		e.markRulesOf(i)
 	}
 }
 
-// sample records a numeric change in every window that follows the slot.
+// sample records one reading in every window that follows the slot. Most
+// slots carry no window, so the common case is one length check.
 func (e *Engine) sample(slot int, value any, now time.Time) {
+	if slot < 0 || slot >= len(e.windowsBySlot) {
+		return
+	}
+	list := e.windowsBySlot[slot]
+	if len(list) == 0 {
+		return
+	}
 	v := formula.FromAny(value)
 	if !v.IsNumeric() {
 		return
 	}
-	for i := 0; i < len(e.windows); i++ {
-		if e.windows[i] != nil && e.windows[i].Slot() == slot {
-			e.windows[i].Add(now, v.Float())
-		}
+	f := v.Float()
+	for i := 0; i < len(list); i++ {
+		e.windows[list[i]].Add(now, f)
 	}
 }
 

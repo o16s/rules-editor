@@ -74,3 +74,37 @@ func TestEngineSharesOneWindowBetweenRules(t *testing.T) {
 		t.Errorf("windows = %d, want one shared ring", len(e.windows))
 	}
 }
+
+// A window holds one reading per evaluation, not one per change (ADR-022).
+// The two differ whenever a value sits still: a mean over the readings is
+// what an operator asks for, and a mean over the distinct values is not.
+func TestAWindowHoldsEveryReading(t *testing.T) {
+	// The catalog polls once a second, and the window is ten seconds, so each
+	// second is its own bucket and the arithmetic is exact.
+	xml := `<rules><rule name="mean">
+	  <variables><var name="m" formula="AVG(TAG(&quot;vibration1&quot;, &quot;temperature&quot;), 10s)"/></variables>
+	  <cond expr="m &gt; 50" description="Mean above 50"/>
+	  <actions><publish topic="t" payload="{}"/></actions>
+	</rule></rules>`
+	e := engineFor(t, xml, testCatalog())
+
+	// Nine readings of 10, then one of 100. The mean of the readings is 19.
+	// The mean of the two values that appeared is 55.
+	for i := 0; i < 9; i++ {
+		e.Eval(values(10.0, false, 0, "", 0, 0.0), t0.Add(time.Duration(i)*time.Second))
+	}
+	actions, _ := e.Eval(values(100.0, false, 0, "", 0, 0.0), t0.Add(9*time.Second))
+	if len(actions) != 0 {
+		t.Errorf("the rule fired, so the mean read above 50: %+v", actions)
+	}
+
+	// Raise it far enough that the mean of the readings crosses 50 too, so
+	// the test cannot pass by never firing.
+	for i := 10; i < 19; i++ {
+		e.Eval(values(100.0, false, 0, "", 0, 0.0), t0.Add(time.Duration(i)*time.Second))
+	}
+	actions, _ = e.Eval(values(100.0, false, 0, "", 0, 0.0), t0.Add(19*time.Second))
+	if len(actions) != 1 {
+		t.Errorf("a window of ten readings of 100 must have a mean above 50: %+v", actions)
+	}
+}

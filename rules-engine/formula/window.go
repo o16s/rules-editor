@@ -96,8 +96,9 @@ func (w *Window) Advance(now time.Time) {
 // truncate aligns a time to the bucket grid, so the first bucket has a width.
 func (w *Window) truncate(t time.Time) time.Time { return t.Truncate(w.width) }
 
-// Add records one sample in the current bucket. The caller adds a sample only
-// when the slot changed, so a value that never moves fills no bucket.
+// Add records one reading in the current bucket. The engine calls it once per
+// evaluation for every slot a window follows, whether the value moved or not,
+// so the window holds what the service read (ADR-022).
 func (w *Window) Add(now time.Time, v float64) {
 	b := &w.b[w.head]
 	if b.start.IsZero() {
