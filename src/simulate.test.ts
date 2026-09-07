@@ -143,6 +143,18 @@ describe('simulate', () => {
     expect(none.fires).toHaveLength(44); // the startup resolve, then 180, 190, … 600
   });
 
+  it('calls the startup resolve a resolve, not a firing with a cooldown', async () => {
+    // The engine assumes every incident is open when it starts, so the first
+    // evaluation of a rule whose cause is absent closes it. That is not the
+    // rule firing, and no cooldown follows it.
+    const sim = await simulate(rule({ cooldown: '45s' }), { stop: 60, step: 1, signals: { ...SIGNALS, 'plc1/AlarmActive': 'HOLD(false)' } });
+    const first = sim.log[0];
+    expect(first.t).toBe(0);
+    expect(first.text).toMatch(/^Resolved incident /);
+    expect(first.text).not.toContain('Fired.');
+    expect(sim.log.some((e) => e.t === 0 && e.text.startsWith('Cooldown:'))).toBe(false);
+  });
+
   it('evaluates Then formulas with the firing condition\'s description', async () => {
     // The row that fires is the one whose description the Then field reads.
     const r = rule({

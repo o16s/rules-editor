@@ -283,15 +283,24 @@ function writeLog(rule, times, conditions, out, step) {
         const fired = firingAt.get(i);
         if (!fired)
             continue;
-        const actions = [
+        const incidents = fired.incidents ?? [];
+        const resolves = incidents.filter((inc) => inc.action === 'resolve');
+        const messages = [
             ...(fired.actions ?? []).map((a) => `Publish to ${a.topic}${a.payload ? ` ${a.payload}` : ''}`),
-            ...(fired.incidents ?? []).map((inc) => (inc.action === 'resolve'
-                ? `Resolve incident ${inc.dedupKey}`
-                : `Raise ${inc.severity} incident \u201c${inc.summary}\u201d`)),
+            ...incidents.filter((inc) => inc.action !== 'resolve')
+                .map((inc) => `Raise ${inc.severity} incident \u201c${inc.summary}\u201d`),
         ];
+        if (messages.length === 0) {
+            // Only a resolve. The rule did not fire, and the cooldown never delays
+            // a resolve, so neither word belongs here.
+            say({ t, text: resolves.map((inc) => `Resolved incident ${inc.dedupKey}.`).join(' \u00b7 '), fired: true });
+            continue;
+        }
+        for (const inc of resolves)
+            messages.push(`Resolve incident ${inc.dedupKey}`);
         const firing = conditions.findIndex((c) => c.values[i] === true);
         const why = firing >= 0 && !announced.has(firing) ? `Condition ${firing + 1} is true.` : '';
-        say({ t, text: ['Fired.', why, actions.join(' \u00b7 ')].filter(Boolean).join(' '), fired: true });
+        say({ t, text: ['Fired.', why, messages.join(' \u00b7 ')].filter(Boolean).join(' '), fired: true });
         if (cooldown > 0) {
             say({ t, text: `Cooldown: the rule cannot fire again before ${formatSeconds(t + cooldown)}.` });
         }

@@ -461,13 +461,25 @@ export function initSimulator(root: HTMLElement, opts: SimulatorOptions): Simula
 
   // ---- log ----
   const logSheet = el('div', { class: 'rs-sheet rs-log' });
+
+  /**
+   * An event of the rule reads as a bold first sentence and the detail after
+   * it: "Fired." before the messages, "Resolved incident x." on its own. The
+   * text carries the words, so the row never assumes which one it is.
+   */
+  function lead(text: string): (string | HTMLElement)[] {
+    const end = text.indexOf('. ');
+    if (end < 0) return [el('strong', {}, [text])];
+    return [el('strong', {}, [text.slice(0, end + 1)]), text.slice(end + 1)];
+  }
+
   function renderLog(): void {
     logSheet.replaceChildren(el('div', { class: 'rs-head' }, [el('span', {}, ['Time']), el('span', {}, ['Event'])]));
     if (sim.log.length === 0) logSheet.append(el('div', { class: 'rs-row' }, [el('span', { class: 'rs-time' }), el('span', { class: 'rs-event rs-empty' }, ['No condition changed, and the rule did not fire.'])]));
     for (const entry of sim.log) {
       const row = el('div', { class: `rs-row${entry.fired ? ' is-fired' : ''}` }, [
         el('span', { class: 'rs-time' }, [formatSeconds(entry.t)]),
-        el('span', { class: 'rs-event' }, entry.fired ? [el('strong', {}, ['Fired.']), entry.text.slice('Fired.'.length)] : [entry.text]),
+        el('span', { class: 'rs-event' }, entry.fired ? lead(entry.text) : [entry.text]),
       ]);
       logSheet.append(row);
     }

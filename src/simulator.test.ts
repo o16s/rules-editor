@@ -77,7 +77,7 @@ describe('simulator page (jsdom)', () => {
     // startup, and then carries the rule's own firing.
     const firedRows = Array.from(root.querySelectorAll('.rs-log .is-fired'));
     expect(text(firedRows[0].querySelector('.rs-time'))).toBe('0 s');
-    expect(text(firedRows[0].querySelector('.rs-event'))).toContain('Resolve incident');
+    expect(text(firedRows[0].querySelector('.rs-event'))).toContain('Resolved incident');
     const fired = firedRows[1];
     expect(text(fired.querySelector('.rs-time'))).toBe('150 s');
     expect(text(fired.querySelector('.rs-event'))).toBe('Fired. Publish to camera/record {"duration":40} · Raise critical incident “Press guard alarm on cell 3”');
@@ -185,7 +185,7 @@ describe('simulator page (jsdom)', () => {
     expect(api.getState().signals).toEqual({ 'plc1/AlarmActive': 'HOLD(false)', 'vibration1/temperature': 'HOLD(48.2)', 'bulk1/door_state': 'HOLD("closed")' });
     // Nothing moves, but the engine still closes the incident it assumes open
     // when it starts, so the log is not empty and the timeline carries a mark.
-    expect(text(root.querySelector('.rs-log .rs-event'))).toContain('Resolve incident');
+    expect(text(root.querySelector('.rs-log .rs-event'))).toContain('Resolved incident');
     expect(root.querySelectorAll('.rs-fire')).toHaveLength(1);
   });
 

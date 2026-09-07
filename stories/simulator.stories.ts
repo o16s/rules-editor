@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { initRulesEditor, initSimulator, type RulesModel, type SimulatorHandle } from '../src/gui.js';
 import { THEMES, WIDTHS, type Width } from './harness.js';
 import { CATALOG, DESIGN_SIGNALS, EXAMPLE_MODEL, liveValues } from './samples.js';
@@ -142,8 +142,13 @@ export const FromEditor: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Simulator' }));
     await expect(canvasElement.querySelector('.rs-root')).toBeTruthy();
     await expect(canvas.getByRole('button', { name: '← alarm-camera' })).toBeVisible();
+    // The engine answers asynchronously, so wait for the first run.
+    await window.simulator?.ready();
     await expect(canvasElement.querySelectorAll('.rs-lane').length).toBeGreaterThan(5);
-    await expect(canvasElement.querySelector('.rs-log .is-fired')?.textContent).toMatch(/Fired\./);
+    // The run opens with the startup resolve of the incident the engine
+    // assumes open, so read the row where the rule itself fired.
+    const rows = [...canvasElement.querySelectorAll('.rs-log .is-fired')];
+    await expect(rows.some((row) => row.textContent?.includes('Fired.'))).toBe(true);
   },
 };
 
@@ -151,17 +156,24 @@ export const FromEditor: Story = {
 export const EditSignal: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    // The rows exist only after the first run, and each edit starts another.
+    await window.simulator?.ready();
     const set = async (label: string, value: string): Promise<void> => {
       const input = canvas.getByLabelText(label) as HTMLInputElement;
       await userEvent.clear(input);
       await userEvent.type(input, `${value}{enter}`);
+      await window.simulator?.ready();
     };
     await set('Signal for vibration1 temperature', 'HOLD(45)');
     await set('Signal for bulk1 door_state', 'HOLD("closed")');
-    const alarm = canvas.getByLabelText('Signal for plc1 AlarmActive') as HTMLInputElement;
-    await userEvent.clear(alarm);
-    await userEvent.type(alarm, 'STEP(false, true, 400s){enter}');
-    await expect(canvasElement.querySelector('.rs-log .is-fired .rs-time')?.textContent).toBe('400 s');
+    await set('Signal for plc1 AlarmActive', 'STEP(false, true, 400s)');
+    // The run opens with the startup resolve of the incident the engine
+    // assumes open, so read the row that raises one, not the first row.
+    await waitFor(async () => {
+      const raised = [...canvasElement.querySelectorAll('.rs-log .is-fired')]
+        .find((row) => row.textContent?.includes('Raise'));
+      expect(raised?.querySelector('.rs-time')?.textContent).toBe('400 s');
+    });
   },
 };
 
@@ -169,9 +181,12 @@ export const EditSignal: Story = {
 export const InvalidSignal: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await window.simulator?.ready();
     const input = canvas.getByLabelText('Signal for plc1 StatusWord') as HTMLInputElement;
     await userEvent.clear(input);
     await userEvent.type(input, 'RAMP(1){enter}');
-    await expect(canvasElement.querySelector('.rs-cell-signal.is-invalid .rs-msg')?.textContent).toMatch(/takes 3 arguments/);
+    await waitFor(async () =>
+      expect(canvasElement.querySelector('.rs-cell-signal.is-invalid .rs-msg')?.textContent)
+        .toMatch(/takes 3 arguments/));
   },
 };
