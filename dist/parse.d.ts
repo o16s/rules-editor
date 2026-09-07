@@ -1,8 +1,15 @@
 import type { RulesModel } from './model.js';
+import type { TagCatalog } from './catalog.js';
 export declare class RulesParseError extends Error {
 }
-/** Parse rules.xml text into a model. Throws RulesParseError on invalid input. */
-export declare function parse(xml: string): RulesModel;
+/**
+ * Parse rules.xml text into a model. Throws RulesParseError on invalid input.
+ *
+ * With a catalog, a v0.2 `<cond tag op value>` is rewritten as the formula the
+ * gateway evaluates: the value is read as the type of its field. Without one,
+ * the shape of the value decides.
+ */
+export declare function parse(xml: string, catalog?: TagCatalog): RulesModel;
 /**
  * A validation message plus where it belongs, so an editor can point at the
  * input that needs fixing. `rule` is an index into `model.rules`; `variable`,

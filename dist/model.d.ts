@@ -78,6 +78,8 @@ export declare const LIMITS: {
     readonly maxDepth: 4;
     /** Condition rows per rule, and children per v0.2 group. */
     readonly maxChildren: 16;
+    /** Publish actions per rule. */
+    readonly maxActions: 64;
     readonly maxSummary: 120;
     readonly maxVariables: 64;
     /** description, first_step, cause. */

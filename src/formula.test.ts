@@ -254,3 +254,19 @@ describe('schema/formula-functions.json', () => {
     expect(onDisk).toEqual(inCode);
   });
 });
+
+describe('legacyCondToFormula with a field type', () => {
+  it('reads a v0.2 value the way the gateway reads it', () => {
+    // A boolean field takes 1 and 0, as the v0.2 documentation says.
+    expect(legacyCondToFormula({ tag: 'b', op: 'eq', value: '1' }, 'boolean')).toBe('TAG("b") = true');
+    expect(legacyCondToFormula({ tag: 'b', op: 'eq', value: '0' }, 'boolean')).toBe('TAG("b") = false');
+    expect(legacyCondToFormula({ tag: 'b', op: 'eq', value: 'true' }, 'boolean')).toBe('TAG("b") = true');
+    // A string field keeps the text, even when it looks like something else.
+    expect(legacyCondToFormula({ tag: 's', op: 'eq', value: 'true' }, 'string')).toBe('TAG("s") = "true"');
+    expect(legacyCondToFormula({ tag: 's', op: 'eq', value: '1' }, 'string')).toBe('TAG("s") = "1"');
+    // A number field keeps the number.
+    expect(legacyCondToFormula({ tag: 'n', op: 'gt', value: '50.0' }, 'number')).toBe('TAG("n") > 50.0');
+    // Without a type, the shape of the value decides, as before.
+    expect(legacyCondToFormula({ tag: 'x', op: 'eq', value: '1' })).toBe('TAG("x") = 1');
+  });
+});

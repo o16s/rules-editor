@@ -69,21 +69,31 @@ type Program struct {
 	consts []Value
 	depth  int // the value stack a run needs
 
-	slots      []int // slots the program reads, without duplicates
-	states     []int // indexes of the CHANGED states it owns
-	windows    []int // indexes of the windows it reads
-	HasChanged bool  // the program contains CHANGED
-	HasTime    bool  // the program contains STALE, RATE or AVG
-	HasConcat  bool  // the program contains &, which allocates when it runs
-	Type       Type  // the static type of the result
+	slots       []int        // slots the program reads, without duplicates
+	states      []int        // indexes of the CHANGED states it owns
+	windows     []int        // indexes of the windows it reads
+	windowSpecs []WindowSpec // what each of those windows follows
+	HasChanged  bool         // the program contains CHANGED
+	HasTime     bool         // the program contains STALE, RATE or AVG
+	HasConcat   bool         // the program contains &, which allocates when it runs
+	Type        Type         // the static type of the result
 }
 
 // Slots is the set of slots the program reads. The engine indexes its rules
 // by them, so a rule evaluates only when one of its inputs changed.
 func (p *Program) Slots() []int { return p.slots }
 
-// Windows is the set of windows the program reads.
+// Windows is the set of windows the program reads, by the index the resolver
+// gave them.
 func (p *Program) Windows() []int { return p.windows }
+
+// WindowSpecs describes those windows, in the same order as Windows. The
+// engine sizes its rings from them.
+func (p *Program) WindowSpecs() []WindowSpec { return p.windowSpecs }
+
+// States is the set of CHANGED nodes the program owns, by the index the
+// resolver gave them.
+func (p *Program) States() []int { return p.states }
 
 // StackDepth is the value stack one run needs.
 func (p *Program) StackDepth() int { return p.depth }

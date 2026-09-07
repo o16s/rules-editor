@@ -3,8 +3,30 @@ import { CONTEXT_NAMES, FormulaError, RESERVED_NAMES, checkFunctions, formulaBod
 export class RulesParseError extends Error {
 }
 // ---- parsing -------------------------------------------------------------
-/** Parse rules.xml text into a model. Throws RulesParseError on invalid input. */
-export function parse(xml) {
+/**
+ * The type of one field, from the host catalog. Without a catalog every field
+ * is unknown, and a v0.2 value is read by its shape.
+ */
+function fieldTypeOf(catalog, device, tag) {
+    if (!catalog)
+        return undefined;
+    for (const entry of catalog.devices) {
+        if ((entry.device ?? undefined) !== (device ?? undefined))
+            continue;
+        for (const t of entry.tags)
+            if (t.tag === tag)
+                return t.type;
+    }
+    return undefined;
+}
+/**
+ * Parse rules.xml text into a model. Throws RulesParseError on invalid input.
+ *
+ * With a catalog, a v0.2 `<cond tag op value>` is rewritten as the formula the
+ * gateway evaluates: the value is read as the type of its field. Without one,
+ * the shape of the value decides.
+ */
+export function parse(xml, catalog) {
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     const err = doc.querySelector('parsererror');
     if (err)
@@ -13,10 +35,10 @@ export function parse(xml) {
     if (!root || root.nodeName !== 'rules') {
         throw new RulesParseError(`Root element must be <rules>, got <${root?.nodeName ?? 'nothing'}>`);
     }
-    const rules = elementChildren(root).map(parseRule);
+    const rules = elementChildren(root).map((el) => parseRule(el, catalog));
     return { rules };
 }
-function parseRule(el) {
+function parseRule(el, catalog) {
     if (el.nodeName !== 'rule') {
         throw new RulesParseError(`Expected <rule>, got <${el.nodeName}>`);
     }
@@ -45,7 +67,7 @@ function parseRule(el) {
                 if (seenCondition)
                     throw new RulesParseError(`Rule "${name}": more than one top-level condition`);
                 seenCondition = true;
-                const parsed = parseConditions(child, name);
+                const parsed = parseConditions(child, name, catalog);
                 match = parsed.match;
                 conditions = parsed.conditions;
                 break;
@@ -89,14 +111,14 @@ function parseVariable(el, ruleName) {
  * group gives the match mode and one row per child; a nested group becomes
  * one row whose formula is AND(...)/OR(...) over its children.
  */
-function parseConditions(el, ruleName) {
+function parseConditions(el, ruleName, catalog) {
     if (el.nodeName === 'cond')
-        return { match: 'any', conditions: [condRow(el, ruleName)] };
+        return { match: 'any', conditions: [condRow(el, ruleName, catalog)] };
     const match = el.nodeName === 'or' ? 'any' : 'all';
     const conditions = elementChildren(el).map((child) => {
         if (child.nodeName === 'cond')
-            return condRow(child, ruleName);
-        const row = { expr: foldGroup(child, ruleName, 2) };
+            return condRow(child, ruleName, catalog);
+        const row = { expr: foldGroup(child, ruleName, 2, catalog) };
         const description = child.getAttribute('description');
         if (description)
             row.description = description;
@@ -105,7 +127,7 @@ function parseConditions(el, ruleName) {
     return { match, conditions };
 }
 /** A nested v0.2 group as one formula. `depth` is the group's level below <rule>. */
-function foldGroup(el, ruleName, depth) {
+function foldGroup(el, ruleName, depth, catalog) {
     if (el.nodeName !== 'and' && el.nodeName !== 'or') {
         throw new RulesParseError(`Rule "${ruleName}": unexpected condition element <${el.nodeName}>`);
     }
@@ -118,13 +140,13 @@ function foldGroup(el, ruleName, depth) {
     if (children.length > LIMITS.maxChildren) {
         throw new RulesParseError(`Rule "${ruleName}": <${el.nodeName}> has ${children.length} children (max ${LIMITS.maxChildren})`);
     }
-    const parts = children.map((c) => (c.nodeName === 'cond' ? condRow(c, ruleName).expr : foldGroup(c, ruleName, depth + 1)));
+    const parts = children.map((c) => c.nodeName === 'cond' ? condRow(c, ruleName, catalog).expr : foldGroup(c, ruleName, depth + 1, catalog));
     if (parts.length === 1)
         return parts[0];
     return `${el.nodeName.toUpperCase()}(${parts.join(', ')})`;
 }
 /** One <cond> as a row: its expr, or the v0.2 tag/op/value form as a formula. */
-function condRow(el, ruleName) {
+function condRow(el, ruleName, catalog) {
     const expr = el.getAttribute('expr');
     const tag = el.getAttribute('tag');
     const opRaw = el.getAttribute('op');
@@ -147,7 +169,7 @@ function condRow(el, ruleName) {
             throw new RulesParseError(`Rule "${ruleName}": operator "${op}" on tag "${tag}" needs a value`);
         }
         const device = el.getAttribute('device') || undefined;
-        row.expr = legacyCondToFormula({ device, tag, op, value: value ?? undefined });
+        row.expr = legacyCondToFormula({ device, tag, op, value: value ?? undefined }, fieldTypeOf(catalog, device, tag));
     }
     const description = el.getAttribute('description');
     if (description)
@@ -219,6 +241,9 @@ export function validateIssues(model) {
         validateConditions(rule, where, scope, at);
         if (rule.actions.length === 0 && !rule.incident) {
             at(`${where}: must have <actions>, an <incident>, or both.`);
+        }
+        if (rule.actions.length > LIMITS.maxActions) {
+            at(`${where}: has ${rule.actions.length} actions (max ${LIMITS.maxActions}).`, { field: 'topic' });
         }
         rule.actions.forEach((a, action) => {
             if (!a.topic)

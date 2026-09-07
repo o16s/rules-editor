@@ -3,11 +3,17 @@
 // which choices fit, and what the text becomes when one is picked. No DOM
 // here; gui.ts draws the menu.
 
-import { isIdentChar, isIdentStart, quoteString as quote, type FunctionSpec } from './formula.js';
+import { isIdentChar, isIdentStart, quoteString as quote, type FieldType, type FunctionSpec } from './formula.js';
 
 /** One field a device exposes. `value` and `stale` are live data the host may bind. */
 export interface TagEntry {
   tag: string;
+  /**
+   * The type of the field, as the gateway names it. `parse()` uses it to read
+   * a v0.2 `value` the way the gateway reads it: `1` on a boolean field is
+   * `true`, and `true` on a string field is the text.
+   */
+  type?: FieldType;
   /** Engineering unit, shown beside the live value: "°C", "l/min". */
   unit?: string;
   description?: string;

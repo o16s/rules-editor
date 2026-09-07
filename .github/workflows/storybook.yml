@@ -11,7 +11,9 @@ name: Storybook
 on:
   push:
     branches: [main]
+    paths-ignore: ["rules-engine/**"]
   pull_request:
+    paths-ignore: ["rules-engine/**"]
   workflow_dispatch:
 
 permissions:

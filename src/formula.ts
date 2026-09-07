@@ -419,8 +419,25 @@ export function inferType(ast: Ast, lookup: (name: string) => FormulaType = () =
 
 const OP_SYMBOL: Record<string, string> = { eq: '=', neq: '!=', lt: '<', leq: '<=', gt: '>', geq: '>=' };
 
-/** Render a value attribute as a literal: number, boolean, or quoted string. */
-function literalOf(value: string): string {
+/** The type of a field, as the host catalog names it. */
+export type FieldType = 'boolean' | 'integer' | 'number' | 'string';
+
+/**
+ * Render a value attribute as a literal. With the type of the field, the
+ * result means what the v0.2 file meant: `1` on a boolean field is `true`,
+ * and `true` on a string field is the text `"true"`. Without a type, the
+ * shape of the value decides, which is what the editor can do alone.
+ */
+function literalOf(value: string, type?: FieldType): string {
+  switch (type) {
+    case 'boolean':
+      return value === '1' || value.toLowerCase() === 'true' ? 'true' : 'false';
+    case 'integer':
+    case 'number':
+      return value;
+    case 'string':
+      return quoteString(value);
+  }
   if (/^-?(\d+\.?\d*|\.\d+)$/.test(value)) return value;
   const lower = value.toLowerCase();
   if (lower === 'true' || lower === 'false') return lower;
@@ -431,11 +448,14 @@ function literalOf(value: string): string {
  * The formula for a v0.2 `<cond tag op value>` leaf, so an old file opens as
  * formula rows: `TAG("dev", "tag") > 50`, or `CHANGED(TAG("tag"))`.
  */
-export function legacyCondToFormula(leaf: { device?: string; tag: string; op: string; value?: string }): string {
+export function legacyCondToFormula(
+  leaf: { device?: string; tag: string; op: string; value?: string },
+  type?: FieldType
+): string {
   const tag = leaf.device ? `TAG(${quoteString(leaf.device)}, ${quoteString(leaf.tag)})` : `TAG(${quoteString(leaf.tag)})`;
   if (leaf.op === 'changed') return `CHANGED(${tag})`;
   const symbol = OP_SYMBOL[leaf.op] ?? '=';
-  return `${tag} ${symbol} ${literalOf(leaf.value ?? '')}`;
+  return `${tag} ${symbol} ${literalOf(leaf.value ?? '', type)}`;
 }
 
 // ---- Then fields -----------------------------------------------------------

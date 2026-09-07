@@ -48,9 +48,7 @@ func Compile(n *Node, vars map[string]*Node, r Resolver, allowContext bool) (*Pr
 		allowCtx: allowContext,
 		problems: make([]string, 0, 4),
 	}
-	for _, m := range CheckFunctions(n) {
-		c.problems = append(c.problems, m)
-	}
+	c.problems = append(c.problems, CheckFunctions(n)...)
 	t := c.node(n, 0)
 	if len(c.problems) > 0 {
 		return nil, c.problems
@@ -337,7 +335,11 @@ func (c *compiler) windowCall(n *Node, depth int) Type {
 	}
 	c.emit(op, int32(index), 0)
 	c.prog.slots = appendUniqueInt(c.prog.slots, slot)
+	before := len(c.prog.windows)
 	c.prog.windows = appendUniqueInt(c.prog.windows, index)
+	if len(c.prog.windows) > before {
+		c.prog.windowSpecs = append(c.prog.windowSpecs, WindowSpec{Slot: slot, Window: window})
+	}
 	c.prog.HasTime = true
 	_ = depth
 	return TypeNumber

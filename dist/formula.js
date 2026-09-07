@@ -393,8 +393,22 @@ export function inferType(ast, lookup = () => 'any') {
 }
 // ---- legacy leaf conditions ------------------------------------------------
 const OP_SYMBOL = { eq: '=', neq: '!=', lt: '<', leq: '<=', gt: '>', geq: '>=' };
-/** Render a value attribute as a literal: number, boolean, or quoted string. */
-function literalOf(value) {
+/**
+ * Render a value attribute as a literal. With the type of the field, the
+ * result means what the v0.2 file meant: `1` on a boolean field is `true`,
+ * and `true` on a string field is the text `"true"`. Without a type, the
+ * shape of the value decides, which is what the editor can do alone.
+ */
+function literalOf(value, type) {
+    switch (type) {
+        case 'boolean':
+            return value === '1' || value.toLowerCase() === 'true' ? 'true' : 'false';
+        case 'integer':
+        case 'number':
+            return value;
+        case 'string':
+            return quoteString(value);
+    }
     if (/^-?(\d+\.?\d*|\.\d+)$/.test(value))
         return value;
     const lower = value.toLowerCase();
@@ -406,12 +420,12 @@ function literalOf(value) {
  * The formula for a v0.2 `<cond tag op value>` leaf, so an old file opens as
  * formula rows: `TAG("dev", "tag") > 50`, or `CHANGED(TAG("tag"))`.
  */
-export function legacyCondToFormula(leaf) {
+export function legacyCondToFormula(leaf, type) {
     const tag = leaf.device ? `TAG(${quoteString(leaf.device)}, ${quoteString(leaf.tag)})` : `TAG(${quoteString(leaf.tag)})`;
     if (leaf.op === 'changed')
         return `CHANGED(${tag})`;
     const symbol = OP_SYMBOL[leaf.op] ?? '=';
-    return `${tag} ${symbol} ${literalOf(leaf.value ?? '')}`;
+    return `${tag} ${symbol} ${literalOf(leaf.value ?? '', type)}`;
 }
 // ---- Then fields -----------------------------------------------------------
 /** A Then field holds a formula when it starts with `=`; anything else is text. */

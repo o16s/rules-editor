@@ -29,10 +29,10 @@ graph LR
 
 ## Dynamic View (Logic)
 
-1. `scripts/export-fixtures.ts` writes each fixture of the four tables to `schema/fixtures/<class>/<slug>.xml`, where `slug` is the description with every character outside `[a-z0-9-]` replaced by `-`.
-2. `src/xsd.test.ts` reads the four directories and keeps the `knownDivergence` lists as file names.
+1. A one-time vitest file exports each fixture of the four tables to `schema/fixtures/<class>/<slug>.xml`, where `slug` is the description with every character outside `[a-z0-9-]` replaced by `-`. It writes the reason of each divergence to `schema/fixtures/reasons.json` and is then deleted: the files are the source from that point on.
+2. `src/xsd.test.ts` reads the four directories, and reads the reasons from `reasons.json`.
 3. `src/formula.test.ts` keeps its AST assertions and adds a loop over `formula-cases.json`. A second test serializes `FUNCTIONS` and compares with `formula-functions.json`.
-4. `legacyCondToFormula(leaf, type?)`: with `type === 'boolean'`, `1` and `0` become `true` and `false`. With `type === 'string'`, every value becomes a quoted string. `condRow` in `parse.ts` passes the type from the catalog when the host supplied one.
+4. `legacyCondToFormula(leaf, type?)`: with `type === 'boolean'`, `1` and `0` become `true` and `false`. With `type === 'string'`, every value becomes a quoted string. `TagEntry` gains an optional `type`, `parse(xml, catalog?)` takes the catalog, and `condRow` reads the type of the field from it.
 5. `validate()` reports `Rule "r": has 65 actions (max 64).`
 
 ## Interface & API Definitions

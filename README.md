@@ -442,6 +442,22 @@ with `<cond>` rows. Files from 0.2 can nest groups up to four levels deep.
 that depth; a fifth level has no matching type. A description on a leaf inside
 a folded group is dropped.
 
+## The Go engine
+
+The gateway services evaluate `rules.xml` with the Go module in
+[`rules-engine/`](rules-engine/README.md), which lives in this repository so
+that the schema, the fixtures, the formula language and the engine change in
+one commit:
+
+```bash
+go get github.com/o16s/rules-editor/rules-engine@rules-engine/v0.3.1
+```
+
+`schema/fixtures/`, `schema/formula-cases.json` and
+`schema/formula-functions.json` are read by both test suites. A change to the
+language or to the schema that only one side implements fails on the other
+side, on the same commit.
+
 ## Develop
 
 ```bash

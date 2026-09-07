@@ -8,6 +8,9 @@
   https://octaview.ai/en/docs/edge-hub/rules/ and the constraints in
   src/model.ts (LIMITS) and validate() in src/parse.ts.
 
+  Version 0.3.1 caps the actions of one rule at 64, so the schema, the
+  editor's LIMITS and the Go engine agree on one number.
+
   Version 0.3 adds the formula language (src/formula.ts):
     - <variables> with one <var name formula description/> per named formula,
     - <cond expr="..." description="..."/> as the condition form the editor
@@ -41,7 +44,7 @@
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            elementFormDefault="qualified"
-           version="0.3.0">
+           version="0.3.1">
 
   <xs:annotation>
     <xs:documentation>
@@ -343,7 +346,7 @@
       <xs:documentation>Ordered publish actions that fire sequentially when the rule fires.</xs:documentation>
     </xs:annotation>
     <xs:sequence>
-      <xs:element name="publish" type="publish" minOccurs="1" maxOccurs="unbounded">
+      <xs:element name="publish" type="publish" minOccurs="1" maxOccurs="64">
         <xs:annotation>
           <xs:documentation>One MQTT publish action; actions fire in document order.</xs:documentation>
         </xs:annotation>

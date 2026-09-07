@@ -20,9 +20,6 @@ type thenField struct {
 	prog    *formula.Program
 }
 
-// isSet reports whether the field carries anything.
-func (f thenField) isSet() bool { return f.prog != nil || f.literal != "" }
-
 // action is one publish of a rule.
 type action struct {
 	topic   thenField

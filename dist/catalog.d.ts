@@ -1,7 +1,13 @@
-import { type FunctionSpec } from './formula.js';
+import { type FieldType, type FunctionSpec } from './formula.js';
 /** One field a device exposes. `value` and `stale` are live data the host may bind. */
 export interface TagEntry {
     tag: string;
+    /**
+     * The type of the field, as the gateway names it. `parse()` uses it to read
+     * a v0.2 `value` the way the gateway reads it: `1` on a boolean field is
+     * `true`, and `true` on a string field is the text.
+     */
+    type?: FieldType;
     /** Engineering unit, shown beside the live value: "°C", "l/min". */
     unit?: string;
     description?: string;

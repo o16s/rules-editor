@@ -1,10 +1,6 @@
 package rules
 
-import (
-	"time"
-
-	"github.com/o16s/rules-editor/rules-engine/formula"
-)
+import "time"
 
 // evalRule evaluates one rule and appends what it fires.
 func (e *Engine) evalRule(r *Rule, now time.Time) {
@@ -213,6 +209,3 @@ func cutRunes(s string, n int) string {
 	}
 	return s
 }
-
-// unknownValue is the value of a Then field that has no program and no text.
-var unknownValue = formula.Unknown

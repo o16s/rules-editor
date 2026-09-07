@@ -1,0 +1,81 @@
+# Builds and tests the rules-engine Go module.
+#
+# The module implements the schema in schema/rules.xsd, and its tests read the
+# fixtures next to that schema, so a change to either side runs this job.
+
+name: rules-engine
+
+on:
+  push:
+    branches: [main]
+    paths: ["rules-engine/**", "schema/**", ".github/workflows/go.yml"]
+  pull_request:
+    paths: ["rules-engine/**", "schema/**", ".github/workflows/go.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: rules-engine
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: rules-engine/go.mod
+
+      # The schema parity test compares this package's verdict with xmllint's.
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1 ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
+      # A skipped test still exits 0, so assert that the parity test ran.
+      - name: Schema parity really ran
+        run: |
+          set -euo pipefail
+          go test ./rulesxml/ -run TestValidateAgreesWithThePublishedSchema -v -count=1 2>&1 | tee parity.txt
+          grep -q -- "--- PASS: TestValidateAgreesWithThePublishedSchema" parity.txt
+
+      - name: Benchmarks allocate nothing
+        run: go test ./rules/ -run TestEvalAllocatesNothing -count=1 -v
+
+  cross-compile:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: arm
+            goarm: "7"
+          - goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: rules-engine/go.mod
+      # The BL335 gateway is 32-bit ARM; the IOT2050 is arm64.
+      - name: Build for linux/${{ matrix.goarch }}
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: "0"
+        run: go build ./...

@@ -47,6 +47,8 @@ export const LIMITS = {
     maxDepth: 4,
     /** Condition rows per rule, and children per v0.2 group. */
     maxChildren: 16,
+    /** Publish actions per rule. */
+    maxActions: 64,
     maxSummary: 120,
     maxVariables: 64,
     /** description, first_step, cause. */

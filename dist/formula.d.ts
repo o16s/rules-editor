@@ -97,6 +97,8 @@ export declare function formulaRefs(ast: Ast): FormulaRefs;
  * arithmetic is number, TAG and unknown references are any.
  */
 export declare function inferType(ast: Ast, lookup?: (name: string) => FormulaType): FormulaType;
+/** The type of a field, as the host catalog names it. */
+export type FieldType = 'boolean' | 'integer' | 'number' | 'string';
 /**
  * The formula for a v0.2 `<cond tag op value>` leaf, so an old file opens as
  * formula rows: `TAG("dev", "tag") > 50`, or `CHANGED(TAG("tag"))`.
@@ -106,7 +108,7 @@ export declare function legacyCondToFormula(leaf: {
     tag: string;
     op: string;
     value?: string;
-}): string;
+}, type?: FieldType): string;
 /** A Then field holds a formula when it starts with `=`; anything else is text. */
 export declare function isFormula(text: string | undefined): boolean;
 /** The formula text without its leading `=`. */

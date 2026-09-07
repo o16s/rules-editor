@@ -387,3 +387,29 @@ describe('validateIssues', () => {
     expect(validateIssues(many)[0]).not.toHaveProperty('rule');
   });
 });
+
+describe('parse with a catalog', () => {
+  it('rewrites a v0.2 value as the type of its field', () => {
+    const catalog = {
+      devices: [
+        { device: 'vibration1', tags: [{ tag: 'alert', type: 'boolean' as const }, { tag: 'state', type: 'string' as const }] },
+      ],
+    };
+    const xml =
+      '<rules><rule name="r">' +
+      '<and><cond device="vibration1" tag="alert" op="eq" value="1"/>' +
+      '<cond device="vibration1" tag="state" op="eq" value="true"/></and>' +
+      '<actions><publish topic="t"/></actions></rule></rules>';
+    const withCatalog = parse(xml, catalog);
+    expect(withCatalog.rules[0].conditions.map((c) => c.expr)).toEqual([
+      'TAG("vibration1", "alert") = true',
+      'TAG("vibration1", "state") = "true"',
+    ]);
+    // Without the catalog the shape of the value decides, as it always did.
+    const without = parse(xml);
+    expect(without.rules[0].conditions.map((c) => c.expr)).toEqual([
+      'TAG("vibration1", "alert") = 1',
+      'TAG("vibration1", "state") = true',
+    ]);
+  });
+});

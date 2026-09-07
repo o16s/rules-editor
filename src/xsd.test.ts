@@ -95,6 +95,7 @@ describe('schema/rules.xsd', () => {
     expect(XSD).toContain(`<xs:element name="var" type="var" minOccurs="0" maxOccurs="${LIMITS.maxVariables}"/>`);
     expect(XSD).toMatch(new RegExp(`<xs:simpleType name="text">[\\s\\S]*?<xs:maxLength value="${LIMITS.maxText}"/>`));
     expect(XSD).toMatch(new RegExp(`<xs:simpleType name="summary">[\\s\\S]*?<xs:maxLength value="${LIMITS.maxSummary}"/>`));
+    expect(XSD).toContain(`<xs:element name="publish" type="publish" minOccurs="1" maxOccurs="${LIMITS.maxActions}">`);
   });
 
   it('is well-formed and is itself a valid schema', async () => {

@@ -1,4 +1,5 @@
 import type { Cond, Edge, Incident, Match, Publish, Rule, RulesModel, Severity, Variable } from './model.js';
+import type { TagCatalog } from './catalog.js';
 import { canonicalOp, COOLDOWN_RE, EDGES, LIMITS, SEVERITIES, VALUELESS_OPS, VARIABLE_NAME_RE } from './model.js';
 import {
   CONTEXT_NAMES,
@@ -12,6 +13,7 @@ import {
   legacyCondToFormula,
   parseFormula,
   type Ast,
+  type FieldType,
   type FormulaType,
 } from './formula.js';
 
@@ -19,8 +21,27 @@ export class RulesParseError extends Error {}
 
 // ---- parsing -------------------------------------------------------------
 
-/** Parse rules.xml text into a model. Throws RulesParseError on invalid input. */
-export function parse(xml: string): RulesModel {
+/**
+ * The type of one field, from the host catalog. Without a catalog every field
+ * is unknown, and a v0.2 value is read by its shape.
+ */
+function fieldTypeOf(catalog: TagCatalog | undefined, device: string | undefined, tag: string): FieldType | undefined {
+  if (!catalog) return undefined;
+  for (const entry of catalog.devices) {
+    if ((entry.device ?? undefined) !== (device ?? undefined)) continue;
+    for (const t of entry.tags) if (t.tag === tag) return t.type;
+  }
+  return undefined;
+}
+
+/**
+ * Parse rules.xml text into a model. Throws RulesParseError on invalid input.
+ *
+ * With a catalog, a v0.2 `<cond tag op value>` is rewritten as the formula the
+ * gateway evaluates: the value is read as the type of its field. Without one,
+ * the shape of the value decides.
+ */
+export function parse(xml: string, catalog?: TagCatalog): RulesModel {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   const err = doc.querySelector('parsererror');
   if (err) throw new RulesParseError(`Malformed XML: ${err.textContent?.trim() ?? 'parse error'}`);
@@ -30,11 +51,11 @@ export function parse(xml: string): RulesModel {
     throw new RulesParseError(`Root element must be <rules>, got <${root?.nodeName ?? 'nothing'}>`);
   }
 
-  const rules = elementChildren(root).map(parseRule);
+  const rules = elementChildren(root).map((el) => parseRule(el, catalog));
   return { rules };
 }
 
-function parseRule(el: Element): Rule {
+function parseRule(el: Element, catalog?: TagCatalog): Rule {
   if (el.nodeName !== 'rule') {
     throw new RulesParseError(`Expected <rule>, got <${el.nodeName}>`);
   }
@@ -64,7 +85,7 @@ function parseRule(el: Element): Rule {
       case 'or': {
         if (seenCondition) throw new RulesParseError(`Rule "${name}": more than one top-level condition`);
         seenCondition = true;
-        const parsed = parseConditions(child, name);
+        const parsed = parseConditions(child, name, catalog);
         match = parsed.match;
         conditions = parsed.conditions;
         break;
@@ -106,12 +127,12 @@ function parseVariable(el: Element, ruleName: string): Variable {
  * group gives the match mode and one row per child; a nested group becomes
  * one row whose formula is AND(...)/OR(...) over its children.
  */
-function parseConditions(el: Element, ruleName: string): { match: Match; conditions: Cond[] } {
-  if (el.nodeName === 'cond') return { match: 'any', conditions: [condRow(el, ruleName)] };
+function parseConditions(el: Element, ruleName: string, catalog?: TagCatalog): { match: Match; conditions: Cond[] } {
+  if (el.nodeName === 'cond') return { match: 'any', conditions: [condRow(el, ruleName, catalog)] };
   const match: Match = el.nodeName === 'or' ? 'any' : 'all';
   const conditions = elementChildren(el).map((child) => {
-    if (child.nodeName === 'cond') return condRow(child, ruleName);
-    const row: Cond = { expr: foldGroup(child, ruleName, 2) };
+    if (child.nodeName === 'cond') return condRow(child, ruleName, catalog);
+    const row: Cond = { expr: foldGroup(child, ruleName, 2, catalog) };
     const description = child.getAttribute('description');
     if (description) row.description = description;
     return row;
@@ -120,7 +141,7 @@ function parseConditions(el: Element, ruleName: string): { match: Match; conditi
 }
 
 /** A nested v0.2 group as one formula. `depth` is the group's level below <rule>. */
-function foldGroup(el: Element, ruleName: string, depth: number): string {
+function foldGroup(el: Element, ruleName: string, depth: number, catalog?: TagCatalog): string {
   if (el.nodeName !== 'and' && el.nodeName !== 'or') {
     throw new RulesParseError(`Rule "${ruleName}": unexpected condition element <${el.nodeName}>`);
   }
@@ -132,13 +153,15 @@ function foldGroup(el: Element, ruleName: string, depth: number): string {
   if (children.length > LIMITS.maxChildren) {
     throw new RulesParseError(`Rule "${ruleName}": <${el.nodeName}> has ${children.length} children (max ${LIMITS.maxChildren})`);
   }
-  const parts = children.map((c) => (c.nodeName === 'cond' ? condRow(c, ruleName).expr : foldGroup(c, ruleName, depth + 1)));
+  const parts = children.map((c) =>
+    c.nodeName === 'cond' ? condRow(c, ruleName, catalog).expr : foldGroup(c, ruleName, depth + 1, catalog)
+  );
   if (parts.length === 1) return parts[0];
   return `${el.nodeName.toUpperCase()}(${parts.join(', ')})`;
 }
 
 /** One <cond> as a row: its expr, or the v0.2 tag/op/value form as a formula. */
-function condRow(el: Element, ruleName: string): Cond {
+function condRow(el: Element, ruleName: string, catalog?: TagCatalog): Cond {
   const expr = el.getAttribute('expr');
   const tag = el.getAttribute('tag');
   const opRaw = el.getAttribute('op');
@@ -156,7 +179,7 @@ function condRow(el: Element, ruleName: string): Cond {
       throw new RulesParseError(`Rule "${ruleName}": operator "${op}" on tag "${tag}" needs a value`);
     }
     const device = el.getAttribute('device') || undefined;
-    row.expr = legacyCondToFormula({ device, tag, op, value: value ?? undefined });
+    row.expr = legacyCondToFormula({ device, tag, op, value: value ?? undefined }, fieldTypeOf(catalog, device, tag));
   }
   const description = el.getAttribute('description');
   if (description) row.description = description;
@@ -264,6 +287,9 @@ export function validateIssues(model: RulesModel): ValidationIssue[] {
 
     if (rule.actions.length === 0 && !rule.incident) {
       at(`${where}: must have <actions>, an <incident>, or both.`);
+    }
+    if (rule.actions.length > LIMITS.maxActions) {
+      at(`${where}: has ${rule.actions.length} actions (max ${LIMITS.maxActions}).`, { field: 'topic' });
     }
     rule.actions.forEach((a, action) => {
       if (!a.topic) at(`${where}: a publish action is missing a topic.`, { field: 'topic', action });

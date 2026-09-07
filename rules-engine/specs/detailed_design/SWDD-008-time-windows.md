@@ -49,8 +49,10 @@ the result.
 
 ## Interface & API Definitions
 
-Internal to the `rules` package. The `formula.Env` exposes `Windows []ring`
-with three methods: `Stale`, `Rate`, `Avg`.
+`formula.Window` holds the ring, because the evaluator reads it: `NewWindow`,
+`Advance`, `Add`, `Reset`, `Rate` and `Avg`. `STALE` needs no ring; it reads
+`Env.LastChange`, which the engine keeps per slot. The `rules` package
+allocates one `Window` per specification the loader collected.
 
 ## Error Handling & Edge Cases
 
