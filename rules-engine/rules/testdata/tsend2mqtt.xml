@@ -1,23 +1,36 @@
 <!-- Example rules file for tsend2mqtt.
-     Tag names must match the .udt field names exactly.
-     See docs/rules.md for the full schema reference.
-     See docs/events-protocol.md for the incident protocol spec. -->
+     Tag names must match the .udt field names exactly. The names below are
+     those of testdata/LogData.udt.
+     The rule language is documented in the rules-engine README:
+     https://github.com/o16s/rules-editor/blob/main/rules-engine/README.md
+     See docs/rules.md for what is specific to this service, and
+     docs/events-protocol.md for the incident protocol. -->
 <rules>
 
-  <!-- Action + incident: trigger camera recording AND notify humans. -->
+  <!-- Action and incident: record the cameras, and tell a person. -->
   <rule name="alarm-camera" cooldown="45s" edge="rising">
-    <cond tag="Bool137" op="eq" value="true"/>
+    <variables>
+      <var name="alarm" formula='TAG("Bool137")' description="The PLC's own alarm bit"/>
+    </variables>
+    <cond expr="alarm" description="The PLC raised its alarm"/>
     <actions>
       <publish topic="camera/record" payload='{"duration":40}'/>
     </actions>
-    <incident severity="critical" summary="PLC alarm Bool137 active"/>
+    <incident source="plc1" severity="critical"
+              summary="PLC alarm active"
+              first_step="Look at the camera recording before you enter the cell."
+              cause="The PLC set its alarm bit Bool137."/>
   </rule>
 
-  <!-- Multiple actions from one rule: trigger 4 cameras simultaneously. -->
+  <!-- One rule, four cameras. The code must move to a non-zero value, so a
+       repeated code does not trigger a second recording. -->
   <rule name="alarm-all-cams" cooldown="45s" edge="rising">
+    <variables>
+      <var name="code" formula='TAG("Int93")' description="The fault number the PLC reports"/>
+    </variables>
     <and>
-      <cond tag="Int93" op="changed"/>
-      <cond tag="Int93" op="neq" value="0"/>
+      <cond expr="CHANGED(code)" description="The fault number changed"/>
+      <cond expr="code &lt;&gt; 0" description="It is not zero, so it names a fault"/>
     </and>
     <actions>
       <publish topic="sensingcam/sick1/trigger" payload='{"event_name":"alarm"}'/>
@@ -27,30 +40,64 @@
     </actions>
   </rule>
 
-  <!-- Compound AND with incident: alarm active AND temperature high. -->
+  <!-- Two readings together: the alarm stands and the machine is hot. -->
   <rule name="alarm-hot" cooldown="30s" edge="rising">
+    <variables>
+      <var name="alarm" formula='TAG("Bool137")' description="The PLC's own alarm bit"/>
+      <var name="temp" formula='TAG("Real70")' description="Machine temperature in degrees Celsius"/>
+    </variables>
     <and>
-      <cond tag="Bool137" op="eq" value="true"/>
-      <cond tag="Real70" op="geq" value="85.0"/>
+      <cond expr="alarm" description="The PLC raised its alarm"/>
+      <cond expr="temp &gt;= 85" description="At or above 85 C"/>
     </and>
     <actions>
       <publish topic="alerts/critical" payload='{"alert":"hot_alarm"}'/>
     </actions>
-    <incident severity="critical" summary="Alarm active while temperature high"/>
+    <incident source="plc1" severity="critical"
+              summary="Alarm active while the machine is hot"
+              first_step="Stop the machine before you clear the alarm."
+              cause='="The alarm stands and the machine reads " &amp; temp &amp; " C."'/>
   </rule>
 
-  <!-- Incident only: alert humans, no local side-effect. -->
+  <!-- The machine heats faster than it should, before it reaches any limit.
+       Eight hours of warning is the difference between a planned stop and a
+       broken machine. -->
+  <rule name="heating-too-fast" cooldown="1h" edge="rising">
+    <variables>
+      <var name="temp" formula='AVG(TAG("Real70"), 5min)' description="Temperature, averaged over five minutes"/>
+      <var name="rise" formula='RATE(TAG("Real70"), 30min)' description="How fast it rises, per hour"/>
+      <var name="in_8h" formula='FORECAST(TAG("Real70"), 2h, 8h)' description="Where it lands in eight hours, if the rise holds"/>
+    </variables>
+    <and>
+      <cond expr="rise &gt; 3" description="Rising faster than 3 C an hour"/>
+      <cond expr="in_8h &gt; 90" description="It passes 90 C within eight hours"/>
+    </and>
+    <incident source="plc1" severity="warning"
+              summary="The machine heats towards its limit"
+              first_step="Plan a stop. The machine can still run."
+              cause='="It reads " &amp; temp &amp; " C and rises " &amp; rise &amp; " C an hour."'/>
+  </rule>
+
+  <!-- Incident only: no local action, a person decides. -->
   <rule name="high-temp-alert" cooldown="60s">
-    <cond tag="Real70" op="geq" value="90.0"/>
-    <incident severity="warning" summary="Temperature exceeds 90C"/>
+    <variables>
+      <var name="temp" formula='TAG("Real70")' description="Machine temperature in degrees Celsius"/>
+    </variables>
+    <cond expr="temp &gt;= 90" description="At or above 90 C"/>
+    <incident source="plc1" severity="warning"
+              summary="Machine above 90 C"
+              first_step="Read the temperature on the panel before you stop the line."
+              cause='="The PLC reports " &amp; temp &amp; " C."'/>
   </rule>
 
-  <!-- Action only: forward data to another topic, no human notification. -->
+  <!-- Action only: forward anything worth a look to one topic. -->
   <rule name="any-alert" cooldown="10s">
-    <or>
-      <cond tag="Bool137" op="eq" value="true"/>
-      <cond tag="Int93" op="geq" value="100"/>
-    </or>
+    <variables>
+      <var name="alarm" formula='TAG("Bool137")' description="The PLC's own alarm bit"/>
+      <var name="code" formula='TAG("Int93")' description="The fault number the PLC reports"/>
+    </variables>
+    <cond expr="OR(alarm, code &gt;= 100)"
+          description="The alarm stands, or the fault number is 100 or more"/>
     <actions>
       <publish topic="alerts/any" payload='{"alert":"any"}'/>
     </actions>

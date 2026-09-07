@@ -53,14 +53,15 @@ func modbusCatalog() Catalog {
 }
 
 // plcExampleCatalog is what tsend2mqtt builds from the .udt layout: one
-// implicit source, and the topic prefix as the only incident source.
+// implicit source, so a tag carries no device name. The service passes the
+// identity it publishes, which is flat because the device sets topic: plc1
+// (ADR-021).
 func plcExampleCatalog() Catalog {
 	return Catalog{
-		// The source ID is the source itself. ADR-021 replaces this with
-		// Catalog.SourceIDs in v0.4.2, when tsend2mqtt adopts the module.
-		TopicPrefix: "",
+		TopicPrefix: "plc1",
 		Period:      time.Second,
 		Sources:     []string{"plc1"},
+		SourceIDs:   []string{"plc1"},
 		Fields: []Field{
 			{Tag: "Bool137", Type: Bool},
 			{Tag: "Int93", Type: Integer},
@@ -191,40 +192,22 @@ func TestServiceFileModbus(t *testing.T) {
 	}
 }
 
-func TestServiceFilePLCNeedsAnIncidentSource(t *testing.T) {
-	// The tsend2mqtt example predates the schema: its incidents carry no
-	// source, which the schema requires. The file must be corrected before
-	// the service adopts the module (finding 7 of PLAN.md).
-	_, problems := Load(readTestdata(t, "tsend2mqtt.xml"), plcExampleCatalog())
-	if len(problems) == 0 {
-		t.Fatal("the file has incidents without a source; it must not load")
-	}
-	found := false
-	for _, p := range problems {
-		if p.Path != "" && contains(p.Message, "source") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("problems = %v, want one about the missing source", problems)
-	}
-}
-
-func TestServiceFilePLCWithSources(t *testing.T) {
-	// The same file with source="plc1" on each incident, which is what the
-	// service ships after the migration.
-	data := addSource(readTestdata(t, "tsend2mqtt.xml"))
+func TestServiceFilePLC(t *testing.T) {
 	cat := plcExampleCatalog()
-	parsed, problems := Load(data, cat)
+	parsed, problems := Load(readTestdata(t, "tsend2mqtt.xml"), cat)
 	if len(problems) != 0 {
-		t.Fatalf("the corrected example must load:\n%v", problems)
+		t.Fatalf("the tsend2mqtt example must load:\n%v", problems)
+	}
+	if len(parsed) != 6 {
+		t.Fatalf("rules = %d, want 6", len(parsed))
 	}
 	e := NewEngine(parsed, cat)
 	values := []any{false, 0, 0.0}
 	e.Eval(values, t0)
 
-	// The alarm bit fires the camera rule and raises its incident, with the
-	// key the service publishes today.
+	// The alarm bit fires the camera rule and raises its incident. The key is
+	// flat, because the service passed its own identity: plc1-alarm-camera,
+	// not plc1/plc1-alarm-camera.
 	values[0] = true
 	actions, incidents := e.Eval(values, t0.Add(time.Second))
 	if len(actions) == 0 {
@@ -233,27 +216,22 @@ func TestServiceFilePLCWithSources(t *testing.T) {
 	if len(incidents) == 0 {
 		t.Fatal("the alarm must raise an incident")
 	}
+	found := false
 	for _, inc := range incidents {
-		if inc.Trigger && inc.Rule == "alarm-camera" && inc.DedupKey != "plc1-alarm-camera" {
-			t.Errorf("dedup key = %q, want plc1-alarm-camera", inc.DedupKey)
-		}
-	}
-}
-
-// addSource puts source="plc1" on every incident of a document.
-func addSource(data []byte) []byte {
-	out := make([]byte, 0, len(data)+64)
-	needle := []byte("<incident ")
-	for i := 0; i < len(data); i++ {
-		if i+len(needle) <= len(data) && string(data[i:i+len(needle)]) == string(needle) {
-			out = append(out, needle...)
-			out = append(out, []byte(`source="plc1" `)...)
-			i += len(needle) - 1
+		if !inc.Trigger || inc.Rule != "alarm-camera" {
 			continue
 		}
-		out = append(out, data[i])
+		found = true
+		if inc.DedupKey != "plc1-alarm-camera" {
+			t.Errorf("dedup key = %q, want plc1-alarm-camera", inc.DedupKey)
+		}
+		if inc.FirstStep == "" || inc.Cause == "" {
+			t.Error("the incident carries no first step or no cause")
+		}
 	}
-	return out
+	if !found {
+		t.Error("the camera rule raised no incident")
+	}
 }
 
 // slotOf finds the slot of one field, or fails the test.
@@ -268,5 +246,3 @@ func slotOf(t *testing.T, cat Catalog, device, tag string) int {
 	return 0
 }
 
-// contains reports whether s holds sub.
-func contains(s, sub string) bool { return indexOf(s, sub) >= 0 }
