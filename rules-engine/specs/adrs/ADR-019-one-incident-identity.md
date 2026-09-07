@@ -5,7 +5,7 @@ name: "One incident identity for every service"
 description: >
   Every service builds the incident source as topic_prefix/source. The empty-
   prefix rule of ADR-006 is dropped, because no deployed file needs it.
-status: accepted
+status: superseded
 deciders:
   - "octanis engineering"
 justifies:

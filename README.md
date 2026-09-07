@@ -505,8 +505,12 @@ that the schema, the fixtures, the formula language and the engine change in
 one commit:
 
 ```bash
-go get github.com/o16s/rules-editor/rules-engine@rules-engine/v0.3.1
+go get github.com/o16s/rules-editor/rules-engine@v0.3.1
 ```
+
+The git tag is `rules-engine/v0.3.1`, because the module sits in a
+subdirectory. Go maps the path suffix to that tag prefix by itself, so the
+version string stays `v0.3.1`.
 
 `schema/fixtures/`, `schema/formula-cases.json` and
 `schema/formula-functions.json` are read by both test suites. A change to the

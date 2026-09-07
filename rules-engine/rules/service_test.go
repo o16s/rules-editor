@@ -54,7 +54,9 @@ func modbusCatalog() Catalog {
 // implicit source, and the topic prefix as the only incident source.
 func plcExampleCatalog() Catalog {
 	return Catalog{
-		TopicPrefix: "", // the source ID is the source itself (ADR-006)
+		// The source ID is the source itself. ADR-021 replaces this with
+		// Catalog.SourceIDs in v0.4.0, when tsend2mqtt adopts the module.
+		TopicPrefix: "",
 		Period:      time.Second,
 		Sources:     []string{"plc1"},
 		Fields: []Field{

@@ -50,14 +50,17 @@ the incident.
 ## Interface & API Definitions
 
 The catalog: `Device ""`, `Tag` = field name, `Type` from `typeOf`.
-`Sources` are the device names of the configuration, `TopicPrefix` is the configured prefix, and `Period` is one second (ADR-019).
+`Sources` are the device names of the configuration, and `Period` is one second.
+`SourceIDs` are `cfg.DeviceIdentity(d)` for each device, which is `plc1` for the
+shipped configuration, because the device sets `topic: plc1` (ADR-021). The
+module gains `Catalog.SourceIDs` in v0.4.0, and this adapter requires that tag.
 
 ## Error Handling & Edge Cases
 
 - The frame timestamp from the PLC is not used for rules. Cooldown and time functions use receive time, as today.
 - The ticker goroutine ends with the connection goroutine, through the same `done` channel.
-- A rules file without `source` on an incident now fails at startup. The release notes tell operators to add `source="<topic_prefix>"`.
+- A rules file without `source` on an incident now fails at startup. The release notes tell operators to add `source="<device name>"`.
 
 ## Notes
 
-ADR-019.
+ADR-021 supersedes ADR-019.

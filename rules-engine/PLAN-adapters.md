@@ -13,7 +13,7 @@ the current schema in one change.
 
 The same six steps, in the same order.
 
-1. **Require the module.** `go get github.com/o16s/rules-editor/rules-engine@rules-engine/v0.3.1`.
+1. **Require the module.** `go get github.com/o16s/rules-editor/rules-engine@v0.3.1`.
 2. **Delete its own engine.** `internal/rules/`, and `internal/rulesxml/` in modbus2mqtt, with their tests and their vendored fixtures.
 3. **Build a catalog** from the discovery it already has, and call `rules.Load`. Log every problem with its path and its rule, then exit.
 4. **Own a slot array.** Write a value when data arrives. Write `nil` when a device goes offline, and when a report lacks a field it used to carry.

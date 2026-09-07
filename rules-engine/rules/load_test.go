@@ -208,7 +208,7 @@ func TestLoadIncidentIdentity(t *testing.T) {
 
 func TestLoadIncidentIdentityWithoutATopicPrefix(t *testing.T) {
 	// A service with one source keeps the identity it already publishes: the
-	// source alone, and {source}-{rule} as the key (ADR-006).
+	// source alone, and {source}-{rule} as the key (ADR-021).
 	cat := plcCatalog()
 	xml := `<rules><rule name="alarm-camera">
 	  <cond tag="AlarmActive" op="eq" value="true"/>
