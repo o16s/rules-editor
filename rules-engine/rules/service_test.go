@@ -245,4 +245,3 @@ func slotOf(t *testing.T, cat Catalog, device, tag string) int {
 	t.Fatalf("the catalog has no field %s.%s", device, tag)
 	return 0
 }
-
