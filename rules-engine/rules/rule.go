@@ -10,6 +10,7 @@ import (
 // an operator gave it. A Then field can quote that description.
 type row struct {
 	prog        *formula.Program
+	text        string // the formula, as the loader made it, for a Probe
 	description string
 	// pulse is true when the row reads CHANGED. Such a row is true only in
 	// the evaluation where its input moved, and is never seen as false, so a
@@ -58,6 +59,8 @@ type Rule struct {
 	hasTime     bool  // a condition contains STALE, RATE or AVG
 	needsBuffer bool  // a Then field is a formula and renders into the buffer
 
+	variableTexts []NamedText // the named formulas, in document order, for a Probe
+
 	// State, owned by the engine.
 	prev      bool
 	seen      bool
@@ -67,6 +70,29 @@ type Rule struct {
 	buf       []byte
 	bufLen    int
 }
+
+// Variables are the rule's named formulas, in document order, as written.
+func (r *Rule) Variables() []NamedText { return r.variableTexts }
+
+// RowTexts are the rule's condition rows as formulas, in document order: an
+// expr as written, a 0.2 leaf as the formula the loader made of it, and a
+// nested group folded into one. A Probe over these evaluates exactly what
+// the engine evaluates.
+func (r *Rule) RowTexts() []string {
+	out := make([]string, len(r.rows))
+	for i := range r.rows {
+		out[i] = r.rows[i].text
+	}
+	return out
+}
+
+// MatchAll reports whether every row must be true (an <and> rule) rather
+// than any one (an <or> rule, or a single row).
+func (r *Rule) MatchAll() bool { return r.matchAll }
+
+// Active reports whether the rule's incident is open. Owned by the engine;
+// read it after Eval.
+func (r *Rule) Active() bool { return r.active }
 
 // HasActions reports whether the rule publishes anything.
 func (r *Rule) HasActions() bool { return len(r.actions) > 0 }

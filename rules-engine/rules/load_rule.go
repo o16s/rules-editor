@@ -14,7 +14,11 @@ func (l *loader) rule(n *node, path string) Rule {
 	l.ruleName = name
 	r := Rule{Name: name}
 
+	l.varTexts = l.varTexts[:0]
+
 	vars := l.variables(n, path)
+
+	r.variableTexts = append([]NamedText(nil), l.varTexts...)
 	l.conditions(&r, n, path, vars)
 	l.actions(&r, n, path, vars)
 	l.incident(&r, n, path, vars)
@@ -54,6 +58,7 @@ func (l *loader) variables(n *node, path string) map[string]*formula.Node {
 				continue
 			}
 			vars[name] = parsed
+			l.varTexts = append(l.varTexts, NamedText{Name: name, Text: text})
 		}
 	}
 	return vars
@@ -180,7 +185,7 @@ func (l *loader) compileRow(text, path string, vars map[string]*formula.Node) ro
 			prog.Type.String()+`. Compare it, for example "`+text+` > 0".`)
 		return row{}
 	}
-	return row{prog: prog, pulse: prog.HasChanged}
+	return row{prog: prog, text: text, pulse: prog.HasChanged}
 }
 
 // condText gives the formula of one <cond>: its expr, or the 0.2 form

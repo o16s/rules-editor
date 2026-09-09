@@ -253,22 +253,3 @@ func collectFiring(res *response, eng *rules.Engine, values []any, now time.Time
 	}
 	res.Firings = append(res.Firings, f)
 }
-
-// jsValue renders one engine value for the page. Unknown is null, which is
-// what the timeline draws as a gap.
-func jsValue(v formula.Value) any {
-	switch v.Kind {
-	case formula.VBool:
-		return v.B
-	case formula.VNumber:
-		return v.Float()
-	case formula.VInt:
-		if i, ok := v.Int(); ok {
-			return i
-		}
-		return nil
-	case formula.VString:
-		return v.S
-	}
-	return nil
-}

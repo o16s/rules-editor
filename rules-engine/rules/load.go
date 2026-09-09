@@ -111,7 +111,8 @@ type loader struct {
 	cat      Catalog
 	bind     *binder
 	problems []Problem
-	ruleName string // the rule being bound, for the problem list
+	ruleName string      // the rule being bound, for the problem list
+	varTexts []NamedText // the rule's named formulas as written, in order, for Rule.Variables
 }
 
 // fail records one problem.
