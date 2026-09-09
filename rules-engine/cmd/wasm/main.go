@@ -19,7 +19,6 @@ import (
 	"syscall/js"
 	"time"
 
-	"github.com/o16s/rules-editor/rules-engine/formula"
 	"github.com/o16s/rules-editor/rules-engine/rules"
 )
 
