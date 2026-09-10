@@ -129,11 +129,38 @@ describe('rules editor component (jsdom)', () => {
     expect(rows[2].querySelector('select')?.value).toBe('critical');
     expect(rows.map((r) => Boolean(r.querySelector('.re-cell-merged')))).toEqual([false, true, false, true, true, true]);
     expect(rows[1].querySelector('select')).toBeNull();
-    expect(rows.map((r) => Boolean(r.querySelector('.re-remove')))).toEqual([true, false, true, false, false, false]);
+    // one delete per action, plus a per-field delete on the optional first step and cause
+    expect(rows.map((r) => Boolean(r.querySelector('.re-remove')))).toEqual([true, false, true, false, true, true]);
     // cause = condition.description & "…" previews with the first condition's description
     const preview = rows[5].querySelector('.re-preview') as HTMLElement;
     expect(preview.hidden).toBe(false);
     expect(preview.textContent).toMatch(/^Cell 3 PLC raised its own alarm\. The press PLC/);
+  });
+
+  it('first step and cause are optional: each deletes on its own, and a picker under the title adds it back', () => {
+    const { root, api } = setup({ initialModel: wrap({ actions: [], incident: { source: 's', severity: 'error', summary: 'x', firstStep: 'Look.', cause: 'Why.' } }) });
+    const fieldNames = () => Array.from(root.querySelectorAll('.re-sheet-then .re-cell-field')).map((c) => c.textContent);
+    const adder = () => root.querySelector<HTMLSelectElement>('.re-sheet-then select[aria-label="Add a field to the incident"]');
+    expect(fieldNames()).toEqual(['source', 'title', 'first step', 'cause']);
+    // both present: nothing left to add, so no picker
+    expect(adder()).toBeNull();
+    // deleting first step drops just that field, not the incident
+    button(root, 'Delete first step').click();
+    expect(api.getModel().rules[0].incident).toMatchObject({ source: 's', summary: 'x', cause: 'Why.' });
+    expect(api.getModel().rules[0].incident?.firstStep).toBeUndefined();
+    expect(fieldNames()).toEqual(['source', 'title', 'cause']);
+    // the picker offers only the missing field, and sits directly under the title row
+    const pick = adder()!;
+    expect(Array.from(pick.options).map((o) => o.value)).toEqual(['', 'firstStep']);
+    const titleRow = Array.from(root.querySelectorAll('.re-sheet-then .re-row')).find((r) => r.querySelector('.re-cell-field')?.textContent === 'title');
+    expect((pick.closest('.re-row-addfield') as HTMLElement).previousElementSibling).toBe(titleRow);
+    // choosing it adds the row back, ready to edit
+    choose(pick, 'firstStep');
+    expect(fieldNames()).toEqual(['source', 'title', 'first step', 'cause']);
+    type(inputByLabel(root, 'first step of row 3'), 'Stop.');
+    expect(api.getModel().rules[0].incident?.firstStep).toBe('Stop.');
+    // both present again: the picker is gone
+    expect(adder()).toBeNull();
   });
 
   it('keeps the phone keyboard off names, topics and payloads in the Then sheet; prose keeps it', () => {
@@ -270,8 +297,10 @@ describe('rules editor component (jsdom)', () => {
     // severity changes in place
     choose(root.querySelector('.re-sheet-then select') as HTMLSelectElement, 'info');
     expect(api.getModel().rules[0].incident?.severity).toBe('info');
-    // fields are editable
+    // a fresh incident carries only source and title; first step is added on demand
+    expect(root.querySelector('input[aria-label="first step of row 3"]')).toBeNull();
     type(inputByLabel(root, 'title of row 2'), 'Press guard alarm');
+    choose(root.querySelector('.re-sheet-then select[aria-label="Add a field to the incident"]') as HTMLSelectElement, 'firstStep');
     type(inputByLabel(root, 'first step of row 3'), 'Look.');
     expect(api.getModel().rules[0].incident).toMatchObject({ summary: 'Press guard alarm', firstStep: 'Look.' });
     // and back to a publish
@@ -840,8 +869,12 @@ describe('narrow mode (phone: tabs, tap a cell, edit in the bar)', () => {
     // a Then field belongs to its action, and Delete removes the action
     cellOf('payload of row 2').click();
     expect(barButton(root, 'Delete action').hidden).toBe(false);
-    cellOf('cause of row 6').click();
+    // source and title are the incident, so Delete removes the whole incident
+    cellOf('source of row 3').click();
     expect(barButton(root, 'Delete incident').hidden).toBe(false);
+    // the optional first step and cause each delete on their own
+    cellOf('cause of row 6').click();
+    expect(barButton(root, 'Delete cause').hidden).toBe(false);
   });
 
   it('the bar delete removes the selected row', () => {

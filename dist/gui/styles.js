@@ -25,6 +25,7 @@ const NARROW = `
   .re-root .re-bar input { font-size:16px; }
   .re-root .re-cell input { pointer-events:none; }
   .re-root .re-add { min-height:44px; }
+  .re-root .re-row-addfield .re-pick { min-height:44px; display:inline-flex; align-items:center; }
   .re-root .re-remove { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
   .re-root .re-link { min-height:44px; display:inline-flex; align-items:center; }
   .re-root .re-btn, .re-root .re-btn-primary, .re-root .re-tab { min-height:44px; }
@@ -197,6 +198,7 @@ const STYLES = `
   .re-icon-btn:hover { color:var(--re-ink); background:rgba(0,0,0,.05); }
   .re-remove:hover { color:var(--re-critical); }
   .re-add:hover { color:var(--re-ink); background:var(--re-paper); }
+  .re-row-addfield .re-pick:hover { color:var(--re-ink); }
   .re-info:hover { color:var(--re-accent); }
   .re-name:hover { border-bottom-color:var(--re-line); }
   .re-rail-row:hover .re-rail-actions { visibility:visible; }
@@ -238,6 +240,9 @@ const STYLES = `
 .re-add { grid-column:2; justify-self:start; position:sticky; left:30px; text-align:left; background:none; border:none; padding:7px 9px; font-size:13px; color:var(--re-muted); cursor:text; }
 .re-add:focus { color:var(--re-ink); outline:none; background:var(--re-paper); }
 .re-add:disabled { cursor:not-allowed; color:var(--re-muted); background:none; }
+/* The picker under the title row that adds an optional incident field. */
+.re-row-addfield { grid-template-columns:30px minmax(0,1fr); }
+.re-row-addfield .re-pick { grid-column:2; justify-self:start; padding:5px 9px; font-size:13px; color:var(--re-muted); }
 .re-cool { display:flex; align-items:center; gap:7px; background:var(--re-paper); padding:8px 12px; border-top:1px solid var(--re-grid); font-size:12px; color:var(--re-muted); }
 .re-cool input { width:6em; font-size:12.5px; color:var(--re-ink); background:var(--re-surface); border:1px solid var(--re-line); border-radius:3px; padding:3px 8px; }
 .re-cool.is-invalid input { border-color:var(--re-critical); }

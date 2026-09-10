@@ -14,6 +14,12 @@ export declare const THEN_LABEL: Record<ThenField, string>;
 export declare const THEN_ISSUE_FIELD: Record<ThenField, ValidationIssue['field']>;
 /** Free-text fields: title, first step and cause. Topic, payload and source are names. */
 export declare const THEN_PROSE: ReadonlySet<ThenField>;
+/**
+ * The incident fields the operator may add or drop. Source and title are
+ * required; first step and cause show a row only when the incident has them,
+ * and the Then sheet offers a control to add either one back.
+ */
+export declare const INCIDENT_OPTIONAL: readonly ["firstStep", "cause"];
 /** True for the first row of an action: the one that carries the Action choice. */
 export declare const isGroupHead: (row: ThenRow) => boolean;
 export declare function thenRows(rule: Rule): ThenRow[];

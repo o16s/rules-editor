@@ -18,13 +18,24 @@ export const THEN_ISSUE_FIELD: Record<ThenField, ValidationIssue['field']> = {
 /** Free-text fields: title, first step and cause. Topic, payload and source are names. */
 export const THEN_PROSE: ReadonlySet<ThenField> = new Set<ThenField>(['summary', 'firstStep', 'cause']);
 
+/**
+ * The incident fields the operator may add or drop. Source and title are
+ * required; first step and cause show a row only when the incident has them,
+ * and the Then sheet offers a control to add either one back.
+ */
+export const INCIDENT_OPTIONAL = ['firstStep', 'cause'] as const;
+
 /** True for the first row of an action: the one that carries the Action choice. */
 export const isGroupHead = (row: ThenRow): boolean => row.field === 'topic' || row.field === 'source';
 
 export function thenRows(rule: Rule): ThenRow[] {
   const rows: ThenRow[] = [];
   rule.actions.forEach((_, index) => rows.push({ kind: 'publish', index, field: 'topic' }, { kind: 'publish', index, field: 'payload' }));
-  if (rule.incident) rows.push({ kind: 'incident', field: 'source' }, { kind: 'incident', field: 'summary' }, { kind: 'incident', field: 'firstStep' }, { kind: 'incident', field: 'cause' });
+  if (rule.incident) {
+    rows.push({ kind: 'incident', field: 'source' }, { kind: 'incident', field: 'summary' });
+    // First step and cause are optional: a row shows only when the field is set.
+    for (const field of INCIDENT_OPTIONAL) if (rule.incident[field] !== undefined) rows.push({ kind: 'incident', field });
+  }
   return rows;
 }
 

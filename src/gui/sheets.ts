@@ -7,7 +7,7 @@ import { isFormula } from '../formula.js';
 import { el, pickInput, selectInput } from './dom.js';
 import { exampleModel } from './example.js';
 import { ACTION_OPTIONS, EDGE_OPTIONS, HELP, MATCH_OPTIONS } from './labels.js';
-import { isGroupHead, previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD, THEN_LABEL, THEN_PROSE, type ThenRow } from './then-rows.js';
+import { INCIDENT_OPTIONAL, isGroupHead, previewThen, thenGet, thenRows, thenSet, THEN_ISSUE_FIELD, THEN_LABEL, THEN_PROSE, type ThenRow } from './then-rows.js';
 import { locKey, type EditorState, type Loc, type SheetName } from './state.js';
 import type { Bar } from './bar.js';
 import type { Cells } from './cells.js';
@@ -193,7 +193,15 @@ export function createSheets(deps: SheetsDeps): Sheets {
       sheetHead(['Action', 'Field', 'Formula'], ['What happens when the rule fires', 'The field of the action', 'Text as sent, or a formula when it starts with =']),
     ]);
     const rows = thenRows(rule);
-    rows.forEach((row, i) => sheet.append(thenRow(row, i, rule, index)));
+    rows.forEach((row, i) => {
+      sheet.append(thenRow(row, i, rule, index));
+      // First step and cause are optional. Right under the incident's title,
+      // offer a picker that adds whichever named field it does not carry yet.
+      if (row.kind === 'incident' && row.field === 'summary') {
+        const control = addFieldControl(rule, index);
+        if (control) sheet.append(control);
+      }
+    });
     sheet.append(addRow(rows.length + 1, 'Add', () => {
       rule.actions.push({ topic: '' });
       addAndFocus({ rule: index, field: 'topic', action: rule.actions.length - 1 });
@@ -206,6 +214,24 @@ export function createSheets(deps: SheetsDeps): Sheets {
     return el('div', { class: 're-sheet-block' }, [title, help, sheet]);
   }
 
+  /**
+   * The picker under the title row: it lists the optional incident fields the
+   * incident does not carry yet, and adding one sets an empty field so its row
+   * appears and takes the focus. Null when both optional fields are present.
+   */
+  function addFieldControl(rule: Rule, index: number): HTMLElement | null {
+    const missing = INCIDENT_OPTIONAL.filter((f) => rule.incident![f] === undefined);
+    if (!missing.length) return null;
+    const options = [{ value: '', label: 'Add field' }, ...missing.map((f) => ({ value: f, label: THEN_LABEL[f] }))];
+    const pick = pickInput('', options, (v) => {
+      if (!v) return;
+      const field = v as (typeof INCIDENT_OPTIONAL)[number];
+      rule.incident![field] = '';
+      addAndFocus({ rule: index, field: THEN_ISSUE_FIELD[field] });
+    }, 'Add a field to the incident');
+    return el('div', { class: 're-row re-row-addfield' }, [el('span', { class: 're-gutter' }), pick]);
+  }
+
   function thenRow(row: ThenRow, i: number, rule: Rule, index: number): HTMLElement {
     const current = row.kind === 'publish' ? 'publish' : rule.incident!.severity;
     const value = thenGet(rule, row);
@@ -213,13 +239,18 @@ export function createSheets(deps: SheetsDeps): Sheets {
       ? { rule: index, field: THEN_ISSUE_FIELD[row.field], action: row.index }
       : { rule: index, field: THEN_ISSUE_FIELD[row.field] };
     const placeholder = row.field === 'topic' ? 'camera/record' : row.field === 'payload' ? '{}' : row.field === 'summary' ? 'Lead with the fix, in a few words' : '';
-    const remove = () => {
-      if (row.kind === 'publish') rule.actions.splice(row.index, 1);
-      else rule.incident = null;
-      deps.render();
-    };
-    // Every row of an action goes with it, so the button never says "row".
-    const removeLabel = row.kind === 'publish' ? 'Delete action' : 'Delete incident';
+    // First step and cause are optional: their own delete drops just that
+    // field. Every other row belongs to its action, so its delete takes the
+    // whole action (or the whole incident) and never says "row".
+    const optional = row.kind === 'incident' && (row.field === 'firstStep' || row.field === 'cause');
+    const remove = optional
+      ? () => { delete rule.incident![row.field as 'firstStep' | 'cause']; deps.render(); }
+      : () => {
+          if (row.kind === 'publish') rule.actions.splice(row.index, 1);
+          else rule.incident = null;
+          deps.render();
+        };
+    const removeLabel = optional ? `Delete ${THEN_LABEL[row.field]}` : row.kind === 'publish' ? 'Delete action' : 'Delete incident';
     const who = THEN_LABEL[row.field];
     const formula = formulaCell(value, (v) => thenSet(rule, row, v), { label: `${THEN_LABEL[row.field]} of row ${i + 1}`, column: 'Formula', loc, thenField: true, prose: THEN_PROSE.has(row.field), placeholder, address: `${who} · Formula`, remove, removeLabel });
     // A formula shows what it resolves to as a line under the value; literal
@@ -242,7 +273,9 @@ export function createSheets(deps: SheetsDeps): Sheets {
     const action = head
       ? cell('re-cell-pick', 'Action', null, [pickInput(current, ACTION_OPTIONS, (v) => setAction(row, v, rule), `Action of row ${i + 1}`)], { address: `${who} · Action`, remove, removeLabel })
       : el('div', { class: 're-cell-merged', 'aria-hidden': 'true' });
-    const trash = head
+    // An optional field carries its own trash; other rows continue the action's
+    // merged cell, so only its head row shows the button.
+    const trash = head || optional
       ? removeBtn(removeLabel, remove)
       : el('div', { class: 're-cell-merged re-cell-merged-end', 'aria-hidden': 'true' });
     return el('div', { class: 're-row' }, [
